@@ -1,0 +1,2 @@
+DROP TABLE node;
+DROP TABLE port;

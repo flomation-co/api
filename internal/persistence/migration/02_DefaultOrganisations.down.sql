@@ -1,0 +1,1 @@
+DELETE FROM organisations WHERE id = '0497afa5-67ce-446d-83c3-431094d041b7';

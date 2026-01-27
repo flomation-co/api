@@ -1,0 +1,2 @@
+ALTER TABLE flo
+    ADD COLUMN environment_id UUID DEFAULT NULL;

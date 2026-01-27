@@ -1,0 +1,15 @@
+{
+  "package": {
+    "component_name": "api",
+    "name": "flomation-api",
+    "nicename": "Flomation API",
+    "summary": "Flomation Automate API Server",
+    "description": "Flomation Automate API Server - Backend API service for automation workflows",
+    "license": "MIT",
+    "url": "https://flomation.co"
+  },
+  "maintainer": {
+    "name": "Build System",
+    "email": "build@flomation.co"
+  }
+}

@@ -1,0 +1,12 @@
+dist/
+*.zip
+application
+*.rpm
+*.deb
+rpmbuild/
+debian/.debhelper/
+debian/flomation-api/
+debian/files
+debian/*.substvars
+debian/*.debhelper.log
+debian/debhelper-build-stamp

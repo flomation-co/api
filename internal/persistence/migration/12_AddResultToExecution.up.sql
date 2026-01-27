@@ -1,0 +1,2 @@
+ALTER TABLE execution
+    ADD COLUMN result JSONB DEFAULT NULL;

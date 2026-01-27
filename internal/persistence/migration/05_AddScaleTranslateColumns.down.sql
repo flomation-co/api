@@ -1,0 +1,4 @@
+ALTER TABLE flo
+    DROP COLUMN scale,
+    DROP COLUMN x,
+    DROP COLUMN y;

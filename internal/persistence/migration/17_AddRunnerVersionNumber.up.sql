@@ -1,0 +1,2 @@
+ALTER TABLE runner
+    ADD COLUMN version VARCHAR DEFAULT NULL;
