@@ -124,7 +124,7 @@ type OutputDefinition struct {
 	Type  string `json:"type" db:"type"`
 }
 
-type ActionDefinition struct {
+type Action struct {
 	ID          string      `json:"id" db:"id"`
 	Name        string      `json:"name" db:"name"`
 	Label       string      `json:"label"`
