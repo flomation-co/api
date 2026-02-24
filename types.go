@@ -202,6 +202,6 @@ type EnvironmentSecret struct {
 }
 
 type UserDashboard struct {
-	Usage     int64 `json:"usage" db:"usage"`
-	Allowance int64 `json:"allowance" db:"allowance"`
+	Usage     *int64 `json:"usage" db:"usage"`
+	Allowance *int64 `json:"allowance" db:"allowance"`
 }
