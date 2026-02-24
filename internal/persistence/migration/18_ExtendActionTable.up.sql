@@ -1,0 +1,7 @@
+ALTER TABLE actions
+    ADD COLUMN hash VARCHAR,
+    ADD COLUMN author VARCHAR,
+    ADD COLUMN organisation VARCHAR,
+    ADD COLUMN website VARCHAR,
+    ADD COLUMN date VARCHAR,
+    ADD COLUMN verified BOOLEAN DEFAULT FALSE;

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flomation.app/automate/api/internal/actions"
 	"flomation.app/automate/api/internal/config"
 	"flomation.app/automate/api/internal/http"
 	"flomation.app/automate/api/internal/persistence"
@@ -32,6 +33,30 @@ func main() {
 			"error": err,
 		}).Error("unable to run database migrations")
 		return
+	}
+
+	log.Info("running action migrations")
+	m, err := actions.NewMigrator(cfg)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to create migration service")
+		return
+	}
+	result, err := m.Migrate("actions-manifest.json", true)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to apply action migrations")
+		return
+	}
+
+	if result != nil {
+		log.WithFields(log.Fields{
+			"created": result.Created,
+			"updated": result.Updated,
+			"removed": result.Removed,
+		}).Info("action migration result")
 	}
 
 	db, err := persistence.NewService(cfg)

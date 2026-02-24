@@ -12,20 +12,19 @@ type HttpListenConfig struct {
 }
 
 type DatabaseConfig struct {
-	Hostname           string  `json:"hostname"`
-	Port               int     `json:"port"`
-	Username           string  `json:"username"`
-	Password           string  `json:"password"`
-	Database           string  `json:"database"`
-	EncryptionKey      string  `json:"encryption_key"`
-	MaxIdleConnections int     `json:"max_idle_connections"`
-	MaxOpenConnections int     `json:"max_open_connections"`
-	SSLModeOverride    *string `json:"ssl_mode_override"`
+	Hostname           string `json:"hostname"`
+	Port               int    `json:"port"`
+	Username           string `json:"username"`
+	Password           string `json:"password"`
+	Database           string `json:"database"`
+	EncryptionKey      string `json:"encryption_key"`
+	MaxIdleConnections int    `json:"max_idle_connections"`
+	MaxOpenConnections int    `json:"max_open_connections"`
+	SSLModeOverride    string `json:"ssl_mode"`
 }
 
 type SecurityConfig struct {
 	IdentityService string `json:"identity_service"`
-	Secret          string `json:"secret"`
 }
 
 type ExecutorConfig struct {

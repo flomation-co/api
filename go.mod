@@ -1,19 +1,18 @@
 module flomation.app/automate/api
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.94.0
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/flomation-co/sentinel-client v0.0.0-20260123183314-34c9bf28e3b2
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/onsi/gomega v1.36.2
-	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 )
 

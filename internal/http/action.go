@@ -20,7 +20,7 @@ func (s *Service) getActions(c *gin.Context) {
 		return
 	}
 
-	mappedActions := make(map[string]api.ActionDefinition)
+	mappedActions := make(map[string]api.Action)
 
 	for _, a := range actions {
 		a.Type, _ = strconv.ParseInt(a.ActionType, 10, 64)

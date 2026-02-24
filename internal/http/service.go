@@ -1,11 +1,11 @@
 package http
 
 import (
+	"flomation.app/automate/api/internal/connector/identity"
 	"fmt"
+	"github.com/flomation-co/sentinel-client"
 	"net/http"
 	"strings"
-
-	"flomation.app/automate/api/internal/connector/identity"
 
 	"flomation.app/automate/api/internal/version"
 
@@ -46,34 +46,27 @@ func hstsMiddleware(c *gin.Context) {
 
 func (s *Service) jwtMiddleware(c *gin.Context) {
 	header := c.GetHeader("Authorization")
-	if header == "" {
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
 	headerParts := strings.Split(header, " ")
 	if len(headerParts) != 2 {
-		c.AbortWithStatus(http.StatusUnauthorized)
+		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
-	mode := headerParts[0]
-	token := headerParts[1]
-
-	if strings.ToLower(mode) != "bearer" {
-		c.AbortWithStatus(http.StatusUnauthorized)
+	if strings.ToLower(headerParts[0]) != "bearer" {
+		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
-	c.Set("jwt", token)
-
-	id, err := ParseToken(s.config, token)
+	userID, err := sentinel.GetUser(s.config.Security.IdentityService, headerParts[1])
 	if err != nil {
-		c.AbortWithStatus(http.StatusForbidden)
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to contact identity service")
+		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
-	c.Set("account_id", *id)
+	c.Set("account_id", *userID)
 
 	organisationID := c.Query("organisation")
 	if organisationID != "" {
