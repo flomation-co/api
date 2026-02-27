@@ -10,6 +10,7 @@ stages:
   - rpm-publish
   - deb-publish
   - publish
+  - docker
   - Development
   - Production
 
@@ -243,6 +244,24 @@ publish-deb-arm64:
   needs:
     - inject-metadata
     - build-deb-arm64
+
+build-docker-harbor:
+  extends: .build-docker-dhi-harbor-buildx-template
+  variables:
+    BINARY_FILE_PATTERN: "dist/flomation-api-amd64-linux-*"
+  needs:
+    - inject-metadata
+    - compile
+
+build-docker:
+  extends: .build-docker-dhi-buildx-template
+  only:
+    - main
+  variables:
+    BINARY_FILE_PATTERN: "dist/flomation-api-amd64-linux-*"
+  needs:
+    - inject-metadata
+    - compile
 
 Deploy to DEV:
   stage: Development
