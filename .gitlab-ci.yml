@@ -12,6 +12,7 @@ stages:
   - publish
   - docker
   - Development
+  - test-suite
   - Production
 
 variables:
@@ -285,3 +286,12 @@ Deploy to Live:
     - aws s3 cp s3://${DEPLOY_BUCKET}/deploy-application-aws.sh .
     - chmod +x deploy-application-aws.sh
     - ENVIRONMENT=${ENVIRONMENT} APPLICATION=${NAME} ./deploy-application-aws.sh
+
+test-suite:
+  extends: .test-suite-template
+  only:
+    - main
+  needs:
+    - inject-metadata
+    - compile
+    - "Deploy to DEV"
