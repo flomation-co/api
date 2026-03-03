@@ -3,10 +3,13 @@ package actions
 import (
 	"encoding/json"
 	"errors"
-	"flomation.app/automate/api/internal/config"
 	"fmt"
-	"github.com/jmoiron/sqlx"
 	"os"
+
+	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/config"
+	"github.com/jmoiron/sqlx"
+	log "github.com/sirupsen/logrus"
 )
 
 type Migrator struct {
@@ -21,23 +24,6 @@ type MigrationResult struct {
 }
 
 type ConnectionDefinition struct {
-}
-
-type ActionDefinition struct {
-	ID           string      `json:"id" db:"id"`
-	Name         string      `json:"name" db:"name"`
-	Hash         *string     `json:"hash" db:"hash"`
-	Author       *string     `json:"author" db:"author"`
-	Organisation *string     `json:"organisation" db:"organisation"`
-	Description  *string     `json:"description" db:"description"`
-	Website      *string     `json:"website" db:"website"`
-	Icon         string      `json:"icon" db:"icon"`
-	Date         *string     `json:"date" db:"date"`
-	Type         int64       `json:"action_type" db:"action_type"`
-	Ordering     int64       `json:"order" db:"ordering"`
-	Verified     bool        `json:"verified" db:"verified"`
-	Inputs       interface{} `json:"inputs" db:"inputs"`
-	Outputs      interface{} `json:"outputs" db:"outputs"`
 }
 
 func NewMigrator(config *config.Config) (*Migrator, error) {
@@ -61,7 +47,7 @@ func NewMigrator(config *config.Config) (*Migrator, error) {
 	}, nil
 }
 
-func (m *Migrator) Migrate(migrationPath string, apply bool) (*MigrationResult, error) {
+func (m *Migrator) MigrateFromFile(migrationPath string, apply bool) (*MigrationResult, error) {
 	r, err := os.OpenRoot(".")
 	if err != nil {
 		return nil, err
@@ -76,31 +62,57 @@ func (m *Migrator) Migrate(migrationPath string, apply bool) (*MigrationResult, 
 		return nil, err
 	}
 
-	var manifestActions map[string]ActionDefinition
+	var manifestActions map[string]api.ActionDefinition
 	if err := json.Unmarshal(b, &manifestActions); err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Manifest Actions\n----------\n")
-	for k, a := range manifestActions {
-		a.ID = k
-		fmt.Printf("\t%v (%v)\n", a.Name, a.ID)
-	}
+	return m.Migrate(manifestActions, apply)
+}
 
+func (m *Migrator) Migrate(manifestActions map[string]api.ActionDefinition, apply bool) (*MigrationResult, error) {
 	databaseActions, err := m.selectExistingActions()
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("\nDatabase Actions\n----------\n")
-	for _, a := range databaseActions {
-		fmt.Printf("\t%v (%v)\n", a.Name, a.ID)
+	var toCreate []api.ActionDefinition
+	var toUpdate []api.ActionDefinition
+
+	for k, a := range manifestActions {
+		a.ID = k
+		if containsAction(a.ID, databaseActions) {
+			existing := getAction(a.ID, databaseActions)
+			if existing.Hash != a.Hash {
+				toUpdate = append(toUpdate, a)
+			}
+		} else {
+			toCreate = append(toCreate, a)
+		}
+	}
+
+	for _, a := range toCreate {
+		if err := m.insertAction(a); err != nil {
+			log.WithFields(log.Fields{
+				"error":  err,
+				"action": a.ID,
+			}).Error("unable to create action")
+		}
+	}
+
+	for _, a := range toUpdate {
+		if err := m.updateAction(a); err != nil {
+			log.WithFields(log.Fields{
+				"error":  err,
+				"action": a.ID,
+			}).Error("unable to update action")
+		}
 	}
 
 	return nil, nil
 }
 
-func (m *Migrator) selectExistingActions() ([]ActionDefinition, error) {
+func (m *Migrator) selectExistingActions() ([]api.ActionDefinition, error) {
 	stmt, err := m.conn.PrepareNamed(`
 		SELECT
 		    id,
@@ -119,8 +131,6 @@ func (m *Migrator) selectExistingActions() ([]ActionDefinition, error) {
 		    verified
 		FROM
 		    actions
-		WHERE
-		    action_type = '2'
 		ORDER BY 
 		    id;
 	`)
@@ -128,10 +138,138 @@ func (m *Migrator) selectExistingActions() ([]ActionDefinition, error) {
 		return nil, err
 	}
 
-	var actions []ActionDefinition
+	var actions []api.ActionDefinition
 	if err := stmt.Select(&actions, struct{}{}); err != nil {
 		return nil, err
 	}
 
 	return actions, nil
+}
+
+func (m *Migrator) insertAction(action api.ActionDefinition) error {
+	in, err := json.Marshal(action.Inputs)
+	if err != nil {
+		return err
+	}
+
+	action.Inputs = in
+
+	out, err := json.Marshal(action.Outputs)
+	if err != nil {
+		return err
+	}
+
+	action.Outputs = out
+	action.Type = api.ActionTypeAction
+	action.Verified = true
+	action.Plugin = &action.ID
+
+	stmt, err := m.conn.PrepareNamed(`
+		INSERT INTO actions (
+		    id,
+			name,
+			hash,
+			author,
+			organisation,
+			description,
+			website,
+			icon,
+			date,
+			action_type,
+			verified,
+			inputs,
+			outputs
+		) VALUES (
+		    :id,
+			:name,
+			:hash,
+			:author,
+			:organisation,
+			:description,
+			:website,
+			:icon,
+			:date,
+			:action_type,
+			:verified,
+			:inputs,
+			:outputs
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = stmt.Exec(action)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *Migrator) updateAction(action api.ActionDefinition) error {
+	in, err := json.Marshal(action.Inputs)
+	if err != nil {
+		return err
+	}
+
+	action.Inputs = in
+
+	out, err := json.Marshal(action.Outputs)
+	if err != nil {
+		return err
+	}
+
+	action.Outputs = out
+	action.Type = api.ActionTypeAction
+	action.Verified = true
+	action.Plugin = &action.ID
+
+	stmt, err := m.conn.PrepareNamed(`
+		UPDATE 
+		    actions
+		SET
+			name = :name,
+			hash = :hash,
+			author = :author,
+			organisation = :organisation,
+			description = :description,
+			website = :website,
+			icon = :icon,
+			date = :date,
+			action_type = :action_type,
+			verified = :verified,
+			inputs = :inputs,
+			outputs = :outputs
+		WHERE id = :id;
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = stmt.Exec(action)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func containsAction(id string, actions []api.ActionDefinition) bool {
+	for _, a := range actions {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func getAction(id string, actions []api.ActionDefinition) *api.ActionDefinition {
+	for _, a := range actions {
+		if a.ID == id {
+			return &a
+		}
+	}
+
+	return nil
 }

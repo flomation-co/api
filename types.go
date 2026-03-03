@@ -1,6 +1,16 @@
 package api
 
-import "time"
+import (
+	"time"
+)
+
+const (
+	ActionTypeTrigger     = 1
+	ActionTypeAction      = 2
+	ActionTypeOutput      = 3
+	ActionTypeConditional = 4
+	ActionTypeLoop        = 5
+)
 
 type Organisation struct {
 	ID        string     `json:"id" db:"id"`
@@ -147,17 +157,39 @@ type Queue struct {
 	LocationCode     string    `json:"location_code" db:"location_code"`
 }
 
+type ActionDefinition struct {
+	ID           string      `json:"id" db:"id"`
+	Name         string      `json:"name" db:"name"`
+	Hash         *string     `json:"hash" db:"hash"`
+	Author       *string     `json:"author" db:"author"`
+	Organisation *string     `json:"organisation" db:"organisation"`
+	Description  *string     `json:"description" db:"description"`
+	Website      *string     `json:"website" db:"website"`
+	Icon         string      `json:"icon" db:"icon"`
+	Date         *string     `json:"date" db:"date"`
+	Type         int64       `json:"action_type" db:"action_type"`
+	Ordering     *int64      `json:"order" db:"ordering"`
+	Plugin       *string     `json:"-" db:"plugin"`
+	Verified     bool        `json:"verified" db:"verified"`
+	Inputs       interface{} `json:"inputs" db:"inputs"`
+	Outputs      interface{} `json:"outputs" db:"outputs"`
+}
+
 type Runner struct {
-	ID               string     `json:"id" db:"id"`
-	Identifier       string     `json:"identifier" db:"identifier"`
-	Name             string     `json:"name" db:"name"`
-	RegistrationCode string     `json:"registration_code" db:"registration_code"`
-	EnrolledAt       time.Time  `json:"enrolled_at" db:"enrolled_at"`
-	LastContactAt    *time.Time `json:"last_contact_at" db:"last_contact_at"`
-	IPAddress        *string    `json:"ip_address" db:"ip"`
-	Status           string     `json:"state" db:"state"`
-	Active           bool       `json:"active" db:"active"`
-	Version          *string    `json:"version" db:"version"`
+	ID               string                      `json:"id" db:"id"`
+	Identifier       string                      `json:"identifier" db:"identifier"`
+	Name             string                      `json:"name" db:"name"`
+	RegistrationCode string                      `json:"registration_code" db:"registration_code"`
+	EnrolledAt       time.Time                   `json:"enrolled_at" db:"enrolled_at"`
+	LastContactAt    *time.Time                  `json:"last_contact_at" db:"last_contact_at"`
+	IPAddress        *string                     `json:"ip_address" db:"ip"`
+	Status           string                      `json:"state" db:"state"`
+	Active           bool                        `json:"active" db:"active"`
+	Version          *string                     `json:"version" db:"version"`
+	ExecutorVersion  *string                     `json:"executor_version" db:"executor_version"`
+	Manifest         map[string]ActionDefinition `json:"manifest"`
+	PublicKey        *string                     `json:"public_key" db:"public_key"`
+	Verified         bool                        `json:"verified" db:"verified"`
 }
 
 type ExecutionResult struct {

@@ -1,0 +1,2 @@
+ALTER TABLE runner
+    ADD COLUMN executor_version VARCHAR DEFAULT NULL;

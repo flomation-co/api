@@ -1,0 +1,2 @@
+ALTER TABLE runner
+    ADD COLUMN public_key VARCHAR DEFAULT NULL;
