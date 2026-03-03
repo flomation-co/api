@@ -102,11 +102,19 @@ func (s *Service) executionMiddleware(c *gin.Context) {
 		return
 	}
 
-	r, err := s.persistence.GetRunnerByIdentifier(*execution.RunnerID)
+	r, err := s.persistence.GetRunnerByID(*execution.RunnerID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to get runner")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	if r == nil {
+		log.WithFields(log.Fields{
+			"id": *execution.RunnerID,
+		}).Error("unable to locate runner")
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
