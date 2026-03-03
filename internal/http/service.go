@@ -1,12 +1,13 @@
 package http
 
 import (
-	"flomation.app/automate/api/internal/actions"
-	"flomation.app/automate/api/internal/connector/identity"
 	"fmt"
-	"github.com/flomation-co/sentinel-client"
 	"net/http"
 	"strings"
+
+	"flomation.app/automate/api/internal/actions"
+	"flomation.app/automate/api/internal/connector/identity"
+	"github.com/flomation-co/sentinel-client"
 
 	"flomation.app/automate/api/internal/version"
 

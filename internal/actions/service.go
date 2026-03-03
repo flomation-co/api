@@ -3,12 +3,13 @@ package actions
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/config"
-	"fmt"
 	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
-	"os"
 )
 
 type Migrator struct {
