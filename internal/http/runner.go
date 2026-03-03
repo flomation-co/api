@@ -30,7 +30,8 @@ func (s *Service) verifyPayload(runnerKey string, c *gin.Context) error {
 		log.Warn("trailing data after runner public key")
 	}
 
-	if block.Type == "PUBLIC KEY" {
+	switch block.Type {
+	case "PUBLIC KEY":
 		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 		if err != nil {
 			return err
@@ -41,13 +42,16 @@ func (s *Service) verifyPayload(runnerKey string, c *gin.Context) error {
 		}
 
 		key = k
-	} else if block.Type == "RSA PUBLIC KEY" {
+	case "RSA PUBLIC KEY":
 		pub, err := x509.ParsePKCS1PublicKey(block.Bytes)
 		if err != nil {
 			return err
 		}
 
 		key = pub
+
+	default:
+		return errors.New("invalid block type")
 	}
 
 	body, err := io.ReadAll(c.Request.Body)
