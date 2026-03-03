@@ -1,6 +1,7 @@
 package http
 
 import (
+	"flomation.app/automate/api/internal/actions"
 	"flomation.app/automate/api/internal/connector/identity"
 	"fmt"
 	"github.com/flomation-co/sentinel-client"
@@ -21,6 +22,7 @@ type Service struct {
 	engine      *gin.Engine
 	persistence *persistence.Service
 	identity    *identity.Connector
+	migrator    *actions.Migrator
 }
 
 func corsMiddleware(c *gin.Context) {
@@ -61,6 +63,8 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
+			"url":   s.config.Security.IdentityService,
+			"token": headerParts[1],
 		}).Error("unable to contact identity service")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
@@ -77,11 +81,20 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 }
 
 func NewService(config *config.Config, persistence *persistence.Service) *Service {
+	m, err := actions.NewMigrator(config)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to create migration service")
+		return nil
+	}
+
 	s := &Service{
 		config:      config,
 		engine:      gin.New(),
 		persistence: persistence,
 		identity:    identity.NewConnector(config),
+		migrator:    m,
 	}
 
 	// API Group
@@ -101,10 +114,6 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	v1 := a.Group("v1")
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
-
-	executor := v1.Group("executor")
-	executor.Use(s.runnerMiddleware)
-	executor.GET("", s.getExecutorDownloadLink)
 
 	// Organisations Group
 	orgs := v1.Group("organisation")
@@ -141,15 +150,16 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	flos.POST("/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
 
 	executions := v1.Group("execution")
-	executions.POST("/:id/state", s.runnerMiddleware, s.updateExecutionState)
-	executions.POST("/:id", s.runnerMiddleware, s.updateExecution)
+	executions.POST("/:id/state", s.executionMiddleware, s.updateExecutionState)
+	executions.POST("/:id", s.executionMiddleware, s.updateExecution)
+
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
 
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)
-	runners.POST("", s.runnerMiddleware, s.registerRunner)
-	runners.GET("/:id/execution", s.checkForRunnerExecutions)
+	runners.POST("", s.registerRunner)
+	runners.GET("/:id/execution", s.runnerMiddleware, s.checkForRunnerExecutions)
 	runners.DELETE("/:id", s.jwtMiddleware, s.unregisterRunner)
 
 	queue := v1.Group("queue")

@@ -910,7 +910,13 @@ func NewService(config *config.Config) (*Service, error) {
 				ELSE 'active'
 			END AS state,
 		    active,
-		    version
+		    version,
+		    executor_version,
+		    public_key,
+		    CASE
+		    	WHEN public_key IS NOT NULL THEN true
+				ELSE false
+			END AS verified
 		FROM
 		    runner
 		WHERE
@@ -935,7 +941,13 @@ func NewService(config *config.Config) (*Service, error) {
 				ELSE 'active'
 			END AS state,
 		    active,
-		    version
+		    version,
+		    executor_version,
+		    public_key,
+		    CASE
+		    	WHEN public_key IS NOT NULL THEN true
+				ELSE false
+			END AS verified
 		FROM
 		    runner
 		WHERE
@@ -960,7 +972,13 @@ func NewService(config *config.Config) (*Service, error) {
 				ELSE 'active'
 			END AS state,
 		    active,
-		    version
+		    version,
+		    executor_version,
+		    public_key,
+		    CASE
+		    	WHEN public_key IS NOT NULL THEN true
+				ELSE false
+			END AS verified
 		FROM
 		    runner
 		WHERE
@@ -980,14 +998,18 @@ func NewService(config *config.Config) (*Service, error) {
 			registration_code,
 			last_contact_at,
 			ip,
-		    version
+		    version,
+		    executor_version,
+			public_key
 		) VALUES (
 		    :identifier,
 			:name,
 			:registration_code,
 			CURRENT_TIMESTAMP,
 			:ip,
-		    :version
+		    :version,
+		    :executor_version,
+			:public_key
 		) RETURNING id;
 	`)
 	if err != nil {

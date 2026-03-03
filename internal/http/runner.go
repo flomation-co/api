@@ -1,7 +1,16 @@
 package http
 
 import (
+	"bytes"
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"io"
 	"net/http"
 
 	"flomation.app/automate/api"
@@ -9,8 +18,141 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (s *Service) unregisterRunner(c *gin.Context) {
+func (s *Service) verifyPayload(runnerKey string, c *gin.Context) error {
+	var key *rsa.PublicKey
 
+	block, rest := pem.Decode([]byte(runnerKey))
+	if block == nil {
+		return errors.New("unable to decode pem block")
+	}
+
+	if len(rest) > 0 {
+		log.Warn("trailing data after runner public key")
+	}
+
+	if block.Type == "PUBLIC KEY" {
+		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return err
+		}
+		k, ok := pub.(*rsa.PublicKey)
+		if !ok {
+			return err
+		}
+
+		key = k
+	} else if block.Type == "RSA PUBLIC KEY" {
+		pub, err := x509.ParsePKCS1PublicKey(block.Bytes)
+		if err != nil {
+			return err
+		}
+
+		key = pub
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return err
+	}
+
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	hash := sha256.Sum256(body)
+
+	header := c.GetHeader("X-Flomation-Runner-Signature")
+	if header == "" {
+		return errors.New("missing signature header")
+	}
+
+	headerDecoded, err := hex.DecodeString(header)
+	if err != nil {
+		return err
+	}
+
+	if err = rsa.VerifyPSS(key, crypto.SHA256, hash[:], headerDecoded, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) executionMiddleware(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	execution, err := s.persistence.GetExecutionByID(id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to get execution")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	if execution.RunnerID == nil {
+		log.Error("exeuction is not assigned a runner, can't verify identity")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	r, err := s.persistence.GetRunnerByIdentifier(*execution.RunnerID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to get runner")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	if r.PublicKey != nil {
+		if err := s.verifyPayload(*r.PublicKey, c); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+				"key":   *r.PublicKey,
+			}).Error("unable to verify payload")
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+	}
+
+	c.Next()
+}
+
+func (s *Service) runnerMiddleware(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	r, err := s.persistence.GetRunnerByIdentifier(id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to get runner")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	if r.PublicKey != nil {
+		if err := s.verifyPayload(*r.PublicKey, c); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+				"key":   *r.PublicKey,
+			}).Error("unable to verify payload")
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+	}
+
+	c.Next()
+}
+
+func (s *Service) unregisterRunner(c *gin.Context) {
+	c.AbortWithStatus(http.StatusNotImplemented)
 }
 
 func (s *Service) getRunners(c *gin.Context) {
@@ -60,6 +202,24 @@ func (s *Service) registerRunner(c *gin.Context) {
 			return
 		}
 
+		if len(request.Manifest) > 0 {
+			result, err := s.migrator.Migrate(request.Manifest, true)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err,
+				}).Error("unable to apply action migrations")
+				return
+			}
+
+			if result != nil {
+				log.WithFields(log.Fields{
+					"created": result.Created,
+					"updated": result.Updated,
+					"removed": result.Removed,
+				}).Info("action migration result")
+			}
+		}
+
 		c.Status(http.StatusCreated)
 		return
 	}
@@ -92,6 +252,22 @@ func (s *Service) registerRunner(c *gin.Context) {
 		return
 	}
 
+	result, err := s.migrator.Migrate(request.Manifest, true)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to apply action migrations")
+		return
+	}
+
+	if result != nil {
+		log.WithFields(log.Fields{
+			"created": result.Created,
+			"updated": result.Updated,
+			"removed": result.Removed,
+		}).Info("action migration result")
+	}
+
 	runner, err := s.persistence.GetRunnerByID(*id)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -113,6 +289,14 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("invalid runner")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if runner == nil {
+		log.WithFields(log.Fields{
+			"id": id,
+		}).Error("invalid runner ID")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
