@@ -160,7 +160,6 @@ func (m *Migrator) insertAction(action api.ActionDefinition) error {
 	}
 
 	action.Outputs = out
-	action.Type = api.ActionTypeAction
 	action.Verified = true
 	action.Plugin = &action.ID
 
@@ -223,7 +222,6 @@ func (m *Migrator) updateAction(action api.ActionDefinition) error {
 	}
 
 	action.Outputs = out
-	action.Type = api.ActionTypeAction
 	action.Verified = true
 	action.Plugin = &action.ID
 
