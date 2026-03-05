@@ -149,6 +149,14 @@ func (s *Service) runnerMiddleware(c *gin.Context) {
 		return
 	}
 
+	if r == nil {
+		log.WithFields(log.Fields{
+			"id": id,
+		}).Error("unable to locate runner")
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
 	if r.PublicKey != nil {
 		if err := s.verifyPayload(*r.PublicKey, c); err != nil {
 			log.WithFields(log.Fields{
