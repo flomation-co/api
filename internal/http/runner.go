@@ -140,7 +140,7 @@ func (s *Service) runnerMiddleware(c *gin.Context) {
 		return
 	}
 
-	r, err := s.persistence.GetRunnerByID(id)
+	r, err := s.persistence.GetRunnerByIdentifier(id)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
