@@ -167,7 +167,7 @@ type ActionDefinition struct {
 	Website      *string     `json:"website" db:"website"`
 	Icon         string      `json:"icon" db:"icon"`
 	Date         *string     `json:"date" db:"date"`
-	Type         int64       `json:"action_type" db:"action_type"`
+	Type         int64       `json:"type" db:"action_type"`
 	Ordering     *int64      `json:"order" db:"ordering"`
 	Plugin       *string     `json:"-" db:"plugin"`
 	Verified     bool        `json:"verified" db:"verified"`
