@@ -1,6 +1,6 @@
 module flomation.app/automate/api
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/flomation-co/sentinel-client v0.0.0-20260123183314-34c9bf28e3b2

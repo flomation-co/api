@@ -54,27 +54,51 @@ func (s *Service) verifyPayload(runnerKey string, c *gin.Context) error {
 		return errors.New("invalid block type")
 	}
 
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		return err
-	}
+	var body []byte
+	if c.Request.Method == http.MethodGet {
+		q := c.DefaultQuery("token", "")
+		if q == "" {
+			return errors.New("missing request token")
+		}
 
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+		sig, err := hex.DecodeString(q)
+		if err != nil {
+			return err
+		}
 
-	hash := sha256.Sum256(body)
+		id := c.Param("id")
+		if id == "" {
+			return errors.New("unable to get execution id")
+		}
 
-	header := c.GetHeader("X-Flomation-Runner-Signature")
-	if header == "" {
-		return errors.New("missing signature header")
-	}
+		hash := sha256.Sum256([]byte(id))
+		if err := rsa.VerifyPSS(key, crypto.SHA256, hash[:], sig, nil); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		body, err = io.ReadAll(c.Request.Body)
+		if err != nil {
+			return err
+		}
 
-	headerDecoded, err := hex.DecodeString(header)
-	if err != nil {
-		return err
-	}
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	if err = rsa.VerifyPSS(key, crypto.SHA256, hash[:], headerDecoded, nil); err != nil {
-		return err
+		hash := sha256.Sum256(body)
+
+		header := c.GetHeader("X-Flomation-Runner-Signature")
+		if header == "" {
+			return errors.New("missing signature header")
+		}
+
+		headerDecoded, err := hex.DecodeString(header)
+		if err != nil {
+			return err
+		}
+
+		if err = rsa.VerifyPSS(key, crypto.SHA256, hash[:], headerDecoded, nil); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -97,7 +121,7 @@ func (s *Service) executionMiddleware(c *gin.Context) {
 	}
 
 	if execution.RunnerID == nil {
-		log.Error("exeuction is not assigned a runner, can't verify identity")
+		log.Error("execution is not assigned a runner, can't verify identity")
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
@@ -127,6 +151,37 @@ func (s *Service) executionMiddleware(c *gin.Context) {
 			}).Error("unable to verify payload")
 			c.AbortWithStatus(http.StatusForbidden)
 			return
+		}
+	}
+
+	if execution.TriggeredBy != nil {
+		ti, err := s.persistence.GetTriggerInvocationById(*execution.TriggeredBy)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Error("unable to get trigger invocation")
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+
+		triggeredUser, err := s.persistence.GetUserByID(*ti.OwnerID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Error("unable to get user by triggered ID")
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+
+		if triggeredUser == nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+
+		c.Set("account_id", triggeredUser.ID)
+
+		if ti.OrganisationID != nil {
+			c.Set("organisation_id", *ti.OrganisationID)
 		}
 	}
 

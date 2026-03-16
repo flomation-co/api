@@ -157,10 +157,14 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
 
+	executions.GET("/:id/environment/:environment", s.executionMiddleware, s.getEnvironmentByID)
+	executions.GET("/:id/environment/:environment/property/:name", s.executionMiddleware, s.getEnvironmentPropertyByName)
+	executions.GET("/:id/environment/:environment/secret/:name", s.executionMiddleware, s.getEnvironmentSecretByName)
+
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)
 	runners.POST("", s.registerRunner)
-	runners.GET("/:id/execution", s.runnerMiddleware, s.checkForRunnerExecutions)
+	runners.POST("/:id/execution", s.runnerMiddleware, s.checkForRunnerExecutions)
 	runners.DELETE("/:id", s.jwtMiddleware, s.unregisterRunner)
 
 	queue := v1.Group("queue")
