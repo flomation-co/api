@@ -41,6 +41,11 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 	id := c.Param("environment")
 	// TODO: Ensure user has access to this environment
 	user := s.getUserFromContext(c)
+	if user == nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
 	var organisation *string
 	if len(user.Organisations) > 0 {
 		organisation = &user.Organisations[0].ID

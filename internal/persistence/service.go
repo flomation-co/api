@@ -58,6 +58,7 @@ type Service struct {
 	stmtGetDefaultTriggerForFlo *sqlx.NamedStmt
 	stmtGetTriggerForFlo        *sqlx.NamedStmt
 	stmtInsertTriggerInvocation *sqlx.NamedStmt
+	stmtGetTriggerInvocation    *sqlx.NamedStmt
 
 	stmtGetFlosForTrigger *sqlx.NamedStmt
 
@@ -757,6 +758,22 @@ func NewService(config *config.Config) (*Service, error) {
 			:organisation_id, 
 			:data
 		) RETURNING id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetTriggerInvocation, err = s.conn.PrepareNamed(`
+		SELECT
+		    id,
+		    trigger_id,
+		    owner_id,
+		    organisation_id,
+		    data
+		FROM
+		    trigger_invocation
+		WHERE
+		    id = :id;
 	`)
 	if err != nil {
 		return nil, err
@@ -2043,6 +2060,23 @@ func (s *Service) UpdateExecutionRunnerID(ID string, runnerID string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) GetTriggerInvocationById(id string) (*api.TriggerInvocation, error) {
+	var invocation api.TriggerInvocation
+	if err := s.stmtGetTriggerInvocation.Get(&invocation, struct {
+		ID string `db:"id"`
+	}{
+		ID: id,
+	}); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &invocation, nil
 }
 
 func (s *Service) GetActions() ([]*api.Action, error) {
