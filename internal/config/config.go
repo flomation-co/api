@@ -1,58 +1,41 @@
 package config
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
+	goconfig "github.com/flomation-co/go-config"
 )
 
 type HttpListenConfig struct {
-	Address string `json:"address"`
-	Port    int    `json:"port"`
+	Address string `json:"address" env:"LISTEN_ADDRESS" arg:"listen-address"`
+	Port    int    `json:"port" env:"LISTEN_PORT" arg:"listen-port"`
 }
 
 type DatabaseConfig struct {
-	Hostname           string `json:"hostname"`
-	Port               int    `json:"port"`
-	Username           string `json:"username"`
-	Password           string `json:"password"`
-	Database           string `json:"database"`
-	EncryptionKey      string `json:"encryption_key"`
-	MaxIdleConnections int    `json:"max_idle_connections"`
-	MaxOpenConnections int    `json:"max_open_connections"`
-	SSLModeOverride    string `json:"ssl_mode"`
+	Hostname           string `json:"hostname" env:"DATABASE_HOSTNAME" arg:"database-hostname"`
+	Port               int    `json:"port" env:"DATABASE_PORT" arg:"database-port"`
+	Username           string `json:"username" env:"DATABASE_USER" arg:"database-user"`
+	Password           string `json:"password" env:"DATABASE_PASSWORD" arg:"database-password"`
+	Database           string `json:"database" env:"DATABASE_NAME" arg:"database-name"`
+	EncryptionKey      string `json:"encryption_key" env:"DATABASE_ENCRYPTION_KEY" arg:"database-encryption-key"`
+	MaxIdleConnections int    `json:"max_idle_connections" env:"DATABASE_MAX_IDLE_CONNS" arg:"database-max-idle-connections"`
+	MaxOpenConnections int    `json:"max_open_connections" env:"DATABASE_MAX_OPEN_CONNS" arg:"database-max-open-connections"`
+	SSLModeOverride    string `json:"ssl_mode" env:"DATABASE_SSL_MODE" arg:"database-ssl-mode"`
 }
 
 type SecurityConfig struct {
-	IdentityService string `json:"identity_service"`
-}
-
-type ExecutorConfig struct {
-	Bucket   string `json:"bucket"`
-	Path     string `json:"path"`
-	Filename string `json:"filename"`
+	IdentityService string `json:"identity_service" env:"IDENTITY_SERVICE" arg:"identity-service"`
 }
 
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
-	Database         *DatabaseConfig  `json:"database"`
-	Executor         *ExecutorConfig  `json:"executor"`
-	Security         *SecurityConfig  `json:"security"`
+	Database         DatabaseConfig   `json:"database"`
+	Security         SecurityConfig   `json:"security"`
 }
 
 func LoadConfig(path string) (*Config, error) {
-	filePath := filepath.Join(".", filepath.Clean(path))
-	b, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
+	var c Config
+	if err := goconfig.Load(&c, goconfig.String(path)); err != nil {
+		return &c, nil
 	}
 
-	var config Config
-
-	err = json.Unmarshal(b, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
+	return &c, nil
 }
