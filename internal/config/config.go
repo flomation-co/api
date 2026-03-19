@@ -25,10 +25,15 @@ type SecurityConfig struct {
 	IdentityService string `json:"identity_service" env:"IDENTITY_SERVICE" arg:"identity-service"`
 }
 
+type LaunchConfig struct {
+	URL string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
+}
+
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
 	Security         SecurityConfig   `json:"security"`
+	Launch           LaunchConfig     `json:"launch"`
 }
 
 func LoadConfig(path string) (*Config, error) {

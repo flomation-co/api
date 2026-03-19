@@ -29,12 +29,15 @@ type User struct {
 }
 
 type Trigger struct {
-	ID             string    `json:"id" db:"id"`
-	Name           string    `json:"name" db:"name"`
-	OwnerID        *string   `json:"owner_id" db:"owner_id"`
-	OrganisationID *string   `json:"organisation_id" db:"organisation_id"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	Type           string    `json:"type" db:"type"`
+	ID             string      `json:"id" db:"id"`
+	Name           string      `json:"name" db:"name"`
+	OwnerID        *string     `json:"owner_id" db:"owner_id"`
+	OrganisationID *string     `json:"organisation_id" db:"organisation_id"`
+	CreatedAt      time.Time   `json:"created_at" db:"created_at"`
+	Type           string      `json:"type" db:"type"`
+	TypeName       string      `json:"type_name" db:"type_name"`
+	Data           interface{} `json:"data,omitempty" db:"data"`
+	FloID          *string     `json:"flo_id,omitempty" db:"flo_id"`
 }
 
 type TriggerInvocation struct {

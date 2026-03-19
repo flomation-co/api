@@ -106,6 +106,13 @@ type Service struct {
 	stmtDeleteEnvironmentSecret    *sqlx.NamedStmt
 
 	stmtGetUsageThisMonthForUserID *sqlx.NamedStmt
+
+	stmtGetTriggers        *sqlx.NamedStmt
+	stmtGetTriggerByID     *sqlx.NamedStmt
+	stmtCreateTrigger      *sqlx.NamedStmt
+	stmtUpdateTrigger      *sqlx.NamedStmt
+	stmtDeleteTrigger      *sqlx.NamedStmt
+	stmtDeleteFloTrigger   *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -480,15 +487,18 @@ func NewService(config *config.Config) (*Service, error) {
 			t.name,
 			t.owner_id,
 			t.organisation_id,
-			t.type
+			t.type,
+			tt.name AS type_name,
+			t.data
 		FROM
 			trigger t
+		INNER JOIN trigger_type tt ON t.type = tt.id
 		INNER JOIN flo_trigger ft ON ft.trigger_id = t.id
 		INNER JOIN flo f ON ft.flo_id = f.id
-		WHERE 
+		WHERE
 		    f.id = :id
 		ORDER BY
-		    name ASC
+		    t.name ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -1469,6 +1479,100 @@ func NewService(config *config.Config) (*Service, error) {
 			(owner_id = :owner_id
 		OR
 			organisation_id = :organisation_id);
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetTriggers, err = s.conn.PrepareNamed(`
+		SELECT
+		    t.id,
+			t.name,
+			t.owner_id,
+			t.organisation_id,
+			t.created_at,
+			t.type,
+			tt.name AS type_name,
+			t.data
+		FROM
+			trigger t
+		INNER JOIN trigger_type tt ON t.type = tt.id
+		WHERE
+		    t.owner_id = :owner_id
+		ORDER BY
+		    t.created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetTriggerByID, err = s.conn.PrepareNamed(`
+		SELECT
+		    t.id,
+			t.name,
+			t.owner_id,
+			t.organisation_id,
+			t.created_at,
+			t.type,
+			tt.name AS type_name,
+			t.data,
+			ft.flo_id
+		FROM
+			trigger t
+		INNER JOIN trigger_type tt ON t.type = tt.id
+		LEFT JOIN flo_trigger ft ON ft.trigger_id = t.id
+		WHERE
+		    t.id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateTrigger, err = s.conn.PrepareNamed(`
+		INSERT INTO trigger (
+			name,
+			owner_id,
+			organisation_id,
+			type,
+			data
+		) VALUES (
+			:name,
+			:owner_id,
+			:organisation_id,
+			(SELECT id FROM trigger_type WHERE name = :type_name),
+			:data
+		) RETURNING id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateTrigger, err = s.conn.PrepareNamed(`
+		UPDATE trigger
+		SET
+			name = :name,
+			type = (SELECT id FROM trigger_type WHERE name = :type_name),
+			data = :data
+		WHERE
+			id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteTrigger, err = s.conn.PrepareNamed(`
+		DELETE FROM trigger
+		WHERE
+			id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteFloTrigger, err = s.conn.PrepareNamed(`
+		DELETE FROM flo_trigger
+		WHERE
+			trigger_id = :trigger_id
 	`)
 	if err != nil {
 		return nil, err
@@ -2576,6 +2680,115 @@ func (s *Service) RemoveEnvironmentSecret(secretID string) error {
 	}
 
 	if _, err := s.stmtDeleteEnvironmentSecret.Exec(query); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) GetTriggers(ownerID string) ([]*api.Trigger, error) {
+	var results []*api.Trigger
+
+	if err := s.stmtGetTriggers.Select(&results, struct {
+		OwnerID string `db:"owner_id"`
+	}{
+		OwnerID: ownerID,
+	}); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (s *Service) GetTriggerByID(id string) (*api.Trigger, error) {
+	var result api.Trigger
+
+	if err := s.stmtGetTriggerByID.Get(&result, struct {
+		ID string `db:"id"`
+	}{
+		ID: id,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (s *Service) CreateTriggerWithType(trigger api.Trigger) (*string, error) {
+	var ID string
+
+	dataBytes, err := json.Marshal(trigger.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	if trigger.Data == nil {
+		dataBytes = nil
+	}
+
+	if err := s.stmtCreateTrigger.Get(&ID, struct {
+		Name           string  `db:"name"`
+		OwnerID        *string `db:"owner_id"`
+		OrganisationID *string `db:"organisation_id"`
+		TypeName       string  `db:"type_name"`
+		Data           []byte  `db:"data"`
+	}{
+		Name:           trigger.Name,
+		OwnerID:        trigger.OwnerID,
+		OrganisationID: trigger.OrganisationID,
+		TypeName:       trigger.TypeName,
+		Data:           dataBytes,
+	}); err != nil {
+		return nil, err
+	}
+
+	return &ID, nil
+}
+
+func (s *Service) UpdateTrigger(trigger api.Trigger) error {
+	dataBytes, err := json.Marshal(trigger.Data)
+	if err != nil {
+		return err
+	}
+
+	if trigger.Data == nil {
+		dataBytes = nil
+	}
+
+	if _, err := s.stmtUpdateTrigger.Exec(struct {
+		ID       string `db:"id"`
+		Name     string `db:"name"`
+		TypeName string `db:"type_name"`
+		Data     []byte `db:"data"`
+	}{
+		ID:       trigger.ID,
+		Name:     trigger.Name,
+		TypeName: trigger.TypeName,
+		Data:     dataBytes,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) DeleteTrigger(id string) error {
+	if _, err := s.stmtDeleteFloTrigger.Exec(struct {
+		TriggerID string `db:"trigger_id"`
+	}{
+		TriggerID: id,
+	}); err != nil {
+		return err
+	}
+
+	if _, err := s.stmtDeleteTrigger.Exec(struct {
+		ID string `db:"id"`
+	}{
+		ID: id,
+	}); err != nil {
 		return err
 	}
 

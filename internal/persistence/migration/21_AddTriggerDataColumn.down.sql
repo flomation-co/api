@@ -1,0 +1,1 @@
+ALTER TABLE trigger DROP COLUMN IF EXISTS data;

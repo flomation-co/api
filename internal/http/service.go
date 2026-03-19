@@ -7,6 +7,7 @@ import (
 
 	"flomation.app/automate/api/internal/actions"
 	"flomation.app/automate/api/internal/connector/identity"
+	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"github.com/flomation-co/sentinel-client"
 
 	"flomation.app/automate/api/internal/version"
@@ -23,6 +24,7 @@ type Service struct {
 	engine      *gin.Engine
 	persistence *persistence.Service
 	identity    *identity.Connector
+	launch      *launchconnector.Connector
 	migrator    *actions.Migrator
 }
 
@@ -95,6 +97,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		engine:      gin.New(),
 		persistence: persistence,
 		identity:    identity.NewConnector(config),
+		launch:      launchconnector.NewConnector(config),
 		migrator:    m,
 	}
 
@@ -169,6 +172,13 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	queue := v1.Group("queue")
 	queue.GET("", s.jwtMiddleware, s.getQueues)
+
+	triggers := v1.Group("trigger")
+	triggers.GET("", s.jwtMiddleware, s.getTriggers)
+	triggers.GET("/:id", s.jwtMiddleware, s.getTriggerByID)
+	triggers.POST("", s.jwtMiddleware, s.createTrigger)
+	triggers.POST("/:id", s.jwtMiddleware, s.updateTrigger)
+	triggers.DELETE("/:id", s.jwtMiddleware, s.deleteTrigger)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
