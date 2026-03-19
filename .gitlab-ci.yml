@@ -8,6 +8,7 @@ stages:
   - sync
   - test
   - build
+  - docs
   - rpm-publish
   - deb-publish
   - publish
@@ -46,6 +47,21 @@ compile:
     policy: push
     paths:
       - ./build.zip
+
+generate-docs:
+  extends: .generate-docs-template
+  only:
+    - main
+  when: manual
+  variables:
+    DOCS_SOURCE_FILE: internal/config/config.go
+    DOCS_COMPONENT_NAME: ${NAME}
+    CI_TEMPLATES_REF: main
+  artifacts:
+    name: "${NAME}-docs-${VERSION}"
+    paths:
+      - docs/
+    expire_in: 30 days
 
 build-rpm-8:
   extends: .build-rpm-template
@@ -247,6 +263,100 @@ publish-deb-arm64:
     - inject-metadata
     - build-deb-arm64
 
+publish-rpm-8-live:
+  extends: .publish-rpm-template
+  only:
+    - main
+  variables:
+    RPM_FILE_PATTERN: "${PACKAGE_NAME}-*el8.x86_64.rpm"
+    EL_VERSION: "8"
+    CI_TEMPLATES_REF: "main"
+    ARCH: x86_64
+    S3_ACCESS_KEY_PARAM: ${S3_ACCESS_KEY_PARAM_DEV}
+    S3_SECRET_KEY_PARAM: ${S3_SECRET_KEY_PARAM_DEV}
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - inject-metadata
+    - build-rpm-8
+
+publish-rpm-9-live:
+  extends: .publish-rpm-template
+  only:
+    - main
+  variables:
+    RPM_FILE_PATTERN: "${PACKAGE_NAME}-*el9.x86_64.rpm"
+    EL_VERSION: "9"
+    CI_TEMPLATES_REF: "main"
+    ARCH: x86_64
+    S3_ACCESS_KEY_PARAM: ${S3_ACCESS_KEY_PARAM_DEV}
+    S3_SECRET_KEY_PARAM: ${S3_SECRET_KEY_PARAM_DEV}
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - inject-metadata
+    - build-rpm-9
+
+publish-rpm-8-arm64-live:
+  extends: .publish-rpm-template
+  only:
+    - main
+  variables:
+    RPM_FILE_PATTERN: "${PACKAGE_NAME}-*el8.aarch64.rpm"
+    EL_VERSION: "8"
+    CI_TEMPLATES_REF: "main"
+    ARCH: aarch64
+    S3_ACCESS_KEY_PARAM: ${S3_ACCESS_KEY_PARAM_DEV}
+    S3_SECRET_KEY_PARAM: ${S3_SECRET_KEY_PARAM_DEV}
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - inject-metadata
+    - build-rpm-8-arm64
+
+publish-rpm-9-arm64-live:
+  extends: .publish-rpm-template
+  only:
+    - main
+  variables:
+    RPM_FILE_PATTERN: "${PACKAGE_NAME}-*el9.aarch64.rpm"
+    EL_VERSION: "9"
+    CI_TEMPLATES_REF: "main"
+    ARCH: aarch64
+    S3_ACCESS_KEY_PARAM: ${S3_ACCESS_KEY_PARAM_DEV}
+    S3_SECRET_KEY_PARAM: ${S3_SECRET_KEY_PARAM_DEV}
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - inject-metadata
+    - build-rpm-9-arm64
+
+publish-deb-live:
+  extends: .publish-deb-template
+  only:
+    - main
+  variables:
+    DEB_FILE_PATTERN: "${PACKAGE_NAME}_*_amd64.deb"
+    CI_TEMPLATES_REF: "main"
+    ARCH: amd64
+    S3_ACCESS_KEY_PARAM: ${S3_ACCESS_KEY_PARAM_DEV}
+    S3_SECRET_KEY_PARAM: ${S3_SECRET_KEY_PARAM_DEV}
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - inject-metadata
+    - build-deb
+
+publish-deb-arm64-live:
+  extends: .publish-deb-template
+  only:
+    - main
+  variables:
+    DEB_FILE_PATTERN: "${PACKAGE_NAME}_*_arm64.deb"
+    CI_TEMPLATES_REF: "main"
+    ARCH: arm64
+    S3_ACCESS_KEY_PARAM: ${S3_ACCESS_KEY_PARAM_DEV}
+    S3_SECRET_KEY_PARAM: ${S3_SECRET_KEY_PARAM_DEV}
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - inject-metadata
+    - build-deb-arm64
+
 build-docker-harbor:
   extends: .build-docker-dhi-harbor-buildx-template
   variables:
@@ -264,6 +374,25 @@ build-docker:
   needs:
     - inject-metadata
     - compile
+
+publish-docs:
+  extends: .publish-docs-template
+  only:
+    - main
+  variables:
+    DOCS_S3_PATH: docs/flomation/config
+  needs:
+    - generate-docs
+
+publish-docs-live:
+  extends: .publish-docs-template
+  only:
+    - main
+  variables:
+    DOCS_S3_PATH: docs/flomation/config
+    PUBLISH_BUCKET: ${AWS_PACKAGE_BUCKET_LIVE}
+  needs:
+    - generate-docs
 
 Deploy to DEV:
   stage: Development
