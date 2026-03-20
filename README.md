@@ -1,195 +1,167 @@
-# Flomation API Package Build System
+# Flomation API
 
-This repository uses a template-based build system that generates both RPM and DEB packages from a single metadata configuration file.
+Backend API server for the Flomation Automate platform, providing RESTful endpoints for managing automation workflows, executions, runners, and environments.
 
-## Metadata Configuration
+## Overview
 
-All package metadata is defined in `project-metadata.json` at the root of the repository.
+The Flomation API is a Go service built with [Gin](https://github.com/gin-gonic/gin) that serves as the backend for the Flomation Automate platform. It handles workflow (Flo) management, execution orchestration, runner coordination, and environment/secret management. It connects to a PostgreSQL database and uses JWT-based authentication via an external identity service.
 
-### Metadata Structure
+## Prerequisites
+
+- Go 1.26.1+
+- PostgreSQL database
+- Access to the Flomation identity service (for authentication)
+- `golangci-lint`, `goimports`, `gosec`, and `govulncheck` (for linting)
+
+## Installation
+
+```bash
+git clone <repository-url>
+cd api
+go mod download
+```
+
+## Configuration
+
+Configuration is loaded from `config.json` (and can be overridden via environment variables or CLI arguments).
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `LISTEN_ADDRESS` | HTTP listen address | No | — |
+| `LISTEN_PORT` | HTTP listen port | No | — |
+| `DATABASE_HOSTNAME` | PostgreSQL host | Yes | — |
+| `DATABASE_PORT` | PostgreSQL port | Yes | — |
+| `DATABASE_USER` | Database username | Yes | — |
+| `DATABASE_PASSWORD` | Database password | Yes | — |
+| `DATABASE_NAME` | Database name | Yes | — |
+| `DATABASE_ENCRYPTION_KEY` | Key for encrypting sensitive data | Yes | — |
+| `DATABASE_MAX_IDLE_CONNS` | Max idle database connections | No | — |
+| `DATABASE_MAX_OPEN_CONNS` | Max open database connections | No | — |
+| `DATABASE_SSL_MODE` | PostgreSQL SSL mode | No | — |
+| `IDENTITY_SERVICE` | URL of the Flomation identity service | Yes | — |
+
+Example `config.json`:
 
 ```json
 {
-  "package": {
-    "component_name": "api",
-    "name": "flomation-api",
-    "summary": "Flomation Automate API Server",
-    "description": "Flomation Automate API Server - Backend API service for automation workflows",
-    "license": "MIT",
-    "url": "https://flomation.co"
+  "http": {
+    "address": "0.0.0.0",
+    "port": 8888
   },
-  "maintainer": {
-    "name": "Build System",
-    "email": "build@flomation.co"
+  "database": {
+    "hostname": "localhost",
+    "port": 5432,
+    "username": "flomation",
+    "password": "secret",
+    "database": "flomation",
+    "encryption_key": "your-encryption-key",
+    "ssl_mode": "disable"
   },
-  "architecture": {
-    "rpm": "x86_64",
-    "deb": "amd64"
+  "security": {
+    "identity_service": "https://identity.flomation.co"
   }
 }
 ```
 
-## Metadata Field Usage
+## Usage
 
-### Package Fields
-
-| Field | Used In | Purpose |
-|-------|---------|---------|
-| `package.component_name` | RPM Spec, DEB Scripts, Systemd Service | Short component identifier (e.g., "api") used in paths like `/opt/flomation/api` |
-| `package.name` | RPM Spec, DEB Control, Changelog | Full package name (e.g., "flomation-api") |
-| `package.summary` | RPM Spec, DEB Control, Systemd Service | One-line package description |
-| `package.description` | RPM Spec, DEB Control | Detailed package description |
-| `package.license` | RPM Spec | Software license (e.g., "MIT") |
-| `package.url` | RPM Spec, DEB Control | Project homepage URL |
-
-### Maintainer Fields
-
-| Field | Used In | Purpose |
-|-------|---------|---------|
-| `maintainer.name` | RPM Spec, DEB Control, Changelog | Package maintainer name |
-| `maintainer.email` | RPM Spec, DEB Control, Changelog | Package maintainer email |
-
-### Architecture Fields
-
-| Field | Used In | Purpose |
-|-------|---------|---------|
-| `architecture.rpm` | RPM Spec | Target architecture for RPM packages (e.g., "x86_64") |
-| `architecture.deb` | DEB Control | Target architecture for DEB packages (e.g., "amd64") |
-
-## Generated Files
-
-The `scripts/inject-metadata.sh` script reads `project-metadata.json` and generates:
-
-### 1. RPM Spec File (`${PACKAGE_NAME}.spec`)
-
-Generated from: `templates/yum/template.spec`
-
-**Metadata Usage:**
-- `Name:` → `package.name`
-- `Summary:` → `package.summary`
-- `%description` → `package.description`
-- `License:` → `package.license`
-- `URL:` → `package.url`
-- `%define component_name` → `package.component_name`
-- `BuildArch:` → `architecture.rpm`
-- `%changelog` maintainer → `maintainer.name` and `maintainer.email`
-
-### 2. Systemd Service File (`flomation-${COMPONENT_NAME}.service`)
-
-Generated from: `templates/systemd/service.template`
-
-**Metadata Usage:**
-- `Description=` → `package.summary`
-- `WorkingDirectory=` → `/opt/flomation/${component_name}`
-- `ExecStart=` → `/opt/flomation/${component_name}/${component_name}`
-- Log paths → `/opt/flomation/${component_name}/logs/${component_name}.log`
-
-### 3. Debian Package Files (`debian/`)
-
-Generated from: `templates/apt/debian/`
-
-**Metadata Usage:**
-
-#### `debian/control`
-- `Source:` → `package.name`
-- `Package:` → `package.name`
-- `Description:` → `package.summary` and `package.description`
-- `Homepage:` → `package.url`
-- `Maintainer:` → `maintainer.name <maintainer.email>`
-
-#### `debian/changelog`
-- Package name → `package.name`
-- Maintainer → `maintainer.name <maintainer.email>`
-
-#### `debian/rules`
-- Build paths → Uses `package.name` and `package.component_name`
-
-#### `debian/preinst`, `debian/postinst`, `debian/prerm`, `debian/postrm`
-- Service name → `package.name`
-- Installation paths → `/opt/flomation/${component_name}`
-
-#### `debian/${PACKAGE_NAME}.install`
-- Generated filename → `package.name`
-- Service file → `flomation-${component_name}.service`
-
-## Build Process
-
-### 1. Metadata Injection
+### Running the server
 
 ```bash
-./scripts/inject-metadata.sh
+go run ./cmd
 ```
 
-This generates:
-- `${PACKAGE_NAME}.spec` (e.g., `flomation-api.spec`)
-- `flomation-${COMPONENT_NAME}.service` (e.g., `flomation-api.service`)
-- `debian/` directory with all package files
+The server starts on the configured address and port (default `:8888`) and automatically runs any pending database migrations on startup.
 
-### 2. CI Pipeline
+### API endpoints
 
-The GitLab CI pipeline automatically:
+All endpoints are under `/api/v1` unless noted. Most require a Bearer JWT token via the `Authorization` header.
 
-1. **inject-metadata** stage:
-   - Runs `scripts/inject-metadata.sh`
-   - Exports `PACKAGE_NAME` variable
-   - Uploads generated files as artifacts
+| Group | Method | Path | Auth | Description |
+|-------|--------|------|------|-------------|
+| Version | GET | `/version` | No | Build version info |
+| Dashboard | GET | `/api/v1/dashboard` | Yes | User dashboard data |
+| Organisation | GET | `/api/v1/organisation` | Yes | List user's organisations |
+| Organisation | GET | `/api/v1/organisation/:ID` | Yes | Get organisation by ID |
+| Organisation | POST | `/api/v1/organisation` | Yes | Create organisation |
+| Organisation | POST | `/api/v1/organisation/:ID` | Yes | Update organisation |
+| User | GET | `/api/v1/user` | Yes | Get current user |
+| User | GET | `/api/v1/user/:ID` | Yes | Get user by ID |
+| User | POST | `/api/v1/user` | Yes | Create user |
+| User | POST | `/api/v1/user/:ID` | Yes | Update user |
+| Action | GET | `/api/v1/action` | No | List available actions |
+| Flo | GET | `/api/v1/flo` | Yes | List user's flos |
+| Flo | GET | `/api/v1/flo/:FloID` | Yes | Get flo by ID |
+| Flo | POST | `/api/v1/flo` | Yes | Create flo |
+| Flo | POST | `/api/v1/flo/:FloID` | Yes | Update flo |
+| Flo | DELETE | `/api/v1/flo/:FloID` | Yes | Delete flo |
+| Flo | POST | `/api/v1/flo/:FloID/revision` | Yes | Create flo revision |
+| Flo | POST | `/api/v1/flo/:FloID/trigger/:TriggerID/execute` | No | Trigger flo execution |
+| Execution | GET | `/api/v1/execution` | Yes | List executions |
+| Execution | GET | `/api/v1/execution/:id` | Yes | Get execution by ID |
+| Execution | POST | `/api/v1/execution/:id` | Runner | Update execution |
+| Execution | POST | `/api/v1/execution/:id/state` | Runner | Update execution state |
+| Runner | GET | `/api/v1/runner` | Yes | List runners |
+| Runner | POST | `/api/v1/runner` | No | Register runner |
+| Runner | POST | `/api/v1/runner/:id/execution` | Runner | Poll for executions |
+| Runner | DELETE | `/api/v1/runner/:id` | Yes | Unregister runner |
+| Queue | GET | `/api/v1/queue` | Yes | List queues |
+| Environment | GET | `/api/v1/environment` | Yes | List environments |
+| Environment | GET | `/api/v1/environment/:environment` | Yes | Get environment |
+| Environment | POST | `/api/v1/environment` | Yes | Create environment |
+| Environment | DELETE | `/api/v1/environment/:environment` | Yes | Delete environment |
+| Environment | GET/POST/DELETE | `/api/v1/environment/:environment/property/...` | Yes | Manage environment properties |
+| Environment | GET/POST/DELETE | `/api/v1/environment/:environment/secret/...` | Yes | Manage environment secrets |
 
-2. **build** stage:
-   - Builds RPM packages for EL8 and EL9
-   - Builds DEB package
-   - Uses artifacts from inject-metadata stage
+## Development
 
-3. **publish** stages:
-   - Publishes packages to S3-based repositories
+```bash
+# Run tests
+make test
 
-## Directory Structure
+# Lint (runs go mod tidy, goimports, golangci-lint, go vet, gosec, govulncheck)
+make lint
+
+# Build for all platforms (linux, darwin, windows — amd64/arm64/arm)
+make build
+```
+
+The build produces cross-compiled binaries in `dist/` with embedded version, git hash, and build date.
+
+## Project Structure
 
 ```
 .
-├── project-metadata.json          # Source of truth for all metadata
-├── scripts/
-│   └── inject-metadata.sh         # Metadata injection script
-├── templates/
-│   ├── apt/
-│   │   └── debian/                # Debian package templates
-│   ├── yum/
-│   │   └── template.spec          # RPM spec template
-│   └── systemd/
-│       └── service.template       # Systemd service template
-├── flomation-api.spec             # Generated RPM spec (not in git)
-├── flomation-api.service          # Generated service file (not in git)
-└── debian/                        # Generated debian package dir (not in git)
+├── cmd/
+│   └── main.go                  # Application entrypoint
+├── internal/
+│   ├── actions/                 # Action definition service
+│   ├── config/                  # Configuration loading (JSON/env/args)
+│   ├── connector/
+│   │   └── identity/            # Identity service connector
+│   ├── http/                    # Gin HTTP handlers and routing
+│   │   ├── service.go           # Router setup and middleware
+│   │   ├── action.go            # Action endpoints
+│   │   ├── dashboard.go         # Dashboard endpoints
+│   │   ├── environment.go       # Environment endpoints
+│   │   ├── execution.go         # Execution endpoints
+│   │   ├── flow.go              # Flo endpoints
+│   │   ├── organisation.go      # Organisation endpoints
+│   │   ├── queue.go             # Queue endpoints
+│   │   ├── runner.go            # Runner endpoints
+│   │   └── user.go              # User endpoints
+│   ├── persistence/             # PostgreSQL data access layer
+│   │   ├── service.go           # Database queries (sqlx)
+│   │   ├── migrations.go        # Embedded migration runner
+│   │   └── migration/           # SQL migration files
+│   ├── utils/                   # Utility functions
+│   └── version/                 # Build version info
+├── types.go                     # Shared domain types
+├── project-metadata.json        # Package metadata for RPM/DEB builds
+├── Dockerfile                   # Container image (Alpine, port 8888)
+└── Makefile                     # Build, lint, test targets
 ```
 
-## Template Placeholders
+## Licence
 
-Templates use `{{PLACEHOLDER}}` syntax for variable substitution:
-
-| Placeholder | Replaced With |
-|-------------|---------------|
-| `{{PACKAGE_NAME}}` | `package.name` |
-| `{{COMPONENT_NAME}}` | `package.component_name` |
-| `{{PACKAGE_SUMMARY}}` | `package.summary` |
-| `{{PACKAGE_DESCRIPTION}}` | `package.description` |
-| `{{PACKAGE_LICENSE}}` | `package.license` |
-| `{{PACKAGE_URL}}` | `package.url` |
-| `{{MAINTAINER_NAME}}` | `maintainer.name` |
-| `{{MAINTAINER_EMAIL}}` | `maintainer.email` |
-| `{{ARCH_RPM}}` | `architecture.rpm` |
-
-## Updating Package Metadata
-
-To update package information:
-
-1. Edit `project-metadata.json`
-2. Run `./scripts/inject-metadata.sh` to regenerate files
-3. Commit changes to `project-metadata.json` and `templates/` (do not commit generated files)
-4. CI will automatically generate and build packages with new metadata
-
-## Notes
-
-- Generated files (`*.spec`, `*.service`, `debian/`) are not tracked in git
-- Template files in `templates/` contain ShellCheck disable directives due to placeholder syntax
-- Both RPM and DEB packages use the same systemd service template for consistency
-- The `component_name` should be short (e.g., "api") as it's used in filesystem paths
-- The `package.name` should follow distribution naming conventions (e.g., "flomation-api")
+MIT — see [LICENCE.md](LICENCE.md).
