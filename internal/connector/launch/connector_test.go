@@ -24,7 +24,9 @@ func Test_RegisterTrigger_Success(t *testing.T) {
 
 		b, err := io.ReadAll(r.Body)
 		Expect(err).To(BeNil())
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 
 		err = json.Unmarshal(b, &receivedBody)
 		Expect(err).To(BeNil())
@@ -56,7 +58,9 @@ func Test_RegisterTrigger_NilData(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := io.ReadAll(r.Body)
 		Expect(err).To(BeNil())
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 
 		err = json.Unmarshal(b, &receivedBody)
 		Expect(err).To(BeNil())
