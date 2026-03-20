@@ -125,16 +125,16 @@ info "Generating README.md with Claude Code..."
 #   1. Read the project files
 #   2. Follow the template in .claude/readme-prompt.md
 #   3. Write the output to README.md
-PROMPT="Read the instructions in .claude/readme-prompt.md carefully. \
+PROMPT1="Read the instructions in .claude/readme-prompt.md carefully. \
 Then examine this project's source files, configuration files, and any existing README.md. \
 Generate a complete README.md following the Flomation template defined in the prompt file. \
 Write the result directly to README.md in the project root. \
 If a README.md already exists, update it — don't start from scratch unless it's completely wrong. \
 Preserve any manually-written sections that are marked with <!-- MANUAL --> comments. \
-Only output the file — no explanation or commentary."
+Only output the file — no explanation or commentary. Omit any references to gitlabci as this is non relevant to the readme"
 
 # Run Claude Code in headless mode with a timeout
-if timeout "${TIMEOUT_SECONDS}" claude -p "$PROMPT" --allowedTools "Edit,Write,Read" > /dev/null 2>&1; then
+if timeout "${TIMEOUT_SECONDS}" claude -p "$PROMPT1" --allowedTools "Edit,Write,Read" > /dev/null 2>&1; then
     # Check if README.md was actually modified
     if git diff --name-only README.md 2>/dev/null | grep -q "README.md"; then
         git add README.md
