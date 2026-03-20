@@ -9,7 +9,9 @@
 #
 # Requirements:
 #   - Claude Code CLI installed (`npm install -g @anthropic-ai/claude-code`)
-#   - ANTHROPIC_API_KEY environment variable set
+#   - Authenticated via either:
+#       - A Claude subscription (Pro/Max/Team/Enterprise) — just run `claude` and log in
+#       - An ANTHROPIC_API_KEY environment variable (pay-as-you-go)
 #   - .claude/readme-prompt.md exists in the project root
 #
 # Safety:
@@ -71,11 +73,12 @@ if ! command -v claude &>/dev/null; then
     exit 0
 fi
 
-# Check if API key is set
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    warn "ANTHROPIC_API_KEY not set. Skipping README generation."
-    exit 0
-fi
+# Note: No API key check here.
+# Claude Code works with either:
+#   - A logged-in subscription (Pro/Max/Team/Enterprise) via `claude /login`
+#   - An ANTHROPIC_API_KEY environment variable (pay-as-you-go)
+# If neither is configured, the claude -p call below will fail gracefully
+# and the commit will proceed with a warning.
 
 # Check if the prompt template exists
 PROMPT_FILE=".claude/readme-prompt.md"
@@ -128,7 +131,7 @@ Generate a complete README.md following the Flomation template defined in the pr
 Write the result directly to README.md in the project root. \
 If a README.md already exists, update it — don't start from scratch unless it's completely wrong. \
 Preserve any manually-written sections that are marked with <!-- MANUAL --> comments. \
-Only output the file — no explanation or commentary. Omit any references to gitlab ci as this is non relevant to the readme"
+Only output the file — no explanation or commentary."
 
 # Run Claude Code in headless mode with a timeout
 if timeout "${TIMEOUT_SECONDS}" claude -p "$PROMPT" --allowedTools "Edit,Write,Read" > /dev/null 2>&1; then
