@@ -27,7 +27,7 @@ INSERT INTO actions (id, name, action_type, description, icon, plugin, ordering,
 INSERT INTO actions (id, name, action_type, description, icon, plugin, ordering, inputs, outputs) VALUES ('slackMessage', 'Slack Message', '3', 'Send a message to a Slack channel', '["fab", "slack"]','slack/message', 1, '[{"name": "url", "value": "URL", "type": "string"}, {"name": "message", "value": "Message", "type": "string"}]', null);
 
 -- Conditional = 4
-INSERT INTO actions (id, name, action_type, description, icon, plugin, ordering, inputs, outputs) VALUES ('if', 'If', '4', 'Only continue if a condition is satisfied', '["fa", "code-branch"]','condition/if', 0, '[{"name": "input", "value": "Input", "type": "object"}, {"name": "condition", "value": "Condition", "type": "enum(\"Equals\", \"Not Equals\", \"Greater Than\", \"Greater Than or Equal\", \"Less Than\", \"Less Than or Equal\")"}]', null);
+INSERT INTO actions (id, name, action_type, description, icon, plugin, ordering, inputs, outputs) VALUES ('conditional/if', 'If', '4', 'Only continue if a condition is satisfied', '["fa", "code-branch"]','conditional/if', 0, '[{"name": "value_a", "value": "Value A", "type": "string"}, {"name": "operator", "value": "Operator", "type": "string"}, {"name": "value_b", "value": "Value B", "type": "string"}]', '[{"name": "result", "value": "Result", "type": "boolean"}]');
 
 -- Loop = 5
 INSERT INTO actions (id, name, action_type, description, icon, plugin, ordering, inputs, outputs) VALUES ('loop', 'Loop', '5', 'Loop a specified number of times', '["fa", "recycle"]','loop/loop', 0, '[{"name": "input", "value": "Input", "type": "object"}, {"name": "count", "value": "Count", "type": "integer"}]', null);
