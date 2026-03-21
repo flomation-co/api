@@ -137,18 +137,26 @@ type OutputDefinition struct {
 	Type  string `json:"type" db:"type"`
 }
 
+type ActionCategory struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Icon        string `json:"icon"`
+	Description string `json:"description"`
+}
+
 type Action struct {
-	ID          string      `json:"id" db:"id"`
-	Name        string      `json:"name" db:"name"`
-	Label       string      `json:"label"`
-	Type        int64       `json:"type"`
-	ActionType  string      `json:"-" db:"action_type"`
-	Description string      `json:"description" db:"description"`
-	Icon        string      `json:"icon" db:"icon"`
-	Plugin      string      `json:"plugin" db:"plugin"`
-	Ordering    *int        `json:"ordering" db:"ordering"`
-	Inputs      interface{} `json:"inputs" db:"inputs"`
-	Outputs     interface{} `json:"outputs" db:"outputs"`
+	ID          string          `json:"id" db:"id"`
+	Name        string          `json:"name" db:"name"`
+	Label       string          `json:"label"`
+	Type        int64           `json:"type"`
+	ActionType  string          `json:"-" db:"action_type"`
+	Description string          `json:"description" db:"description"`
+	Icon        string          `json:"icon" db:"icon"`
+	Plugin      string          `json:"plugin" db:"plugin"`
+	Ordering    *int            `json:"ordering" db:"ordering"`
+	Inputs      interface{}     `json:"inputs" db:"inputs"`
+	Outputs     interface{}     `json:"outputs" db:"outputs"`
+	Category    *ActionCategory `json:"category,omitempty"`
 }
 
 type Queue struct {
