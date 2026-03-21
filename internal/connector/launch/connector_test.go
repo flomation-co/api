@@ -42,7 +42,7 @@ func Test_RegisterTrigger_Success(t *testing.T) {
 	connector := NewConnector(cfg)
 
 	data := []byte(`{"cron":"* * * * *"}`)
-	err := connector.RegisterTrigger("test-trigger-id", "schedule", data, "test-flow-id")
+	err := connector.RegisterTrigger("test-trigger-id", "schedule", data, "test-flow-id", "")
 	Expect(err).To(BeNil())
 
 	Expect(receivedBody["id"]).To(Equal("test-trigger-id"))
@@ -75,7 +75,7 @@ func Test_RegisterTrigger_NilData(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1")
+	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1", "")
 	Expect(err).To(BeNil())
 
 	// When data is nil, should send empty object
@@ -97,7 +97,7 @@ func Test_RegisterTrigger_ServerError(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1")
+	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1", "")
 	Expect(err).To(Not(BeNil()))
 }
 
@@ -111,7 +111,7 @@ func Test_RegisterTrigger_Unreachable(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1")
+	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1", "")
 	Expect(err).To(Not(BeNil()))
 }
 
@@ -133,7 +133,7 @@ func Test_DisableTrigger_Success(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.DisableTrigger("trigger-to-delete")
+	err := connector.DisableTrigger("trigger-to-delete", "")
 	Expect(err).To(BeNil())
 }
 
@@ -152,7 +152,7 @@ func Test_DisableTrigger_ServerError(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.DisableTrigger("trigger-to-delete")
+	err := connector.DisableTrigger("trigger-to-delete", "")
 	Expect(err).To(Not(BeNil()))
 }
 
@@ -171,7 +171,7 @@ func Test_DisableTrigger_NotFound(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.DisableTrigger("nonexistent")
+	err := connector.DisableTrigger("nonexistent", "")
 	Expect(err).To(Not(BeNil()))
 }
 
@@ -185,6 +185,46 @@ func Test_DisableTrigger_Unreachable(t *testing.T) {
 
 	connector := NewConnector(cfg)
 
-	err := connector.DisableTrigger("id-1")
+	err := connector.DisableTrigger("id-1", "")
 	Expect(err).To(Not(BeNil()))
+}
+
+func Test_RegisterTrigger_ForwardsAuthToken(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Expect(r.Header.Get("Authorization")).To(Equal("Bearer my-jwt-token"))
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Launch: config.LaunchConfig{URL: server.URL},
+	}
+
+	connector := NewConnector(cfg)
+
+	err := connector.RegisterTrigger("id-1", "manual", nil, "flow-1", "my-jwt-token")
+	Expect(err).To(BeNil())
+}
+
+func Test_DisableTrigger_ForwardsAuthToken(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Expect(r.Header.Get("Authorization")).To(Equal("Bearer my-jwt-token"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Launch: config.LaunchConfig{URL: server.URL},
+	}
+
+	connector := NewConnector(cfg)
+
+	err := connector.DisableTrigger("trigger-1", "my-jwt-token")
+	Expect(err).To(BeNil())
 }

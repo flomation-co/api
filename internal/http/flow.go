@@ -145,7 +145,7 @@ func (s *Service) createFlo(c *gin.Context) {
 
 	// Register default trigger(s) with Launch Service
 	for _, t := range f.Triggers {
-		if err := s.launch.RegisterTrigger(t.ID, t.TypeName, nil, f.ID); err != nil {
+		if err := s.launch.RegisterTrigger(t.ID, t.TypeName, nil, f.ID, s.extractAuthToken(c)); err != nil {
 			log.WithFields(log.Fields{
 				"error":      err,
 				"trigger_id": t.ID,
