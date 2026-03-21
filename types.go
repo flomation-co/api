@@ -67,6 +67,7 @@ type Flo struct {
 	LastExecution      *Execution `json:"last_execution" db:"last_execution"`
 	EnvironmentID      *string    `json:"environment_id" db:"environment_id"`
 	EnvironmentName    *string    `json:"environment_name" db:"environment_name"`
+	HasValidationErrors bool      `json:"has_validation_errors,omitempty"`
 }
 
 type Execution struct {
