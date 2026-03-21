@@ -51,9 +51,13 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		return
 	}
 
+	// Load action definitions once to cross-reference required fields
+	actions, _ := s.persistence.GetActions()
+	actionInputs := buildRequiredFieldsMap(actions)
+
 	// Compute validation errors for each flo by inspecting latest revision
 	for _, flo := range flos {
-		flo.HasValidationErrors = checkFloValidation(s, flo.ID)
+		flo.HasValidationErrors = checkFloValidation(s, flo.ID, actionInputs)
 	}
 
 	c.Writer.Header().Set("x-total-items", fmt.Sprintf("%v", count))
@@ -280,15 +284,44 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	})
 }
 
+// buildRequiredFieldsMap parses action definitions to find which inputs
+// are required per action type. Returns map[actionID]map[inputName]bool.
+func buildRequiredFieldsMap(actions []*api.Action) map[string]map[string]bool {
+	result := make(map[string]map[string]bool)
+	for _, a := range actions {
+		if a.Inputs == nil {
+			continue
+		}
+		raw, ok := a.Inputs.([]byte)
+		if !ok {
+			continue
+		}
+		var inputs []api.InputDefinition
+		if err := json.Unmarshal(raw, &inputs); err != nil {
+			continue
+		}
+		fields := make(map[string]bool)
+		for _, inp := range inputs {
+			if inp.Required {
+				fields[inp.Name] = true
+			}
+		}
+		if len(fields) > 0 {
+			result[a.ID] = fields
+		}
+	}
+	return result
+}
+
 // checkFloValidation inspects the latest revision to see if any node
-// has required inputs with empty values.
-func checkFloValidation(s *Service, floID string) bool {
+// has required inputs with empty values. Cross-references with action
+// definitions since older revisions may not have the required flag stored.
+func checkFloValidation(s *Service, floID string, actionInputs map[string]map[string]bool) bool {
 	rev, err := s.persistence.GetLatestRevisionByFloID(floID)
 	if err != nil || rev == nil || rev.Data == nil {
 		return false
 	}
 
-	// Handle rev.Data as either []byte or string
 	var raw []byte
 	switch d := rev.Data.(type) {
 	case []byte:
@@ -314,6 +347,10 @@ func checkFloValidation(s *Service, floID string) bool {
 		if !ok {
 			continue
 		}
+
+		// Get the node's action type (e.g. "sql/postgresql")
+		nodeType, _ := node["type"].(string)
+
 		data, ok := node["data"].(map[string]interface{})
 		if !ok {
 			continue
@@ -326,15 +363,28 @@ func checkFloValidation(s *Service, floID string) bool {
 		if !ok {
 			continue
 		}
+
+		// Get required fields from action definitions as fallback
+		requiredFromDef := actionInputs[nodeType]
+
 		for _, inp := range inputs {
 			input, ok := inp.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			required, _ := input["required"].(bool)
+
+			inputName, _ := input["name"].(string)
+
+			// Check required: first from revision data, then from action definition
+			required, hasRequired := input["required"].(bool)
+			if !hasRequired && requiredFromDef != nil {
+				required = requiredFromDef[inputName]
+			}
+
 			if !required {
 				continue
 			}
+
 			value, _ := input["value"].(string)
 			if strings.TrimSpace(value) == "" {
 				return true
