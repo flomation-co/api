@@ -123,12 +123,19 @@ type Port struct {
 	Controls interface{} `json:"controls" db:"controls"`
 }
 
+type InputOption struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type InputDefinition struct {
-	Name        string `json:"name" db:"name"`
-	Value       string `json:"value" db:"value"`
-	Type        string `json:"type" db:"type"`
-	Label       string `json:"label"`
-	Placeholder string `json:"placeholder"`
+	Name        string        `json:"name" db:"name"`
+	Value       string        `json:"value" db:"value"`
+	Type        string        `json:"type" db:"type"`
+	Label       string        `json:"label"`
+	Placeholder string        `json:"placeholder"`
+	Required    bool          `json:"required,omitempty"`
+	Options     []InputOption `json:"options,omitempty"`
 }
 
 type OutputDefinition struct {
