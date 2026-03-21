@@ -32,7 +32,7 @@ func NewConnector(config *config.Config) *Connector {
 	}
 }
 
-func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID string) error {
+func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID string, authToken string) error {
 	payload := triggerPayload{
 		ID:     id,
 		Type:   typeName,
@@ -56,6 +56,9 @@ func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID str
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -81,11 +84,15 @@ func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID str
 	return nil
 }
 
-func (c *Connector) DisableTrigger(id string) error {
+func (c *Connector) DisableTrigger(id string, authToken string) error {
 	url := fmt.Sprintf("%v/trigger/%v", c.config.Launch.URL, id)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return fmt.Errorf("unable to create request: %w", err)
+	}
+
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 
 	resp, err := c.client.Do(req)

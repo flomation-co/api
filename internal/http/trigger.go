@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
@@ -89,7 +90,7 @@ func (s *Service) createTrigger(c *gin.Context) {
 	}
 
 	// Register with Launch Service (best-effort)
-	s.registerTriggerWithLaunch(*id, trigger)
+	s.registerTriggerWithLaunch(*id, trigger, s.extractAuthToken(c))
 
 	created, err := s.persistence.GetTriggerByID(*id)
 	if err != nil {
@@ -140,7 +141,7 @@ func (s *Service) updateTrigger(c *gin.Context) {
 	}
 
 	// Re-register with Launch Service (best-effort)
-	s.registerTriggerWithLaunch(id, trigger)
+	s.registerTriggerWithLaunch(id, trigger, s.extractAuthToken(c))
 
 	updated, err := s.persistence.GetTriggerByID(id)
 	if err != nil {
@@ -180,7 +181,7 @@ func (s *Service) deleteTrigger(c *gin.Context) {
 	}
 
 	// Disable on Launch Service (best-effort)
-	if err := s.launch.DisableTrigger(id); err != nil {
+	if err := s.launch.DisableTrigger(id, s.extractAuthToken(c)); err != nil {
 		log.WithFields(log.Fields{
 			"error":      err,
 			"trigger_id": id,
@@ -190,7 +191,16 @@ func (s *Service) deleteTrigger(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func (s *Service) registerTriggerWithLaunch(id string, trigger api.Trigger) {
+func (s *Service) extractAuthToken(c *gin.Context) string {
+	header := c.GetHeader("Authorization")
+	parts := strings.Split(header, " ")
+	if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+		return parts[1]
+	}
+	return ""
+}
+
+func (s *Service) registerTriggerWithLaunch(id string, trigger api.Trigger, authToken string) {
 	var dataBytes []byte
 	if trigger.Data != nil {
 		var err error
@@ -209,7 +219,7 @@ func (s *Service) registerTriggerWithLaunch(id string, trigger api.Trigger) {
 		flowID = *trigger.FloID
 	}
 
-	if err := s.launch.RegisterTrigger(id, trigger.TypeName, dataBytes, flowID); err != nil {
+	if err := s.launch.RegisterTrigger(id, trigger.TypeName, dataBytes, flowID, authToken); err != nil {
 		log.WithFields(log.Fields{
 			"error":      err,
 			"trigger_id": id,
