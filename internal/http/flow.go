@@ -53,43 +53,7 @@ func (s *Service) getMyFlos(c *gin.Context) {
 
 	// Compute validation errors for each flo by inspecting latest revision
 	for _, flo := range flos {
-		rev, err := s.persistence.GetLatestRevisionByFloID(flo.ID)
-		if err != nil || rev == nil || rev.Data == nil {
-			continue
-		}
-
-		var revData struct {
-			Nodes []struct {
-				Data struct {
-					Config struct {
-						Inputs []struct {
-							Required bool   `json:"required"`
-							Value    string `json:"value"`
-						} `json:"inputs"`
-					} `json:"config"`
-				} `json:"data"`
-			} `json:"nodes"`
-		}
-
-		raw, ok := rev.Data.([]byte)
-		if !ok {
-			continue
-		}
-		if err := json.Unmarshal(raw, &revData); err != nil {
-			continue
-		}
-
-		for _, node := range revData.Nodes {
-			for _, input := range node.Data.Config.Inputs {
-				if input.Required && strings.TrimSpace(input.Value) == "" {
-					flo.HasValidationErrors = true
-					break
-				}
-			}
-			if flo.HasValidationErrors {
-				break
-			}
-		}
+		flo.HasValidationErrors = checkFloValidation(s, flo.ID)
 	}
 
 	c.Writer.Header().Set("x-total-items", fmt.Sprintf("%v", count))
@@ -314,4 +278,69 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"id": i,
 	})
+}
+
+// checkFloValidation inspects the latest revision to see if any node
+// has required inputs with empty values.
+func checkFloValidation(s *Service, floID string) bool {
+	rev, err := s.persistence.GetLatestRevisionByFloID(floID)
+	if err != nil || rev == nil || rev.Data == nil {
+		return false
+	}
+
+	// Handle rev.Data as either []byte or string
+	var raw []byte
+	switch d := rev.Data.(type) {
+	case []byte:
+		raw = d
+	case string:
+		raw = []byte(d)
+	default:
+		return false
+	}
+
+	var revData map[string]interface{}
+	if err := json.Unmarshal(raw, &revData); err != nil {
+		return false
+	}
+
+	nodes, ok := revData["nodes"].([]interface{})
+	if !ok {
+		return false
+	}
+
+	for _, n := range nodes {
+		node, ok := n.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		data, ok := node["data"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		config, ok := data["config"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		inputs, ok := config["inputs"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, inp := range inputs {
+			input, ok := inp.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			required, _ := input["required"].(bool)
+			if !required {
+				continue
+			}
+			value, _ := input["value"].(string)
+			if strings.TrimSpace(value) == "" {
+				return true
+			}
+		}
+	}
+
+	return false
 }
