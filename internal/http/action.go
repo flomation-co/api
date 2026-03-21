@@ -20,6 +20,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"git":         {Key: "git", Name: "Git", Icon: "code-branch", Description: "Version control operations"},
 	"output":      {Key: "output", Name: "Output", Icon: "location-arrow", Description: "Send data to external destinations"},
 	"security":    {Key: "security", Name: "Security", Icon: "shield-halved", Description: "Security scanning and compliance"},
+	"nosql":       {Key: "nosql", Name: "NoSQL", Icon: "layer-group", Description: "NoSQL database operations"},
 	"sql":         {Key: "sql", Name: "SQL", Icon: "database", Description: "Relational database queries"},
 	"trigger":     {Key: "trigger", Name: "Triggers", Icon: "bolt-lightning", Description: "Start a Flow"},
 }
