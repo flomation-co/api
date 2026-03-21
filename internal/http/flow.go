@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
@@ -48,6 +49,47 @@ func (s *Service) getMyFlos(c *gin.Context) {
 	if len(flos) == 0 {
 		c.AbortWithStatus(http.StatusNoContent)
 		return
+	}
+
+	// Compute validation errors for each flo by inspecting latest revision
+	for _, flo := range flos {
+		rev, err := s.persistence.GetLatestRevisionByFloID(flo.ID)
+		if err != nil || rev == nil || rev.Data == nil {
+			continue
+		}
+
+		var revData struct {
+			Nodes []struct {
+				Data struct {
+					Config struct {
+						Inputs []struct {
+							Required bool   `json:"required"`
+							Value    string `json:"value"`
+						} `json:"inputs"`
+					} `json:"config"`
+				} `json:"data"`
+			} `json:"nodes"`
+		}
+
+		raw, ok := rev.Data.([]byte)
+		if !ok {
+			continue
+		}
+		if err := json.Unmarshal(raw, &revData); err != nil {
+			continue
+		}
+
+		for _, node := range revData.Nodes {
+			for _, input := range node.Data.Config.Inputs {
+				if input.Required && strings.TrimSpace(input.Value) == "" {
+					flo.HasValidationErrors = true
+					break
+				}
+			}
+			if flo.HasValidationErrors {
+				break
+			}
+		}
 	}
 
 	c.Writer.Header().Set("x-total-items", fmt.Sprintf("%v", count))
