@@ -1832,10 +1832,11 @@ func NewService(config *config.Config) (*Service, error) {
 			t.type,
 			tt.name AS type_name,
 			t.data,
-			t.flo_id
+			ft.flo_id
 		FROM
 			trigger t
 		INNER JOIN trigger_type tt ON t.type = tt.id
+		LEFT JOIN flo_trigger ft ON ft.trigger_id = t.id
 		WHERE
 		    t.owner_id = :owner_id
 		ORDER BY
