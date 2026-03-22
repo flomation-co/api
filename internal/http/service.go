@@ -22,7 +22,7 @@ import (
 type Service struct {
 	config      *config.Config
 	engine      *gin.Engine
-	persistence *persistence.Service
+	persistence Persistence
 	identity    *identity.Connector
 	launch      *launchconnector.Connector
 	migrator    *actions.Migrator
@@ -160,9 +160,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
 
-	executions.GET("/:id/environment/:environment", s.executionMiddleware, s.getEnvironmentByID)
-	executions.GET("/:id/environment/:environment/property/:name", s.executionMiddleware, s.getEnvironmentPropertyByName)
-	executions.GET("/:id/environment/:environment/secret/:name", s.executionMiddleware, s.getEnvironmentSecretByName)
+	executions.GET("/:id/environment/:environment", s.executionMiddleware, s.getExecutionEnvironment)
+	executions.GET("/:id/environment/:environment/property/:name", s.executionMiddleware, s.getExecutionEnvironmentProperty)
+	executions.GET("/:id/environment/:environment/secret/:name", s.executionMiddleware, s.getExecutionEnvironmentSecret)
 
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)
