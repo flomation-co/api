@@ -37,7 +37,12 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		return
 	}
 
-	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery)
+	var orgID string
+	if len(user.Organisations) > 0 {
+		orgID = user.Organisations[0].ID
+	}
+
+	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,

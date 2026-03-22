@@ -37,10 +37,14 @@ type Service struct {
 	stmtCreateUser  *sqlx.NamedStmt
 	stmtUpdateUser  *sqlx.NamedStmt
 
-	stmtGetMyFlos             *sqlx.NamedStmt
-	stmtGetMyFlosWithFilter   *sqlx.NamedStmt
-	stmtCountMyFlos           *sqlx.NamedStmt
-	stmtCountMyFlosWithFilter *sqlx.NamedStmt
+	stmtGetMyFlos                *sqlx.NamedStmt
+	stmtGetMyFlosWithFilter      *sqlx.NamedStmt
+	stmtCountMyFlos              *sqlx.NamedStmt
+	stmtCountMyFlosWithFilter    *sqlx.NamedStmt
+	stmtGetOrgFlos               *sqlx.NamedStmt
+	stmtGetOrgFlosWithFilter     *sqlx.NamedStmt
+	stmtCountOrgFlos             *sqlx.NamedStmt
+	stmtCountOrgFlosWithFilter   *sqlx.NamedStmt
 	stmtGetFloByID            *sqlx.NamedStmt
 	stmtCreateFlo             *sqlx.NamedStmt
 	stmtUpdateFlo             *sqlx.NamedStmt
@@ -482,6 +486,80 @@ func NewService(config *config.Config) (*Service, error) {
 			OR
 		    	CAST(id AS TEXT) LIKE LOWER(:search)
 		    )
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgFlos, err = s.conn.PrepareNamed(`
+		SELECT
+		    f.id,
+		    f.name,
+		    f.organisation_id,
+		    f.author_id,
+		    f.created_at,
+		    f.scale,
+		    f.x,
+		    f.y,
+		    f.environment_id,
+		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
+			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
+			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
+			(SELECT e.created_at FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS last_run
+		FROM
+		    flo f
+		WHERE
+		    organisation_id = :organisation_id
+		ORDER BY
+		    created_at DESC
+		OFFSET :offset
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgFlosWithFilter, err = s.conn.PrepareNamed(`
+		SELECT
+		    f.id,
+		    f.name,
+		    f.organisation_id,
+		    f.author_id,
+		    f.created_at,
+		    f.scale,
+		    f.x,
+		    f.y,
+		    f.environment_id,
+		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
+			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
+			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
+			(SELECT e.created_at FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS last_run
+		FROM
+		    flo f
+		WHERE
+		    organisation_id = :organisation_id
+		AND
+		    (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
+		ORDER BY
+		    created_at DESC
+		OFFSET :offset
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgFlos, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgFlosWithFilter, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM flo f
+		WHERE organisation_id = :organisation_id
+		AND (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 	`)
 	if err != nil {
 		return nil, err
@@ -1933,61 +2011,113 @@ func (s *Service) UpdateUser(user *api.User) error {
 	return nil
 }
 
-func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string) ([]*api.Flo, int64, error) {
+func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
 	var results []*api.Flo
 	var count int64
 
-	if search == "" {
-		if err := s.stmtGetMyFlos.Select(&results, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-		}); err != nil {
-			return nil, 0, err
-		}
+	// Organisation-scoped queries
+	if len(organisationID) > 0 && organisationID[0] != "" {
+		orgID := organisationID[0]
 
-		if err := s.stmtCountMyFlos.Get(&count, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-		}); err != nil {
-			return nil, 0, err
+		if search == "" {
+			if err := s.stmtGetOrgFlos.Select(&results, struct {
+				OrganisationID string `db:"organisation_id"`
+				Offset         int64  `db:"offset"`
+				Limit          int64  `db:"limit"`
+			}{
+				OrganisationID: orgID,
+				Offset:         offset,
+				Limit:          limit,
+			}); err != nil {
+				return nil, 0, err
+			}
+
+			if err := s.stmtCountOrgFlos.Get(&count, struct {
+				OrganisationID string `db:"organisation_id"`
+			}{
+				OrganisationID: orgID,
+			}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetOrgFlosWithFilter.Select(&results, struct {
+				OrganisationID string `db:"organisation_id"`
+				Offset         int64  `db:"offset"`
+				Limit          int64  `db:"limit"`
+				Search         string `db:"search"`
+			}{
+				OrganisationID: orgID,
+				Offset:         offset,
+				Limit:          limit,
+				Search:         "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
+
+			if err := s.stmtCountOrgFlosWithFilter.Get(&count, struct {
+				OrganisationID string `db:"organisation_id"`
+				Search         string `db:"search"`
+			}{
+				OrganisationID: orgID,
+				Search:         "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
 		}
 	} else {
-		if err := s.stmtGetMyFlosWithFilter.Select(&results, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-			Search   string `db:"search"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-			Search:   "%" + search + "%",
-		}); err != nil {
-			return nil, 0, err
-		}
+		// Personal flows — filter by author_id
+		if search == "" {
+			if err := s.stmtGetMyFlos.Select(&results, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+			}); err != nil {
+				return nil, 0, err
+			}
 
-		if err := s.stmtCountMyFlosWithFilter.Get(&count, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-			Search   string `db:"search"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-			Search:   "%" + search + "%",
-		}); err != nil {
-			return nil, 0, err
+			if err := s.stmtCountMyFlos.Get(&count, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+			}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetMyFlosWithFilter.Select(&results, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+				Search   string `db:"search"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+				Search:   "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
+
+			if err := s.stmtCountMyFlosWithFilter.Get(&count, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+				Search   string `db:"search"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+				Search:   "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 

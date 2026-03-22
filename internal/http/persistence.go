@@ -42,7 +42,7 @@ type Persistence interface {
 	GetExecutions(offset int64, limit int64, search string, userID string, organisationID *string) ([]*api.Execution, int64, error)
 	GetFloByID(floID string) (*api.Flo, error)
 	GetLatestRevisionByFloID(ID string) (*api.Revision, error)
-	GetMyFlos(userID string, offset int64, limit int64, search string) ([]*api.Flo, int64, error)
+	GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error)
 	GetMyOrganisations(userID string) ([]*api.Organisation, error)
 	GetOrganisationByID(ID string) (*api.Organisation, error)
 	GetQueueByRegistrationCode(code string) (*api.Queue, error)
