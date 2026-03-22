@@ -146,9 +146,18 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	orgs.Use(s.jwtMiddleware)
 	orgs.GET("", s.getMyOrganisations)
 	orgs.GET("/:ID", s.getOrganisation)
+	orgs.GET("/:ID/member", s.getOrganisationMembers)
+	orgs.GET("/:ID/invite", s.getOrganisationInvites)
 
 	orgs.POST("", s.createOrganisation)
 	orgs.POST("/:ID", s.updateOrganisation)
+	orgs.POST("/:ID/invite", s.createOrganisationInvite)
+
+	orgs.DELETE("/:ID/member/:userID", s.removeOrganisationMember)
+	orgs.DELETE("/:ID/invite/:inviteID", s.revokeOrganisationInvite)
+
+	// Invite acceptance (authenticated but not org-scoped)
+	v1.POST("invite/:code/accept", s.jwtMiddleware, s.acceptOrganisationInvite)
 
 	users := v1.Group("user")
 	users.Use(s.jwtMiddleware)

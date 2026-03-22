@@ -16,7 +16,28 @@ type Organisation struct {
 	ID        string     `json:"id" db:"id"`
 	Name      string     `json:"name" db:"name"`
 	Icon      *string    `json:"icon,omitempty" db:"icon"`
+	Role      string     `json:"role,omitempty" db:"role"`
 	CreatedAt *time.Time `json:"created_at" db:"created_at"`
+}
+
+type OrganisationMember struct {
+	UserID   string     `json:"user_id" db:"user_id"`
+	Name     string     `json:"name" db:"name"`
+	Role     string     `json:"role" db:"role"`
+	JoinedAt *time.Time `json:"joined_at" db:"joined_at"`
+}
+
+type OrganisationInvite struct {
+	ID             string     `json:"id" db:"id"`
+	OrganisationID string     `json:"organisation_id" db:"organisation_id"`
+	Email          *string    `json:"email,omitempty" db:"email"`
+	InviteCode     string     `json:"invite_code" db:"invite_code"`
+	Role           string     `json:"role" db:"role"`
+	CreatedBy      string     `json:"created_by" db:"created_by"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	AcceptedAt     *time.Time `json:"accepted_at,omitempty" db:"accepted_at"`
+	AcceptedBy     *string    `json:"accepted_by,omitempty" db:"accepted_by"`
+	ExpiresAt      time.Time  `json:"expires_at" db:"expires_at"`
 }
 
 type User struct {

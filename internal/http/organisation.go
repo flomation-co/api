@@ -65,7 +65,7 @@ func (s *Service) createOrganisation(c *gin.Context) {
 		return
 	}
 
-	if err := s.persistence.AddUserToOrganisation(*id, s.getUserFromContext(c).ID); err != nil {
+	if err := s.persistence.AddUserToOrganisation(*id, s.getUserFromContext(c).ID, "admin"); err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to add user to organisation")

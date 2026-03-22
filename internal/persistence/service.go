@@ -23,7 +23,15 @@ type Service struct {
 	stmtGetOrganisationByID   *sqlx.NamedStmt
 	stmtCreateOrganisation    *sqlx.NamedStmt
 	stmtUpdateOrganisation    *sqlx.NamedStmt
-	stmtAddUserToOrganisation *sqlx.NamedStmt
+	stmtAddUserToOrganisation        *sqlx.NamedStmt
+	stmtGetOrganisationMembers       *sqlx.NamedStmt
+	stmtRemoveUserFromOrganisation   *sqlx.NamedStmt
+	stmtGetUserRoleInOrganisation    *sqlx.NamedStmt
+	stmtCreateOrganisationInvite     *sqlx.NamedStmt
+	stmtGetOrganisationInvites       *sqlx.NamedStmt
+	stmtGetInviteByCode              *sqlx.NamedStmt
+	stmtAcceptInvite                 *sqlx.NamedStmt
+	stmtRevokeInvite                 *sqlx.NamedStmt
 
 	stmtGetUserByID *sqlx.NamedStmt
 	stmtCreateUser  *sqlx.NamedStmt
@@ -139,10 +147,11 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetOrganisations, err = s.conn.PrepareNamed(`
 		SELECT
-		    id,
-		    name,
-		    icon,
-		    created_at
+		    o.id,
+		    o.name,
+		    o.icon,
+		    o.created_at,
+		    ou.role
 		FROM
 		    organisation o
 		INNER JOIN
@@ -200,11 +209,106 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtAddUserToOrganisation, err = s.conn.PrepareNamed(`
 		INSERT INTO organisation_user (
 			organisation_id,
-			user_id
+			user_id,
+			role
 		) VALUES (
 		    :organisation_id,
-			:user_id
+			:user_id,
+			:role
 		);
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrganisationMembers, err = s.conn.PrepareNamed(`
+		SELECT
+		    ou.user_id,
+		    u.name,
+		    ou.role
+		FROM
+		    organisation_user ou
+		INNER JOIN
+		    users u ON u.id = ou.user_id
+		WHERE
+		    ou.organisation_id = :organisation_id
+		ORDER BY
+		    ou.role, u.name;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRemoveUserFromOrganisation, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_user
+		WHERE organisation_id = :organisation_id AND user_id = :user_id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUserRoleInOrganisation, err = s.conn.PrepareNamed(`
+		SELECT role FROM organisation_user
+		WHERE organisation_id = :organisation_id AND user_id = :user_id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateOrganisationInvite, err = s.conn.PrepareNamed(`
+		INSERT INTO organisation_invite (
+			organisation_id, email, role, created_by
+		) VALUES (
+			:organisation_id, :email, :role, :created_by
+		) RETURNING id, invite_code, created_at, expires_at;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrganisationInvites, err = s.conn.PrepareNamed(`
+		SELECT
+		    id, organisation_id, email, invite_code, role,
+		    created_by, created_at, accepted_at, accepted_by, expires_at
+		FROM
+		    organisation_invite
+		WHERE
+		    organisation_id = :organisation_id
+		    AND accepted_at IS NULL
+		    AND expires_at > CURRENT_TIMESTAMP
+		ORDER BY
+		    created_at DESC;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetInviteByCode, err = s.conn.PrepareNamed(`
+		SELECT
+		    id, organisation_id, email, invite_code, role,
+		    created_by, created_at, accepted_at, accepted_by, expires_at
+		FROM
+		    organisation_invite
+		WHERE
+		    invite_code = :invite_code
+		    AND accepted_at IS NULL
+		    AND expires_at > CURRENT_TIMESTAMP;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtAcceptInvite, err = s.conn.PrepareNamed(`
+		UPDATE organisation_invite
+		SET accepted_at = CURRENT_TIMESTAMP, accepted_by = :accepted_by
+		WHERE id = :id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRevokeInvite, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_invite WHERE id = :id AND organisation_id = :organisation_id;
 	`)
 	if err != nil {
 		return nil, err
@@ -1647,18 +1751,136 @@ func (s *Service) UpdateOrganisation(organisation api.Organisation) error {
 	return nil
 }
 
-func (s *Service) AddUserToOrganisation(organisationID string, userID string) error {
+func (s *Service) AddUserToOrganisation(organisationID string, userID string, role ...string) error {
+	r := "member"
+	if len(role) > 0 {
+		r = role[0]
+	}
+
 	if _, err := s.stmtAddUserToOrganisation.Exec(struct {
+		OrganisationID string `db:"organisation_id"`
+		UserID         string `db:"user_id"`
+		Role           string `db:"role"`
+	}{
+		OrganisationID: organisationID,
+		UserID:         userID,
+		Role:           r,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) GetOrganisationMembers(organisationID string) ([]*api.OrganisationMember, error) {
+	var results []*api.OrganisationMember
+	if err := s.stmtGetOrganisationMembers.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: organisationID,
+	}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) RemoveUserFromOrganisation(organisationID string, userID string) error {
+	_, err := s.stmtRemoveUserFromOrganisation.Exec(struct {
+		OrganisationID string `db:"organisation_id"`
+		UserID         string `db:"user_id"`
+	}{
+		OrganisationID: organisationID,
+		UserID:         userID,
+	})
+	return err
+}
+
+func (s *Service) GetUserRoleInOrganisation(organisationID string, userID string) (*string, error) {
+	var role string
+	if err := s.stmtGetUserRoleInOrganisation.Get(&role, struct {
 		OrganisationID string `db:"organisation_id"`
 		UserID         string `db:"user_id"`
 	}{
 		OrganisationID: organisationID,
 		UserID:         userID,
 	}); err != nil {
-		return err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
+	return &role, nil
+}
 
-	return nil
+func (s *Service) CreateOrganisationInvite(organisationID string, email *string, role string, createdBy string) (*api.OrganisationInvite, error) {
+	var invite api.OrganisationInvite
+	if err := s.stmtCreateOrganisationInvite.Get(&invite, struct {
+		OrganisationID string  `db:"organisation_id"`
+		Email          *string `db:"email"`
+		Role           string  `db:"role"`
+		CreatedBy      string  `db:"created_by"`
+	}{
+		OrganisationID: organisationID,
+		Email:          email,
+		Role:           role,
+		CreatedBy:      createdBy,
+	}); err != nil {
+		return nil, err
+	}
+	invite.OrganisationID = organisationID
+	invite.Email = email
+	invite.Role = role
+	invite.CreatedBy = createdBy
+	return &invite, nil
+}
+
+func (s *Service) GetOrganisationInvites(organisationID string) ([]*api.OrganisationInvite, error) {
+	var results []*api.OrganisationInvite
+	if err := s.stmtGetOrganisationInvites.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: organisationID,
+	}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) GetInviteByCode(code string) (*api.OrganisationInvite, error) {
+	var invite api.OrganisationInvite
+	if err := s.stmtGetInviteByCode.Get(&invite, struct {
+		InviteCode string `db:"invite_code"`
+	}{
+		InviteCode: code,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &invite, nil
+}
+
+func (s *Service) AcceptInvite(inviteID string, acceptedBy string) error {
+	_, err := s.stmtAcceptInvite.Exec(struct {
+		ID         string `db:"id"`
+		AcceptedBy string `db:"accepted_by"`
+	}{
+		ID:         inviteID,
+		AcceptedBy: acceptedBy,
+	})
+	return err
+}
+
+func (s *Service) RevokeInvite(inviteID string, organisationID string) error {
+	_, err := s.stmtRevokeInvite.Exec(struct {
+		ID             string `db:"id"`
+		OrganisationID string `db:"organisation_id"`
+	}{
+		ID:             inviteID,
+		OrganisationID: organisationID,
+	})
+	return err
 }
 
 func (s *Service) GetUserByID(ID string) (*api.User, error) {

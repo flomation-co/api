@@ -6,7 +6,15 @@ import "flomation.app/automate/api"
 // This interface is satisfied by *persistence.Service and enables testing
 // with mock implementations.
 type Persistence interface {
-	AddUserToOrganisation(organisationID string, userID string) error
+	AddUserToOrganisation(organisationID string, userID string, role ...string) error
+	GetOrganisationMembers(organisationID string) ([]*api.OrganisationMember, error)
+	RemoveUserFromOrganisation(organisationID string, userID string) error
+	GetUserRoleInOrganisation(organisationID string, userID string) (*string, error)
+	CreateOrganisationInvite(organisationID string, email *string, role string, createdBy string) (*api.OrganisationInvite, error)
+	GetOrganisationInvites(organisationID string) ([]*api.OrganisationInvite, error)
+	GetInviteByCode(code string) (*api.OrganisationInvite, error)
+	AcceptInvite(inviteID string, acceptedBy string) error
+	RevokeInvite(inviteID string, organisationID string) error
 	CreateEnvironment(environment api.Environment) (*string, error)
 	CreateEnvironmentProperty(environmentID string, environmentKey string, property api.EnvironmentProperty) (*string, error)
 	CreateEnvironmentSecret(environmentID string, environmentKey string, secret api.CreateEnvironmentSecret) (*string, error)

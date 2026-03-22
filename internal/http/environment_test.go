@@ -69,7 +69,29 @@ func (m *mockPersistence) GetEnvironmentSecretByName(environmentID string, envir
 }
 
 // Unused interface methods — panic to catch unintended calls during tests.
-func (m *mockPersistence) AddUserToOrganisation(string, string) error { panic("not implemented") }
+func (m *mockPersistence) AddUserToOrganisation(string, string, ...string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetOrganisationMembers(string) ([]*api.OrganisationMember, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) RemoveUserFromOrganisation(string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetUserRoleInOrganisation(string, string) (*string, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) CreateOrganisationInvite(string, *string, string, string) (*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetOrganisationInvites(string) ([]*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetInviteByCode(string) (*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) AcceptInvite(string, string) error { panic("not implemented") }
+func (m *mockPersistence) RevokeInvite(string, string) error { panic("not implemented") }
 func (m *mockPersistence) CreateEnvironment(api.Environment) (*string, error) {
 	panic("not implemented")
 }
