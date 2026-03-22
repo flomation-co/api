@@ -3403,6 +3403,18 @@ func (s *Service) CreateTriggerWithType(trigger api.Trigger) (*string, error) {
 	return &ID, nil
 }
 
+func (s *Service) GetTriggersByFloID(floID string) ([]*api.Trigger, error) {
+	var triggers []*api.Trigger
+	if err := s.stmtGetFloTriggers.Select(&triggers, struct {
+		FloID string `db:"id"`
+	}{
+		FloID: floID,
+	}); err != nil {
+		return nil, err
+	}
+	return triggers, nil
+}
+
 func (s *Service) LinkFloToTrigger(floID string, triggerID string) error {
 	_, err := s.stmtLinkFloToTrigger.Exec(struct {
 		FloID     string `db:"flo_id"`

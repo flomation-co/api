@@ -200,7 +200,10 @@ func (m *mockPersistence) UpdateFlo(api.Flo) error                        { pani
 func (m *mockPersistence) UpdateOrganisation(api.Organisation) error       { panic("not implemented") }
 func (m *mockPersistence) UpdateRunnerLastContact(string, string) error    { panic("not implemented") }
 func (m *mockPersistence) UpdateTrigger(api.Trigger) error                 { panic("not implemented") }
-func (m *mockPersistence) LinkFloToTrigger(string, string) error           { panic("not implemented") }
+func (m *mockPersistence) GetTriggersByFloID(string) ([]*api.Trigger, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) LinkFloToTrigger(string, string) error { panic("not implemented") }
 func (m *mockPersistence) UpdateUser(*api.User) error                      { panic("not implemented") }
 
 func setupTestService(mock *mockPersistence) *Service {

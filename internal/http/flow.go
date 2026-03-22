@@ -302,7 +302,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 	}
 
 	// Get existing triggers for this flow to avoid duplicates
-	existingTriggers, _ := s.persistence.GetTriggers(user.ID)
+	existingTriggers, _ := s.persistence.GetTriggersByFloID(FloID)
 
 	for _, node := range revisionData.Nodes {
 		label := node.Data.Label
@@ -334,7 +334,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		// Check if a trigger of this type already exists for this flow
 		var existingID *string
 		for _, et := range existingTriggers {
-			if et.FloID != nil && *et.FloID == FloID && et.TypeName == typeName {
+			if et.TypeName == typeName {
 				existingID = &et.ID
 				break
 			}

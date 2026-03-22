@@ -75,6 +75,7 @@ type Persistence interface {
 	UpdateOrganisation(organisation api.Organisation) error
 	UpdateRunnerLastContact(ID string, IPAddress string) error
 	UpdateTrigger(trigger api.Trigger) error
+	GetTriggersByFloID(floID string) ([]*api.Trigger, error)
 	LinkFloToTrigger(floID string, triggerID string) error
 	UpdateUser(user *api.User) error
 }
