@@ -205,7 +205,12 @@ func (s *Service) getExecutions(c *gin.Context) {
 
 	user := s.getUserFromContext(c)
 
-	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, nil)
+	var orgID *string
+	if len(user.Organisations) > 0 {
+		orgID = &user.Organisations[0].ID
+	}
+
+	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, orgID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,

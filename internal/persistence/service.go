@@ -62,10 +62,14 @@ type Service struct {
 	stmtGetFloTriggers *sqlx.NamedStmt
 
 	stmtGetLatestExecutionForFlo  *sqlx.NamedStmt
-	stmtGetExecutions             *sqlx.NamedStmt
-	stmtGetExecutionsWithFilter   *sqlx.NamedStmt
-	stmtCountExecutions           *sqlx.NamedStmt
-	stmtCountExecutionsWithFilter *sqlx.NamedStmt
+	stmtGetExecutions               *sqlx.NamedStmt
+	stmtGetExecutionsWithFilter     *sqlx.NamedStmt
+	stmtCountExecutions             *sqlx.NamedStmt
+	stmtCountExecutionsWithFilter   *sqlx.NamedStmt
+	stmtGetOrgExecutions            *sqlx.NamedStmt
+	stmtGetOrgExecutionsWithFilter  *sqlx.NamedStmt
+	stmtCountOrgExecutions          *sqlx.NamedStmt
+	stmtCountOrgExecutionsWithFilter *sqlx.NamedStmt
 
 	stmtGetDefaultTriggerForFlo *sqlx.NamedStmt
 	stmtGetTriggerForFlo        *sqlx.NamedStmt
@@ -821,10 +825,9 @@ func NewService(config *config.Config) (*Service, error) {
 		INNER JOIN
 			flo f ON f.id = e.flo_id
 		WHERE
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
-		ORDER BY 
+		    e.owner_id = :user_id
+		    AND e.organisation_id IS NULL
+		ORDER BY
 		    e.created_at DESC
 		OFFSET :offset
 		LIMIT :limit
@@ -835,72 +838,90 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT
-		    e.id,
-		    e.flo_id,
-		    f.name,
-		    e.owner_id,
-		    e.organisation_id,
-		    e.created_at,
-		    e.updated_at,
-		    e.completed_at,
-		    e.triggered_by,
-		    e.execution_status,
-		    e.completion_status,
-			e.result->'duration' AS duration,
-			e.result->'billingDuration' AS billing_duration,
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id
-		WHERE
-		    (CAST(e.id AS TEXT) LIKE LOWER(:search)
-		OR
-		    LOWER(f.name) LIKE LOWER(:search))
-		AND
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
-		ORDER BY 
-		    e.created_at DESC
-		OFFSET :offset
-		LIMIT :limit
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.owner_id = :user_id AND e.organisation_id IS NULL
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
 	`)
 	if err != nil {
 		return nil, err
 	}
 
 	s.stmtCountExecutions, err = s.conn.PrepareNamed(`
-		SELECT
-		    COUNT(1)
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id
-		WHERE
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
 	if err != nil {
 		return nil, err
 	}
 
 	s.stmtCountExecutionsWithFilter, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.owner_id = :user_id AND e.organisation_id IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgExecutions, err = s.conn.PrepareNamed(`
 		SELECT
-		    COUNT(1)
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id
-		WHERE
-		    (CAST(e.id AS TEXT) LIKE LOWER(:search)
-		OR
-		    LOWER(f.name) LIKE LOWER(:search))
-		AND
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.organisation_id = :organisation_id
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
+		SELECT
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.organisation_id = :organisation_id
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgExecutions, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.organisation_id = :organisation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.organisation_id = :organisation_id
 	`)
 	if err != nil {
 		return nil, err
@@ -2314,69 +2335,68 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 	var results []*api.Execution
 	var count int64
 
-	if search != "" {
-		if err := s.stmtGetExecutionsWithFilter.Select(&results, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			Search         string  `db:"search"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			Search:         "%" + search + "%",
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("1")
-			return nil, 0, err
-		}
+	isOrg := organisationID != nil && *organisationID != ""
 
-		if err := s.stmtCountExecutionsWithFilter.Get(&count, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			Search         string  `db:"search"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			Search:         "%" + search + "%",
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("2")
-			return nil, 0, err
+	if isOrg {
+		orgID := *organisationID
+		if search != "" {
+			if err := s.stmtGetOrgExecutionsWithFilter.Select(&results, struct {
+				Offset         int64  `db:"offset"`
+				Limited        int64  `db:"limit"`
+				Search         string `db:"search"`
+				OrganisationID string `db:"organisation_id"`
+			}{Offset: offset, Limited: limit, Search: "%" + search + "%", OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountOrgExecutionsWithFilter.Get(&count, struct {
+				Search         string `db:"search"`
+				OrganisationID string `db:"organisation_id"`
+			}{Search: "%" + search + "%", OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetOrgExecutions.Select(&results, struct {
+				Offset         int64  `db:"offset"`
+				Limited        int64  `db:"limit"`
+				OrganisationID string `db:"organisation_id"`
+			}{Offset: offset, Limited: limit, OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountOrgExecutions.Get(&count, struct {
+				OrganisationID string `db:"organisation_id"`
+			}{OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
 		}
 	} else {
-		if err := s.stmtGetExecutions.Select(&results, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("3")
-			return nil, 0, err
-		}
-
-		if err := s.stmtCountExecutions.Get(&count, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("4")
-			return nil, 0, err
+		if search != "" {
+			if err := s.stmtGetExecutionsWithFilter.Select(&results, struct {
+				Offset int64  `db:"offset"`
+				Limited int64  `db:"limit"`
+				Search string `db:"search"`
+				UserID string `db:"user_id"`
+			}{Offset: offset, Limited: limit, Search: "%" + search + "%", UserID: userID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountExecutionsWithFilter.Get(&count, struct {
+				Search string `db:"search"`
+				UserID string `db:"user_id"`
+			}{Search: "%" + search + "%", UserID: userID}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetExecutions.Select(&results, struct {
+				Offset int64  `db:"offset"`
+				Limited int64  `db:"limit"`
+				UserID string `db:"user_id"`
+			}{Offset: offset, Limited: limit, UserID: userID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountExecutions.Get(&count, struct {
+				UserID string `db:"user_id"`
+			}{UserID: userID}); err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 
