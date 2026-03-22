@@ -31,17 +31,20 @@ func (s *Service) getUser(c *gin.Context) {
 	}
 
 	tkn := s.getTokenFromContext(c)
+	if tkn != nil {
+		a, err := s.identity.GetAccount(*tkn)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Warn("unable to get identity account, returning user without email")
+		} else if a != nil {
+			user.EmailAddress = &a.Username
 
-	a, err := s.identity.GetAccount(*tkn)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"Error": err,
-		}).Error("unable to get identity account")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
+			if a.DisplayName != nil && *a.DisplayName != "" {
+				user.Name = *a.DisplayName
+			}
+		}
 	}
-
-	user.EmailAddress = &a.Username
 
 	c.JSON(http.StatusOK, user)
 }
@@ -94,6 +97,15 @@ func (s *Service) updateUser(c *gin.Context) {
 		}).Error("unable to update user")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	tkn := s.getTokenFromContext(c)
+	if tkn != nil {
+		if err := s.identity.UpdateDisplayName(*tkn, updatedUser.Name); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Warn("unable to sync display name to identity service")
+		}
 	}
 
 	c.JSON(http.StatusOK, updatedUser)

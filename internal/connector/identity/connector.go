@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,12 +12,13 @@ import (
 )
 
 type Account struct {
-	ID        string     `json:"id"`
-	Username  string     `json:"username"`
-	CreatedOn *time.Time `json:"created_on" `
-	Locked    bool       `json:"locked"`
-	LastLogin *time.Time `json:"last_login" `
-	Type      int64      `json:"type"`
+	ID          string     `json:"id"`
+	Username    string     `json:"username"`
+	DisplayName *string    `json:"display_name"`
+	CreatedOn   *time.Time `json:"created_on"`
+	Locked      bool       `json:"locked"`
+	LastLogin   *time.Time `json:"last_login"`
+	Type        int64      `json:"type"`
 }
 
 type Connector struct {
@@ -70,4 +72,44 @@ func (c *Connector) GetAccount(token string) (*Account, error) {
 	}
 
 	return &account, nil
+}
+
+func (c *Connector) UpdateDisplayName(token string, displayName string) error {
+	client := http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	url := fmt.Sprintf("%v/api/user", c.config.Security.IdentityService)
+
+	body, err := json.Marshal(map[string]string{
+		"display_name": displayName,
+	})
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+	}()
+
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return fmt.Errorf("unable to update display name: %v", response.Status)
+	}
+
+	return nil
 }

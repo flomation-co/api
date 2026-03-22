@@ -74,6 +74,7 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	}
 
 	c.Set("account_id", *userID)
+	c.Set("jwt", headerParts[1])
 
 	organisationID := c.Query("organisation")
 	if organisationID != "" {
