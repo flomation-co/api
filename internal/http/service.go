@@ -53,12 +53,12 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	header := c.GetHeader("Authorization")
 	headerParts := strings.Split(header, " ")
 	if len(headerParts) != 2 {
-		c.AbortWithStatus(http.StatusBadRequest)
+		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
 	if strings.ToLower(headerParts[0]) != "bearer" {
-		c.AbortWithStatus(http.StatusBadRequest)
+		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
@@ -67,9 +67,8 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 		log.WithFields(log.Fields{
 			"error": err,
 			"url":   s.config.Security.IdentityService,
-			"token": headerParts[1],
 		}).Error("unable to contact identity service")
-		c.AbortWithStatus(http.StatusBadRequest)
+		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
