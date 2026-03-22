@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"flomation.app/automate/api"
@@ -55,6 +56,9 @@ func (s *Service) updateExecutionState(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+
+	// Notify SSE subscribers of the status change
+	s.logHub.Publish(id, []string{"__STATUS__:" + executionStatus.State})
 
 	c.Status(http.StatusOK)
 }
@@ -310,6 +314,12 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 				_, _ = fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", status)
 				c.Writer.Flush()
 				return
+			}
+			if strings.HasPrefix(line, "__STATUS__:") {
+				status := strings.TrimPrefix(line, "__STATUS__:")
+				_, _ = fmt.Fprintf(c.Writer, "event: status\ndata: %s\n\n", status)
+				c.Writer.Flush()
+				continue
 			}
 			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", line)
 			c.Writer.Flush()
