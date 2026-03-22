@@ -401,6 +401,51 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		}
 	}
 
+	// Remove triggers that are no longer in the revision
+	// Collect type names of triggers found in this revision
+	revisionTriggerTypes := make(map[string]bool)
+	for _, node := range revisionData.Nodes {
+		label := node.Data.Label
+		if label == "" {
+			continue
+		}
+		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
+		isManual := label == "trigger/manual"
+		if isTrigger && !isManual {
+			tn := strings.TrimPrefix(label, "trigger/")
+			tn = strings.ReplaceAll(tn, "_", "-")
+			revisionTriggerTypes[tn] = true
+		}
+	}
+
+	for _, et := range existingTriggers {
+		if et.TypeName == "manual" {
+			continue
+		}
+		if !revisionTriggerTypes[et.TypeName] {
+			// Trigger was removed from the flow — disable in Launch and delete from API
+			if err := s.launch.DisableTrigger(et.ID, authToken); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": et.ID,
+				}).Warn("unable to disable removed trigger in launch service")
+			}
+
+			if err := s.persistence.DeleteTrigger(et.ID); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": et.ID,
+				}).Warn("unable to delete removed trigger")
+			}
+
+			log.WithFields(log.Fields{
+				"trigger_id": et.ID,
+				"type":       et.TypeName,
+				"flo_id":     FloID,
+			}).Info("removed trigger no longer in flow revision")
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"revision_id": id,
 	})
