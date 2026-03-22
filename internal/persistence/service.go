@@ -128,7 +128,8 @@ type Service struct {
 	stmtInsertEnvironmentSecret    *sqlx.NamedStmt
 	stmtDeleteEnvironmentSecret    *sqlx.NamedStmt
 
-	stmtGetUsageThisMonthForUserID *sqlx.NamedStmt
+	stmtGetUsageThisMonthForUserID    *sqlx.NamedStmt
+	stmtGetUsageThisMonthForOrgID    *sqlx.NamedStmt
 
 	stmtGetTriggers        *sqlx.NamedStmt
 	stmtGetTriggerByID     *sqlx.NamedStmt
@@ -1752,14 +1753,32 @@ func NewService(config *config.Config) (*Service, error) {
 				ELSE CAST(e.result->>'duration' AS INT)
 			END) AS usage,
 		    50 * 1000 AS allowance
-		FROM 
+		FROM
 		    execution e
-		WHERE 
+		WHERE
 			created_at > cast(date_trunc('month', current_date) as date)
 		AND
-			(owner_id = :owner_id
-		OR
-			organisation_id = :organisation_id);
+			owner_id = :owner_id
+		AND
+			organisation_id IS NULL;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUsageThisMonthForOrgID, err = db.PrepareNamed(`
+		SELECT
+			SUM(CASE
+				WHEN e.result->'duration' IS NULL THEN 0
+				ELSE CAST(e.result->>'duration' AS INT)
+			END) AS usage,
+		    50 * 1000 AS allowance
+		FROM
+		    execution e
+		WHERE
+			created_at > cast(date_trunc('month', current_date) as date)
+		AND
+			organisation_id = :organisation_id;
 	`)
 	if err != nil {
 		return nil, err
@@ -3324,13 +3343,22 @@ func (s *Service) DeleteTrigger(id string) error {
 
 func (s *Service) GetUsage(ownerID string, organisationID *string) (*api.UserDashboard, error) {
 	var result api.UserDashboard
-	err := s.stmtGetUsageThisMonthForUserID.Get(&result, struct {
-		OwnerID        string  `db:"owner_id"`
-		OrganisationID *string `db:"organisation_id"`
-	}{
-		OwnerID:        ownerID,
-		OrganisationID: organisationID,
-	})
+	var err error
+
+	if organisationID != nil && *organisationID != "" {
+		err = s.stmtGetUsageThisMonthForOrgID.Get(&result, struct {
+			OrganisationID string `db:"organisation_id"`
+		}{
+			OrganisationID: *organisationID,
+		})
+	} else {
+		err = s.stmtGetUsageThisMonthForUserID.Get(&result, struct {
+			OwnerID string `db:"owner_id"`
+		}{
+			OwnerID: ownerID,
+		})
+	}
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
