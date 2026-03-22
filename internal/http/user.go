@@ -31,20 +31,19 @@ func (s *Service) getUser(c *gin.Context) {
 	}
 
 	tkn := s.getTokenFromContext(c)
+	if tkn != nil {
+		a, err := s.identity.GetAccount(*tkn)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Warn("unable to get identity account, returning user without email")
+		} else if a != nil {
+			user.EmailAddress = &a.Username
 
-	a, err := s.identity.GetAccount(*tkn)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"Error": err,
-		}).Error("unable to get identity account")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	user.EmailAddress = &a.Username
-
-	if a.DisplayName != nil && *a.DisplayName != "" {
-		user.Name = *a.DisplayName
+			if a.DisplayName != nil && *a.DisplayName != "" {
+				user.Name = *a.DisplayName
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, user)
