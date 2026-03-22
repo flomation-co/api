@@ -3,8 +3,10 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
@@ -123,6 +125,13 @@ func (s *Service) updateExecution(c *gin.Context) {
 		return
 	}
 
+	// Notify SSE subscribers that execution is complete
+	s.logHub.Complete(id)
+	go func() {
+		time.Sleep(5 * time.Second)
+		s.logHub.Cleanup(id)
+	}()
+
 	c.Status(http.StatusOK)
 }
 
@@ -213,4 +222,94 @@ func (s *Service) getExecutions(c *gin.Context) {
 	c.Writer.Header().Set("x-total-items", fmt.Sprintf("%v", count))
 
 	c.JSON(http.StatusOK, executions)
+}
+
+func (s *Service) appendExecutionLogs(c *gin.Context) {
+	id := c.Param("id")
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		Lines []string `json:"lines"`
+	}
+
+	if err := json.Unmarshal(body, &payload); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if len(payload.Lines) > 0 {
+		s.logHub.Publish(id, payload.Lines)
+	}
+
+	c.Status(http.StatusOK)
+}
+
+func (s *Service) streamExecutionLogs(c *gin.Context) {
+	id := c.Param("id")
+
+	// Verify the execution exists
+	exec, err := s.persistence.GetExecutionByID(id)
+	if err != nil || exec == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+
+	ch, buffered := s.logHub.Subscribe(id)
+	defer s.logHub.Unsubscribe(id, ch)
+
+	// Send buffered lines first
+	for _, line := range buffered {
+		fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+	}
+	c.Writer.Flush()
+
+	// If execution is already complete, send completion and close
+	if exec.CompletionStatus != "pending" {
+		fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", exec.CompletionStatus)
+		c.Writer.Flush()
+		return
+	}
+
+	// Stream new lines as they arrive
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case line, ok := <-ch:
+			if !ok {
+				return
+			}
+			if line == "__COMPLETE__" {
+				// Re-fetch to get final status
+				final, _ := s.persistence.GetExecutionByID(id)
+				status := "unknown"
+				if final != nil {
+					status = final.CompletionStatus
+				}
+				fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", status)
+				c.Writer.Flush()
+				return
+			}
+			fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+			c.Writer.Flush()
+
+		case <-ticker.C:
+			// Keep-alive comment
+			fmt.Fprintf(c.Writer, ": keepalive\n\n")
+			c.Writer.Flush()
+
+		case <-c.Request.Context().Done():
+			return
+		}
+	}
 }

@@ -26,6 +26,7 @@ type Service struct {
 	identity    *identity.Connector
 	launch      *launchconnector.Connector
 	migrator    *actions.Migrator
+	logHub      *LogHub
 }
 
 func corsMiddleware(c *gin.Context) {
@@ -83,6 +84,26 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	c.Next()
 }
 
+// streamAuthMiddleware authenticates SSE connections using a query parameter token,
+// since EventSource does not support custom headers.
+func (s *Service) streamAuthMiddleware(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := sentinel.GetUser(s.config.Security.IdentityService, token)
+	if err != nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	c.Set("account_id", *userID)
+	c.Set("jwt", token)
+	c.Next()
+}
+
 func NewService(config *config.Config, persistence *persistence.Service) *Service {
 	m, err := actions.NewMigrator(config)
 	if err != nil {
@@ -99,6 +120,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		identity:    identity.NewConnector(config),
 		launch:      launchconnector.NewConnector(config),
 		migrator:    m,
+		logHub:      NewLogHub(),
 	}
 
 	// API Group
@@ -155,10 +177,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	executions := v1.Group("execution")
 	executions.POST("/:id/state", s.executionMiddleware, s.updateExecutionState)
+	executions.POST("/:id/logs", s.executionMiddleware, s.appendExecutionLogs)
 	executions.POST("/:id", s.executionMiddleware, s.updateExecution)
 
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
+	executions.GET("/:id/stream", s.streamAuthMiddleware, s.streamExecutionLogs)
 
 	executions.GET("/:id/environment/:environment", s.executionMiddleware, s.getExecutionEnvironment)
 	executions.GET("/:id/environment/:environment/property/:name", s.executionMiddleware, s.getExecutionEnvironmentProperty)
