@@ -1438,9 +1438,10 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 		    environment
 		WHERE
-		    (owner_id = :owner_id)
-		OR 
-		    (organisation_id = :organisation_id)
+		    CASE
+		        WHEN :organisation_id IS NOT NULL THEN organisation_id = :organisation_id
+		        ELSE owner_id = :owner_id AND organisation_id IS NULL
+		    END
 	`)
 	if err != nil {
 		return nil, err

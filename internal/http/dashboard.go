@@ -10,7 +10,12 @@ import (
 func (s *Service) getDashboardData(c *gin.Context) {
 	user := s.getUserFromContext(c)
 
-	dashboard, err := s.persistence.GetUsage(user.ID, nil)
+	var orgID *string
+	if len(user.Organisations) > 0 {
+		orgID = &user.Organisations[0].ID
+	}
+
+	dashboard, err := s.persistence.GetUsage(user.ID, orgID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
