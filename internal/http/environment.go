@@ -208,8 +208,9 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 		organisation = &user.Organisations[0].ID
 	}
 
+	var env *api.Environment
 	if err := uuid.Validate(id); err == nil {
-		env, err := s.persistence.GetEnvironmentByID(id, user.ID, organisation)
+		env, err = s.persistence.GetEnvironmentByID(id, user.ID, organisation)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -217,15 +218,8 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-
-		if env == nil {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		c.JSON(http.StatusOK, env)
 	} else {
-		env, err := s.persistence.GetEnvironmentByName(id, user.ID, organisation)
+		env, err = s.persistence.GetEnvironmentByName(id, user.ID, organisation)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -233,14 +227,19 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-
-		if env == nil {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		c.JSON(http.StatusOK, env)
 	}
+
+	if env == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, env.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	c.JSON(http.StatusOK, env)
 }
 
 func (s *Service) createEnvironment(c *gin.Context) {

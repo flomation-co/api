@@ -72,6 +72,7 @@ func (s *Service) getMyFlos(c *gin.Context) {
 
 func (s *Service) getFloByID(c *gin.Context) {
 	ID := c.Param("FloID")
+	user := s.getUserFromContext(c)
 
 	flo, err := s.persistence.GetFloByID(ID)
 	if err != nil {
@@ -84,6 +85,11 @@ func (s *Service) getFloByID(c *gin.Context) {
 
 	if flo == nil {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, flo.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 
@@ -202,6 +208,7 @@ func (s *Service) updateFlo(c *gin.Context) {
 
 func (s *Service) deleteFlo(c *gin.Context) {
 	ID := c.Param("FloID")
+	user := s.getUserFromContext(c)
 
 	flo, err := s.persistence.GetFloByID(ID)
 	if err != nil {
@@ -214,6 +221,11 @@ func (s *Service) deleteFlo(c *gin.Context) {
 
 	if flo == nil {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, flo.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 

@@ -137,6 +137,7 @@ func (s *Service) updateExecution(c *gin.Context) {
 
 func (s *Service) getExecutionByID(c *gin.Context) {
 	id := c.Param("id")
+	user := s.getUserFromContext(c)
 
 	exec, err := s.persistence.GetExecutionByID(id)
 	if err != nil {
@@ -149,6 +150,11 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 
 	if exec == nil {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, exec.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 

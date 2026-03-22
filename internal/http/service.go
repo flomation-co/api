@@ -292,3 +292,16 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 
 	return u
 }
+
+// verifyOrgAccess checks that the resource's organisation_id matches the
+// user's current org context. In personal mode (no org selected), only
+// resources with null organisation_id are accessible. In org mode, only
+// resources belonging to that organisation are accessible.
+func (s *Service) verifyOrgAccess(user *api.User, resourceOrgID *string) bool {
+	if len(user.Organisations) > 0 {
+		// Org mode — resource must belong to this org
+		return resourceOrgID != nil && *resourceOrgID == user.Organisations[0].ID
+	}
+	// Personal mode — resource must have no org
+	return resourceOrgID == nil
+}
