@@ -301,6 +301,9 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		authToken = *tkn
 	}
 
+	// Get existing triggers for this flow to avoid duplicates
+	existingTriggers, _ := s.persistence.GetTriggers(user.ID)
+
 	for _, node := range revisionData.Nodes {
 		label := node.Data.Label
 		if label == "" {
@@ -314,7 +317,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			continue
 		}
 
-		// Map the trigger type name (e.g., "trigger/schedule" -> "schedule", "trigger/git_poll" -> "git-poll")
+		// Map the trigger type name
 		typeName := strings.TrimPrefix(label, "trigger/")
 		typeName = strings.ReplaceAll(typeName, "_", "-")
 
@@ -328,40 +331,66 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			}
 		}
 
-		// Create or update the trigger in the API database
-		trigger := api.Trigger{
-			Name:     label,
-			TypeName: typeName,
-			FloID:    &FloID,
-			Data:     triggerData,
-		}
-
-		if user != nil {
-			trigger.OwnerID = &user.ID
-			if len(user.Organisations) > 0 {
-				trigger.OrganisationID = &user.Organisations[0].ID
+		// Check if a trigger of this type already exists for this flow
+		var existingID *string
+		for _, et := range existingTriggers {
+			if et.FloID != nil && *et.FloID == FloID && et.Type == typeName {
+				existingID = &et.ID
+				break
 			}
 		}
 
-		triggerID, err := s.persistence.CreateTriggerWithType(trigger)
-		if err != nil {
+		if existingID != nil {
+			// Update existing trigger data
+			trigger := api.Trigger{
+				ID:       *existingID,
+				Name:     label,
+				TypeName: typeName,
+				FloID:    &FloID,
+				Data:     triggerData,
+			}
+
+			if err := s.persistence.UpdateTrigger(trigger); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": *existingID,
+				}).Warn("unable to update trigger from revision node")
+			}
+
+			s.registerTriggerWithLaunch(*existingID, trigger, authToken)
+		} else {
+			// Create new trigger
+			trigger := api.Trigger{
+				Name:     label,
+				TypeName: typeName,
+				FloID:    &FloID,
+				Data:     triggerData,
+			}
+
+			if user != nil {
+				trigger.OwnerID = &user.ID
+				if len(user.Organisations) > 0 {
+					trigger.OrganisationID = &user.Organisations[0].ID
+				}
+			}
+
+			triggerID, err := s.persistence.CreateTriggerWithType(trigger)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err,
+					"type":  typeName,
+				}).Warn("unable to create trigger from revision node")
+				continue
+			}
+
+			s.registerTriggerWithLaunch(*triggerID, trigger, authToken)
+
 			log.WithFields(log.Fields{
-				"error":    err,
-				"type":     typeName,
-				"label":    label,
-				"node_id":  node.ID,
-			}).Warn("unable to create trigger from revision node")
-			continue
+				"trigger_id": *triggerID,
+				"type":       typeName,
+				"flo_id":     FloID,
+			}).Info("registered trigger from flow revision")
 		}
-
-		// Register with Launch service
-		s.registerTriggerWithLaunch(*triggerID, trigger, authToken)
-
-		log.WithFields(log.Fields{
-			"trigger_id": *triggerID,
-			"type":       typeName,
-			"flo_id":     FloID,
-		}).Info("registered trigger from flow revision")
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
