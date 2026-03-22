@@ -157,7 +157,7 @@ func (m *mockPersistence) GetQueuesByOrganisationID(string) ([]*api.Queue, error
 	panic("not implemented")
 }
 func (m *mockPersistence) GetQueueByID(string) (*api.Queue, error) { panic("not implemented") }
-func (m *mockPersistence) CreateQueue(string, string) (*string, error) {
+func (m *mockPersistence) CreateQueue(string, string, *string) (*string, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) DeleteQueue(string, string) error       { panic("not implemented") }

@@ -35,7 +35,8 @@ func (s *Service) getQueues(c *gin.Context) {
 }
 
 type CreateQueueRequest struct {
-	Name string `json:"name"`
+	Name     string  `json:"name"`
+	ParentID *string `json:"parent_id"`
 }
 
 func (s *Service) createQueue(c *gin.Context) {
@@ -69,7 +70,7 @@ func (s *Service) createQueue(c *gin.Context) {
 		return
 	}
 
-	id, err := s.persistence.CreateQueue(orgID, req.Name)
+	id, err := s.persistence.CreateQueue(orgID, req.Name, req.ParentID)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("unable to create queue")
 		c.AbortWithStatus(http.StatusBadRequest)

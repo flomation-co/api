@@ -87,9 +87,10 @@ type Flo struct {
 	Duration           *int64     `json:"duration" db:"duration"`
 	DurationAdditional *int64     `json:"duration_additional" db:"duration_additional"`
 	LastExecution      *Execution `json:"last_execution" db:"last_execution"`
-	EnvironmentID      *string    `json:"environment_id" db:"environment_id"`
-	EnvironmentName    *string    `json:"environment_name" db:"environment_name"`
-	HasValidationErrors bool      `json:"has_validation_errors,omitempty"`
+	EnvironmentID       *string    `json:"environment_id" db:"environment_id"`
+	EnvironmentName     *string    `json:"environment_name" db:"environment_name"`
+	QueueID             *string    `json:"queue_id" db:"queue_id"`
+	HasValidationErrors bool       `json:"has_validation_errors,omitempty"`
 }
 
 type Execution struct {
@@ -192,6 +193,7 @@ type Action struct {
 type Queue struct {
 	ID               string    `json:"id" db:"id"`
 	OrganisationID   *string   `json:"organisation_id" db:"organisation_id"`
+	ParentID         *string   `json:"parent_id" db:"parent_id"`
 	Name             string    `json:"name" db:"name"`
 	RegistrationCode string    `json:"registration_code" db:"registration_code"`
 	CreatedAt        time.Time `json:"created_at" db:"created_at"`

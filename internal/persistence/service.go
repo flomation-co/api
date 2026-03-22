@@ -391,6 +391,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -436,6 +437,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -517,6 +519,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
 			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
@@ -545,6 +548,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
 			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
@@ -591,6 +595,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,		    
 			(SELECT
 				 COUNT(1)
@@ -704,13 +709,14 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtUpdateFlo, err = s.conn.PrepareNamed(`
 		UPDATE flo
 		SET
-		    name = :name, 
-			organisation_id = :organisation_id, 
+		    name = :name,
+			organisation_id = :organisation_id,
 			author_id = :author_id,
 			scale = :scale,
 			x = :x,
 			y = :y,
-			environment_id = :environment_id
+			environment_id = :environment_id,
+			queue_id = :queue_id
 		WHERE
 		    id = :id
 	`)
@@ -1322,7 +1328,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtGetQueuesByOrganisationID, err = db.PrepareNamed(`
-		SELECT id, organisation_id, name, registration_code, created_at, location_code
+		SELECT id, organisation_id, parent_id, name, registration_code, created_at, location_code
 		FROM queue WHERE organisation_id = :organisation_id ORDER BY name
 	`)
 	if err != nil {
@@ -1330,7 +1336,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtGetQueueByID, err = db.PrepareNamed(`
-		SELECT id, organisation_id, name, registration_code, created_at, location_code
+		SELECT id, organisation_id, parent_id, name, registration_code, created_at, location_code
 		FROM queue WHERE id = :id
 	`)
 	if err != nil {
@@ -1338,7 +1344,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCreateQueue, err = db.PrepareNamed(`
-		INSERT INTO queue (organisation_id, name) VALUES (:organisation_id, :name)
+		INSERT INTO queue (organisation_id, parent_id, name) VALUES (:organisation_id, :parent_id, :name)
 		RETURNING id
 	`)
 	if err != nil {
@@ -2792,6 +2798,41 @@ func (s *Service) GetExecutionForRunnerID(ID string) (*api.Execution, error) {
 		}
 	}
 
+	// Check queue assignment: if the flow has a queue_id, verify the runner is in that queue
+	flo, err := s.GetFloByID(execution.FloID)
+	if err != nil {
+		return nil, err
+	}
+
+	if flo != nil && flo.QueueID != nil {
+		// Walk queue hierarchy to check if runner is assigned
+		matched := false
+		queueID := *flo.QueueID
+
+		for {
+			var count int64
+			if err := s.stmtCanRunnerAccessQueue.Get(&count, struct {
+				QueueID  string `db:"queue_id"`
+				RunnerID string `db:"runner_id"`
+			}{QueueID: queueID, RunnerID: r.ID}); err == nil && count > 0 {
+				matched = true
+				break
+			}
+
+			// Check parent queue
+			q, err := s.GetQueueByID(queueID)
+			if err != nil || q == nil || q.ParentID == nil {
+				break
+			}
+			queueID = *q.ParentID
+		}
+
+		if !matched {
+			// Runner not in the flow's queue hierarchy — no execution for this runner
+			return nil, nil
+		}
+	}
+
 	return &execution, nil
 }
 
@@ -2849,12 +2890,13 @@ func (s *Service) GetQueueByID(id string) (*api.Queue, error) {
 	return &queue, nil
 }
 
-func (s *Service) CreateQueue(organisationID string, name string) (*string, error) {
+func (s *Service) CreateQueue(organisationID string, name string, parentID *string) (*string, error) {
 	var id string
 	if err := s.stmtCreateQueue.Get(&id, struct {
-		OrganisationID string `db:"organisation_id"`
-		Name           string `db:"name"`
-	}{OrganisationID: organisationID, Name: name}); err != nil {
+		OrganisationID string  `db:"organisation_id"`
+		ParentID       *string `db:"parent_id"`
+		Name           string  `db:"name"`
+	}{OrganisationID: organisationID, ParentID: parentID, Name: name}); err != nil {
 		return nil, err
 	}
 	return &id, nil
