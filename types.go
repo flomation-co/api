@@ -13,11 +13,12 @@ const (
 )
 
 type Organisation struct {
-	ID        string     `json:"id" db:"id"`
-	Name      string     `json:"name" db:"name"`
-	Icon      *string    `json:"icon,omitempty" db:"icon"`
-	Role      string     `json:"role,omitempty" db:"role"`
-	CreatedAt *time.Time `json:"created_at" db:"created_at"`
+	ID                 string     `json:"id" db:"id"`
+	Name               string     `json:"name" db:"name"`
+	Icon               *string    `json:"icon,omitempty" db:"icon"`
+	Role               string     `json:"role,omitempty" db:"role"`
+	AllowPublicRunners bool       `json:"allow_public_runners" db:"allow_public_runners"`
+	CreatedAt          *time.Time `json:"created_at" db:"created_at"`
 }
 
 type OrganisationMember struct {

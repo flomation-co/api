@@ -166,6 +166,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    o.name,
 		    o.icon,
 		    o.created_at,
+		    o.allow_public_runners,
 		    ou.role
 		FROM
 		    organisation o
@@ -185,6 +186,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    id,
 		    name,
 		    icon,
+		    allow_public_runners,
 		    created_at
 		FROM
 		    organisation
@@ -209,12 +211,13 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtUpdateOrganisation, err = s.conn.PrepareNamed(`
-		UPDATE 
+		UPDATE
 		    organisation
 		SET
 			name = :name,
-			icon = :icon
-		WHERE 
+			icon = :icon,
+			allow_public_runners = :allow_public_runners
+		WHERE
 		    id = :id
 	`)
 	if err != nil {
@@ -1404,29 +1407,31 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetPendingExecutionByNullOrganisationID, err = db.PrepareNamed(`
 		SELECT
-		    id,
-		    flo_id,
-		    name,
-		    owner_id,
-		    organisation_id,
-		    created_at,
-		    updated_at,
-		    completed_at,
-		    triggered_by,
-		    execution_status,
-		    completion_status,
-		    data,
-		    runner_id,
-		    result,
-			result->'duration' AS duration,
-			result->'billingDuration' AS billing_duration
+		    e.id,
+		    e.flo_id,
+		    e.name,
+		    e.owner_id,
+		    e.organisation_id,
+		    e.created_at,
+		    e.updated_at,
+		    e.completed_at,
+		    e.triggered_by,
+		    e.execution_status,
+		    e.completion_status,
+		    e.data,
+		    e.runner_id,
+		    e.result,
+			e.result->'duration' AS duration,
+			e.result->'billingDuration' AS billing_duration
 		FROM
 		    execution e
+		LEFT JOIN
+		    organisation o ON e.organisation_id = o.id
 		WHERE
-		    organisation_id IS NULL
+		    e.execution_status = 'created'
 		AND
-		    execution_status = 'created'
-		ORDER BY created_at DESC
+		    (e.organisation_id IS NULL OR o.allow_public_runners = true)
+		ORDER BY e.created_at DESC
 		LIMIT 1
 	`)
 	if err != nil {
