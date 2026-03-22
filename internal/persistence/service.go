@@ -3403,6 +3403,17 @@ func (s *Service) CreateTriggerWithType(trigger api.Trigger) (*string, error) {
 	return &ID, nil
 }
 
+func (s *Service) LinkFloToTrigger(floID string, triggerID string) error {
+	_, err := s.stmtLinkFloToTrigger.Exec(struct {
+		FloID     string `db:"flo_id"`
+		TriggerID string `db:"trigger_id"`
+	}{
+		FloID:     floID,
+		TriggerID: triggerID,
+	})
+	return err
+}
+
 func (s *Service) UpdateTrigger(trigger api.Trigger) error {
 	dataBytes, err := json.Marshal(trigger.Data)
 	if err != nil {

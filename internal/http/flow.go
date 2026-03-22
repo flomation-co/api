@@ -383,6 +383,14 @@ func (s *Service) createFloRevision(c *gin.Context) {
 				continue
 			}
 
+			if err := s.persistence.LinkFloToTrigger(FloID, *triggerID); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": *triggerID,
+					"flo_id":     FloID,
+				}).Warn("unable to link trigger to flow")
+			}
+
 			s.registerTriggerWithLaunch(*triggerID, trigger, authToken)
 
 			log.WithFields(log.Fields{
