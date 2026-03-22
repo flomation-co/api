@@ -254,6 +254,26 @@ func (s *Service) createFloRevision(c *gin.Context) {
 
 	revision.FloID = FloID
 
+	// Parse revision data to extract trigger nodes before marshalling
+	var revisionData struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+			Data struct {
+				ID     string `json:"id"`
+				Label  string `json:"label"`
+				Config struct {
+					Type   int64                    `json:"type"`
+					Plugin string                   `json:"plugin"`
+					Inputs []map[string]interface{} `json:"inputs"`
+				} `json:"config"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+
+	rawData, _ := json.Marshal(revision.Data)
+	_ = json.Unmarshal(rawData, &revisionData)
+
 	j, err := json.Marshal(revision.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -272,6 +292,76 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		}).Error("unable to create flo revision")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	// Sync trigger nodes with API triggers and Launch service
+	user := s.getUserFromContext(c)
+	authToken := ""
+	if tkn := s.getTokenFromContext(c); tkn != nil {
+		authToken = *tkn
+	}
+
+	for _, node := range revisionData.Nodes {
+		label := node.Data.Label
+		if label == "" {
+			continue
+		}
+
+		// Check if this is a non-manual trigger node
+		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
+		isManual := label == "trigger/manual"
+		if !isTrigger || isManual {
+			continue
+		}
+
+		// Map the trigger type name (e.g., "trigger/schedule" -> "schedule", "trigger/git_poll" -> "git-poll")
+		typeName := strings.TrimPrefix(label, "trigger/")
+		typeName = strings.ReplaceAll(typeName, "_", "-")
+
+		// Build trigger data from node inputs
+		triggerData := make(map[string]interface{})
+		for _, input := range node.Data.Config.Inputs {
+			name, _ := input["name"].(string)
+			value := input["value"]
+			if name != "" && value != nil {
+				triggerData[name] = value
+			}
+		}
+
+		// Create or update the trigger in the API database
+		trigger := api.Trigger{
+			Name:     label,
+			TypeName: typeName,
+			FloID:    &FloID,
+			Data:     triggerData,
+		}
+
+		if user != nil {
+			trigger.OwnerID = &user.ID
+			if len(user.Organisations) > 0 {
+				trigger.OrganisationID = &user.Organisations[0].ID
+			}
+		}
+
+		triggerID, err := s.persistence.CreateTriggerWithType(trigger)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err,
+				"type":     typeName,
+				"label":    label,
+				"node_id":  node.ID,
+			}).Warn("unable to create trigger from revision node")
+			continue
+		}
+
+		// Register with Launch service
+		s.registerTriggerWithLaunch(*triggerID, trigger, authToken)
+
+		log.WithFields(log.Fields{
+			"trigger_id": *triggerID,
+			"type":       typeName,
+			"flo_id":     FloID,
+		}).Info("registered trigger from flow revision")
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
