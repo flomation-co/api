@@ -130,6 +130,10 @@ func (s *Service) createFlo(c *gin.Context) {
 	user := s.getUserFromContext(c)
 	flo.AuthorID = &user.ID
 
+	if len(user.Organisations) > 0 {
+		flo.OrganisationID = &user.Organisations[0].ID
+	}
+
 	id, err := s.persistence.CreateFlo(flo)
 	if err != nil {
 		log.WithFields(log.Fields{
