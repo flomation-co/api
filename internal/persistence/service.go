@@ -419,6 +419,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -465,6 +466,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -487,6 +489,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -499,6 +502,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
