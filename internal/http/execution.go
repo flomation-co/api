@@ -268,13 +268,13 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 
 	// Send buffered lines first
 	for _, line := range buffered {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", line)
 	}
 	c.Writer.Flush()
 
 	// If execution is already complete, send completion and close
 	if exec.CompletionStatus != "pending" {
-		fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", exec.CompletionStatus)
+		_, _ = fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", exec.CompletionStatus)
 		c.Writer.Flush()
 		return
 	}
@@ -296,16 +296,16 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 				if final != nil {
 					status = final.CompletionStatus
 				}
-				fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", status)
+				_, _ = fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", status)
 				c.Writer.Flush()
 				return
 			}
-			fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", line)
 			c.Writer.Flush()
 
 		case <-ticker.C:
 			// Keep-alive comment
-			fmt.Fprintf(c.Writer, ": keepalive\n\n")
+			_, _ = fmt.Fprintf(c.Writer, ": keepalive\n\n")
 			c.Writer.Flush()
 
 		case <-c.Request.Context().Done():
