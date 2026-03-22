@@ -182,7 +182,10 @@ func (m *mockPersistence) GetUsage(string, *string) (*api.UserDashboard, error) 
 	panic("not implemented")
 }
 func (m *mockPersistence) RemoveEnvironmentProperty(string) error { panic("not implemented") }
-func (m *mockPersistence) RemoveEnvironmentSecret(string) error   { panic("not implemented") }
+func (m *mockPersistence) UpdateEnvironmentSecret(string, string, string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) RemoveEnvironmentSecret(string) error { panic("not implemented") }
 func (m *mockPersistence) TriggerExecution(string, string, interface{}) (*string, error) {
 	panic("not implemented")
 }

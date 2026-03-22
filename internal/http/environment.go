@@ -569,6 +569,45 @@ func (s *Service) createEnvironmentProperty(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
+func (s *Service) updateEnvironmentSecretByID(c *gin.Context) {
+	environmentID := c.Param("environment")
+	user := s.getUserFromContext(c)
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get environment by id")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if env == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	id := c.Param("id")
+
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if err := s.persistence.UpdateEnvironmentSecret(env.ID, env.SecretKey, id, body.Value); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to update environment secret")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
 func (s *Service) deleteEnvironmentSecretByID(c *gin.Context) {
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)

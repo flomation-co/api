@@ -63,6 +63,7 @@ type Persistence interface {
 	GetUsage(ownerID string, organisationID *string) (*api.UserDashboard, error)
 	GetUserByID(ID string) (*api.User, error)
 	RemoveEnvironmentProperty(propertyID string) error
+	UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error
 	RemoveEnvironmentSecret(secretID string) error
 	TriggerExecution(floId string, triggerId string, data interface{}) (*string, error)
 	UpdateCompletionStatus(ID string, status string) error

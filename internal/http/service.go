@@ -234,6 +234,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)
 	environment.GET("/:environment/secret/:name", s.jwtMiddleware, s.getEnvironmentSecretByName)
 	environment.POST("/:environment/secret", s.jwtMiddleware, s.createEnvironmentSecret)
+	environment.POST("/:environment/secret/:id", s.jwtMiddleware, s.updateEnvironmentSecretByID)
 	environment.DELETE("/:environment/secret/:id", s.jwtMiddleware, s.deleteEnvironmentSecretByID)
 
 	return s

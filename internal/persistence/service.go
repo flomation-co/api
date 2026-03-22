@@ -128,6 +128,7 @@ type Service struct {
 	stmtGetEnvironmentSecretByName *sqlx.NamedStmt
 	stmtInsertEnvironmentSecret    *sqlx.NamedStmt
 	stmtDeleteEnvironmentSecret    *sqlx.NamedStmt
+	stmtUpdateEnvironmentSecret    *sqlx.NamedStmt
 
 	stmtGetUsageThisMonthForUserID    *sqlx.NamedStmt
 	stmtGetUsageThisMonthForOrgID    *sqlx.NamedStmt
@@ -1770,6 +1771,15 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	s.stmtUpdateEnvironmentSecret, err = db.PrepareNamed(`
+		UPDATE environment_secret
+		SET value = PGP_SYM_ENCRYPT(:value, :environment_key)
+		WHERE id = :id AND environment_id = :environment_id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	s.stmtGetUsageThisMonthForUserID, err = db.PrepareNamed(`
 		SELECT
 			SUM(CASE
@@ -3294,6 +3304,21 @@ func (s *Service) CreateEnvironmentSecret(environmentID string, environmentKey s
 	}
 
 	return &id, nil
+}
+
+func (s *Service) UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error {
+	_, err := s.stmtUpdateEnvironmentSecret.Exec(struct {
+		ID             string `db:"id"`
+		EnvironmentID  string `db:"environment_id"`
+		Value          string `db:"value"`
+		EnvironmentKey string `db:"environment_key"`
+	}{
+		ID:             secretID,
+		EnvironmentID:  environmentID,
+		Value:          value,
+		EnvironmentKey: environmentKey,
+	})
+	return err
 }
 
 func (s *Service) RemoveEnvironmentSecret(secretID string) error {
