@@ -102,6 +102,7 @@ type Service struct {
 	stmtGetEnvironmentByName       *sqlx.NamedStmt
 	stmtGetEnvironmentByIDAsRunner *sqlx.NamedStmt
 	stmtGetAllEnvironments         *sqlx.NamedStmt
+	stmtGetOrgEnvironments         *sqlx.NamedStmt
 	stmtDeleteEnvironmentByID      *sqlx.NamedStmt
 
 	stmtGetEnvironmentProperties     *sqlx.NamedStmt
@@ -1438,10 +1439,25 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 		    environment
 		WHERE
-		    CASE
-		        WHEN :organisation_id IS NOT NULL THEN organisation_id = :organisation_id
-		        ELSE owner_id = :owner_id AND organisation_id IS NULL
-		    END
+		    owner_id = :owner_id
+		    AND organisation_id IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgEnvironments, err = db.PrepareNamed(`
+		SELECT
+		    id,
+		    name,
+		    owner_id,
+		    organisation_id,
+		    secret_key,
+		    created_at
+		FROM
+		    environment
+		WHERE
+		    organisation_id = :organisation_id
 	`)
 	if err != nil {
 		return nil, err
@@ -2728,15 +2744,24 @@ func (s *Service) CreateEnvironment(environment api.Environment) (*string, error
 func (s *Service) GetEnvironments(ownerID string, organisationID *string) ([]*api.Environment, error) {
 	var results []*api.Environment
 
-	err := s.stmtGetAllEnvironments.Select(&results, struct {
-		OwnerID        string  `db:"owner_id"`
-		OrganisationID *string `db:"organisation_id"`
-	}{
-		OwnerID:        ownerID,
-		OrganisationID: organisationID,
-	})
-	if err != nil {
-		return nil, err
+	if organisationID != nil && *organisationID != "" {
+		err := s.stmtGetOrgEnvironments.Select(&results, struct {
+			OrganisationID string `db:"organisation_id"`
+		}{
+			OrganisationID: *organisationID,
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err := s.stmtGetAllEnvironments.Select(&results, struct {
+			OwnerID string `db:"owner_id"`
+		}{
+			OwnerID: ownerID,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return results, nil
