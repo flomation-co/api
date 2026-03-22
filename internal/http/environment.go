@@ -48,27 +48,29 @@ func (s *Service) validateExecutionEnvironment(c *gin.Context) *api.Environment 
 		return nil
 	}
 
-	user := s.getUserFromContext(c)
-	if user == nil {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return nil
-	}
-
-	var organisation *string
-	if len(user.Organisations) > 0 {
-		organisation = &user.Organisations[0].ID
-	}
-
-	// Resolve the environment — by UUID or name
+	// Look up the environment directly — the flow-environment binding check below
+	// provides the access control, so we don't need ownership filters here.
+	// This ensures execution context can access the flow's environment regardless
+	// of whether it's personal or org-owned.
 	var env *api.Environment
 	if err := uuid.Validate(environmentParam); err == nil {
-		env, err = s.persistence.GetEnvironmentByID(environmentParam, user.ID, organisation)
+		env, err = s.persistence.GetEnvironmentByIDDirect(environmentParam)
 		if err != nil {
 			log.WithFields(log.Fields{"error": err}).Error("unable to get environment by id")
 			c.AbortWithStatus(http.StatusBadRequest)
 			return nil
 		}
 	} else {
+		// For name-based lookup, we still need user context
+		user := s.getUserFromContext(c)
+		if user == nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return nil
+		}
+		var organisation *string
+		if len(user.Organisations) > 0 {
+			organisation = &user.Organisations[0].ID
+		}
 		env, err = s.persistence.GetEnvironmentByName(environmentParam, user.ID, organisation)
 		if err != nil {
 			log.WithFields(log.Fields{"error": err}).Error("unable to get environment by name")

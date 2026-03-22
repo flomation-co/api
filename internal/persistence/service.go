@@ -109,6 +109,7 @@ type Service struct {
 
 	stmtCreateEnvironment          *sqlx.NamedStmt
 	stmtGetEnvironmentByID         *sqlx.NamedStmt
+	stmtGetEnvironmentByIDDirect   *sqlx.NamedStmt
 	stmtGetEnvironmentByName       *sqlx.NamedStmt
 	stmtGetEnvironmentByIDAsRunner *sqlx.NamedStmt
 	stmtGetAllEnvironments         *sqlx.NamedStmt
@@ -1476,6 +1477,23 @@ func NewService(config *config.Config) (*Service, error) {
 		    id = :id
 		AND
 		    (owner_id = :owner_id OR organisation_id = :organisation_id)
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetEnvironmentByIDDirect, err = db.PrepareNamed(`
+		SELECT
+		    id,
+		    name,
+		    owner_id,
+		    organisation_id,
+		    PGP_SYM_DECRYPT(secret_key, :encrypt_key) AS secret_key,
+		    created_at
+		FROM
+		    environment
+		WHERE
+		    id = :id
 	`)
 	if err != nil {
 		return nil, err
@@ -2975,6 +2993,24 @@ func (s *Service) GetEnvironments(ownerID string, organisationID *string) ([]*ap
 	}
 
 	return results, nil
+}
+
+func (s *Service) GetEnvironmentByIDDirect(ID string) (*api.Environment, error) {
+	var result api.Environment
+	err := s.stmtGetEnvironmentByIDDirect.Get(&result, struct {
+		ID         string `db:"id"`
+		EncryptKey string `db:"encrypt_key"`
+	}{
+		ID:         ID,
+		EncryptKey: s.config.Database.EncryptionKey,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (s *Service) GetEnvironmentByID(ID string, ownerID string, organisationID *string) (*api.Environment, error) {

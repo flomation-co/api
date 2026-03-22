@@ -29,6 +29,7 @@ type Persistence interface {
 	EnrolRunner(runner api.Runner) (*string, error)
 	GetActions() ([]*api.Action, error)
 	GetEnvironmentByID(ID string, ownerID string, organisationID *string) (*api.Environment, error)
+	GetEnvironmentByIDDirect(ID string) (*api.Environment, error)
 	GetEnvironmentByName(name string, ownerID string, organisationID *string) (*api.Environment, error)
 	GetEnvironmentProperties(environmentID string, environmentKey string) ([]*api.EnvironmentProperty, error)
 	GetEnvironmentPropertyByID(environmentID string, environmentKey string, id string) (*api.EnvironmentProperty, error)

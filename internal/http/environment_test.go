@@ -45,6 +45,10 @@ func (m *mockPersistence) GetEnvironmentByID(ID string, ownerID string, organisa
 	return m.environments[ID], nil
 }
 
+func (m *mockPersistence) GetEnvironmentByIDDirect(ID string) (*api.Environment, error) {
+	return m.environments[ID], nil
+}
+
 func (m *mockPersistence) GetEnvironmentByName(name string, ownerID string, organisationID *string) (*api.Environment, error) {
 	for _, env := range m.environments {
 		if env.Name == name {
