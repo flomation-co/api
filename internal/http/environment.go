@@ -155,20 +155,8 @@ func (s *Service) getExecutionEnvironmentSecret(c *gin.Context) {
 		return
 	}
 
-	decryptQueryParameter := c.DefaultQuery("decrypt", "false")
-
-	decrypt, err := strconv.ParseBool(decryptQueryParameter)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-		}).Error("unable to parse decrypt parameter")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	if decrypt {
-		prop.DecryptedValue = &prop.Value
-	}
+	// Execution context always needs the decrypted value
+	prop.DecryptedValue = &prop.Value
 
 	c.JSON(http.StatusOK, prop)
 }
