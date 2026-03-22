@@ -153,6 +153,19 @@ func (m *mockPersistence) GetOrganisationByID(string) (*api.Organisation, error)
 func (m *mockPersistence) GetQueueByRegistrationCode(string) (*api.Queue, error) {
 	panic("not implemented")
 }
+func (m *mockPersistence) GetQueuesByOrganisationID(string) ([]*api.Queue, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetQueueByID(string) (*api.Queue, error) { panic("not implemented") }
+func (m *mockPersistence) CreateQueue(string, string) (*string, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) DeleteQueue(string, string) error       { panic("not implemented") }
+func (m *mockPersistence) GetQueueRunners(string) ([]*api.Runner, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) AddRunnerToQueue(string, string) error    { panic("not implemented") }
+func (m *mockPersistence) RemoveRunnerFromQueue(string, string) error { panic("not implemented") }
 func (m *mockPersistence) GetRunnerByID(string) (*api.Runner, error)         { panic("not implemented") }
 func (m *mockPersistence) GetRunnerByIdentifier(string) (*api.Runner, error) { panic("not implemented") }
 func (m *mockPersistence) GetRunners() ([]*api.Runner, error)                { panic("not implemented") }

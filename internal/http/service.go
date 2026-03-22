@@ -204,7 +204,13 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	runners.DELETE("/:id", s.jwtMiddleware, s.unregisterRunner)
 
 	queue := v1.Group("queue")
-	queue.GET("", s.jwtMiddleware, s.getQueues)
+	queue.Use(s.jwtMiddleware)
+	queue.GET("", s.getQueues)
+	queue.POST("", s.createQueue)
+	queue.DELETE("/:id", s.deleteQueue)
+	queue.GET("/:id/runner", s.getQueueRunners)
+	queue.POST("/:id/runner", s.addRunnerToQueue)
+	queue.DELETE("/:id/runner/:runnerID", s.removeRunnerFromQueue)
 
 	triggers := v1.Group("trigger")
 	triggers.GET("", s.jwtMiddleware, s.getTriggers)

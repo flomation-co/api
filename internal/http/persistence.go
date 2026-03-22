@@ -46,6 +46,13 @@ type Persistence interface {
 	GetMyOrganisations(userID string) ([]*api.Organisation, error)
 	GetOrganisationByID(ID string) (*api.Organisation, error)
 	GetQueueByRegistrationCode(code string) (*api.Queue, error)
+	GetQueuesByOrganisationID(organisationID string) ([]*api.Queue, error)
+	GetQueueByID(id string) (*api.Queue, error)
+	CreateQueue(organisationID string, name string) (*string, error)
+	DeleteQueue(id string, organisationID string) error
+	GetQueueRunners(queueID string) ([]*api.Runner, error)
+	AddRunnerToQueue(queueID string, runnerID string) error
+	RemoveRunnerFromQueue(queueID string, runnerID string) error
 	GetRunnerByID(ID string) (*api.Runner, error)
 	GetRunnerByIdentifier(identifier string) (*api.Runner, error)
 	GetRunners() ([]*api.Runner, error)

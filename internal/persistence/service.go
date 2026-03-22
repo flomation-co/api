@@ -94,8 +94,14 @@ type Service struct {
 	stmtUpdateRunnerLastAccess *sqlx.NamedStmt
 	stmtInsertQueueRunner      *sqlx.NamedStmt
 	stmtCanRunnerAccessQueue   *sqlx.NamedStmt
+	stmtRemoveQueueRunner      *sqlx.NamedStmt
 
 	stmtGetQueueByRegistrationCode *sqlx.NamedStmt
+	stmtGetQueuesByOrganisationID  *sqlx.NamedStmt
+	stmtGetQueueByID               *sqlx.NamedStmt
+	stmtCreateQueue                *sqlx.NamedStmt
+	stmtDeleteQueue                *sqlx.NamedStmt
+	stmtGetQueueRunners            *sqlx.NamedStmt
 
 	stmtGetPendingExecutionByOrganisationID     *sqlx.NamedStmt
 	stmtGetPendingExecutionByNullOrganisationID *sqlx.NamedStmt
@@ -1299,6 +1305,56 @@ func NewService(config *config.Config) (*Service, error) {
 		    queue
 		WHERE
 		    registration_code = :registration_code
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRemoveQueueRunner, err = db.PrepareNamed(`
+		DELETE FROM queue_runner WHERE queue_id = :queue_id AND runner_id = :runner_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetQueuesByOrganisationID, err = db.PrepareNamed(`
+		SELECT id, organisation_id, name, registration_code, created_at, location_code
+		FROM queue WHERE organisation_id = :organisation_id ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetQueueByID, err = db.PrepareNamed(`
+		SELECT id, organisation_id, name, registration_code, created_at, location_code
+		FROM queue WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateQueue, err = db.PrepareNamed(`
+		INSERT INTO queue (organisation_id, name) VALUES (:organisation_id, :name)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteQueue, err = db.PrepareNamed(`
+		DELETE FROM queue WHERE id = :id AND organisation_id = :organisation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetQueueRunners, err = db.PrepareNamed(`
+		SELECT r.id, r.identifier, r.name, r.enrolled_at, r.last_contact_at,
+		       r.ip, r.active, r.version, r.executor_version, r.public_key
+		FROM runner r
+		INNER JOIN queue_runner qr ON qr.runner_id = r.id
+		WHERE qr.queue_id = :queue_id
+		ORDER BY r.name
 	`)
 	if err != nil {
 		return nil, err
@@ -2744,6 +2800,74 @@ func (s *Service) GetQueueByRegistrationCode(code string) (*api.Queue, error) {
 	}
 
 	return &queue, nil
+}
+
+func (s *Service) GetQueuesByOrganisationID(organisationID string) ([]*api.Queue, error) {
+	var results []*api.Queue
+	if err := s.stmtGetQueuesByOrganisationID.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{OrganisationID: organisationID}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) GetQueueByID(id string) (*api.Queue, error) {
+	var queue api.Queue
+	if err := s.stmtGetQueueByID.Get(&queue, struct {
+		ID string `db:"id"`
+	}{ID: id}); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &queue, nil
+}
+
+func (s *Service) CreateQueue(organisationID string, name string) (*string, error) {
+	var id string
+	if err := s.stmtCreateQueue.Get(&id, struct {
+		OrganisationID string `db:"organisation_id"`
+		Name           string `db:"name"`
+	}{OrganisationID: organisationID, Name: name}); err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func (s *Service) DeleteQueue(id string, organisationID string) error {
+	_, err := s.stmtDeleteQueue.Exec(struct {
+		ID             string `db:"id"`
+		OrganisationID string `db:"organisation_id"`
+	}{ID: id, OrganisationID: organisationID})
+	return err
+}
+
+func (s *Service) GetQueueRunners(queueID string) ([]*api.Runner, error) {
+	var results []*api.Runner
+	if err := s.stmtGetQueueRunners.Select(&results, struct {
+		QueueID string `db:"queue_id"`
+	}{QueueID: queueID}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) AddRunnerToQueue(queueID string, runnerID string) error {
+	_, err := s.stmtInsertQueueRunner.Exec(struct {
+		QueueID  string `db:"queue_id"`
+		RunnerID string `db:"runner_id"`
+	}{QueueID: queueID, RunnerID: runnerID})
+	return err
+}
+
+func (s *Service) RemoveRunnerFromQueue(queueID string, runnerID string) error {
+	_, err := s.stmtRemoveQueueRunner.Exec(struct {
+		QueueID  string `db:"queue_id"`
+		RunnerID string `db:"runner_id"`
+	}{QueueID: queueID, RunnerID: runnerID})
+	return err
 }
 
 func (s *Service) CreateEnvironment(environment api.Environment) (*string, error) {
