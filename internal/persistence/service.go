@@ -1831,7 +1831,8 @@ func NewService(config *config.Config) (*Service, error) {
 			t.created_at,
 			t.type,
 			tt.name AS type_name,
-			t.data
+			t.data,
+			t.flo_id
 		FROM
 			trigger t
 		INNER JOIN trigger_type tt ON t.type = tt.id

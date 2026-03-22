@@ -334,7 +334,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		// Check if a trigger of this type already exists for this flow
 		var existingID *string
 		for _, et := range existingTriggers {
-			if et.FloID != nil && *et.FloID == FloID && et.Type == typeName {
+			if et.FloID != nil && *et.FloID == FloID && et.TypeName == typeName {
 				existingID = &et.ID
 				break
 			}
