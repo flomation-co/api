@@ -43,6 +43,10 @@ func (s *Service) getUser(c *gin.Context) {
 
 	user.EmailAddress = &a.Username
 
+	if a.DisplayName != nil && *a.DisplayName != "" {
+		user.Name = *a.DisplayName
+	}
+
 	c.JSON(http.StatusOK, user)
 }
 
@@ -94,6 +98,15 @@ func (s *Service) updateUser(c *gin.Context) {
 		}).Error("unable to update user")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	tkn := s.getTokenFromContext(c)
+	if tkn != nil {
+		if err := s.identity.UpdateDisplayName(*tkn, updatedUser.Name); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Warn("unable to sync display name to identity service")
+		}
 	}
 
 	c.JSON(http.StatusOK, updatedUser)
