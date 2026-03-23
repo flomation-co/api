@@ -22,6 +22,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"security":    {Key: "security", Name: "Security", Icon: "shield-halved", Description: "Security scanning and compliance"},
 	"nosql":       {Key: "nosql", Name: "NoSQL", Icon: "layer-group", Description: "NoSQL database operations"},
 	"sql":         {Key: "sql", Name: "SQL", Icon: "database", Description: "Relational database queries"},
+	"script":      {Key: "script", Name: "Script", Icon: "terminal", Description: "Execute scripts and commands"},
 	"trigger":     {Key: "trigger", Name: "Triggers", Icon: "bolt-lightning", Description: "Start a Flow"},
 }
 
