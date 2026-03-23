@@ -139,6 +139,21 @@ type Service struct {
 	stmtUpdateTrigger      *sqlx.NamedStmt
 	stmtDeleteTrigger      *sqlx.NamedStmt
 	stmtDeleteFloTrigger   *sqlx.NamedStmt
+
+	stmtGetGroupsByOrgID         *sqlx.NamedStmt
+	stmtGetGroupByID             *sqlx.NamedStmt
+	stmtCreateGroup              *sqlx.NamedStmt
+	stmtUpdateGroup              *sqlx.NamedStmt
+	stmtDeleteGroup              *sqlx.NamedStmt
+	stmtGetGroupMembers          *sqlx.NamedStmt
+	stmtAddUserToGroup           *sqlx.NamedStmt
+	stmtRemoveUserFromGroup      *sqlx.NamedStmt
+	stmtGetGroupPermissions      *sqlx.NamedStmt
+	stmtDeleteGroupPermissions   *sqlx.NamedStmt
+	stmtInsertGroupPermission    *sqlx.NamedStmt
+	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
+	stmtGetDefaultGroups         *sqlx.NamedStmt
+	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -1918,6 +1933,137 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// RBAC: Groups
+	s.stmtGetGroupsByOrgID, err = s.conn.PrepareNamed(`
+		SELECT
+			g.id, g.organisation_id, g.name, g.description, g.is_default, g.created_at,
+			(SELECT COUNT(*) FROM organisation_group_member gm WHERE gm.group_id = g.id) AS member_count
+		FROM organisation_group g
+		WHERE g.organisation_id = :organisation_id
+		ORDER BY g.name
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetGroupByID, err = s.conn.PrepareNamed(`
+		SELECT
+			g.id, g.organisation_id, g.name, g.description, g.is_default, g.created_at,
+			(SELECT COUNT(*) FROM organisation_group_member gm WHERE gm.group_id = g.id) AS member_count
+		FROM organisation_group g
+		WHERE g.id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateGroup, err = s.conn.PrepareNamed(`
+		INSERT INTO organisation_group (organisation_id, name, description, is_default)
+		VALUES (:organisation_id, :name, :description, :is_default)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateGroup, err = s.conn.PrepareNamed(`
+		UPDATE organisation_group
+		SET name = :name, description = :description, is_default = :is_default
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteGroup, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_group WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetGroupMembers, err = s.conn.PrepareNamed(`
+		SELECT gm.user_id, u.name, gm.added_at
+		FROM organisation_group_member gm
+		INNER JOIN users u ON u.id = gm.user_id
+		WHERE gm.group_id = :group_id
+		ORDER BY u.name
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtAddUserToGroup, err = s.conn.PrepareNamed(`
+		INSERT INTO organisation_group_member (group_id, user_id)
+		VALUES (:group_id, :user_id)
+		ON CONFLICT (group_id, user_id) DO NOTHING
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRemoveUserFromGroup, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_group_member
+		WHERE group_id = :group_id AND user_id = :user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetGroupPermissions, err = s.conn.PrepareNamed(`
+		SELECT permission FROM organisation_group_permission
+		WHERE group_id = :group_id
+		ORDER BY permission
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteGroupPermissions, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_group_permission WHERE group_id = :group_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtInsertGroupPermission, err = s.conn.PrepareNamed(`
+		INSERT INTO organisation_group_permission (group_id, permission)
+		VALUES (:group_id, :permission)
+		ON CONFLICT (group_id, permission) DO NOTHING
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUserPermissionsInOrg, err = s.conn.PrepareNamed(`
+		SELECT DISTINCT gp.permission
+		FROM organisation_group_permission gp
+		INNER JOIN organisation_group_member gm ON gm.group_id = gp.group_id
+		INNER JOIN organisation_group g ON g.id = gp.group_id
+		WHERE g.organisation_id = :organisation_id AND gm.user_id = :user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetDefaultGroups, err = s.conn.PrepareNamed(`
+		SELECT id FROM organisation_group
+		WHERE organisation_id = :organisation_id AND is_default = true
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountUserGroupsInOrg, err = s.conn.PrepareNamed(`
+		SELECT COUNT(*)
+		FROM organisation_group_member gm
+		INNER JOIN organisation_group g ON g.id = gm.group_id
+		WHERE g.organisation_id = :organisation_id AND gm.user_id = :user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &s, nil
 }
 
@@ -3499,4 +3645,228 @@ func (s *Service) GetUsage(ownerID string, organisationID *string) (*api.UserDas
 	}
 
 	return &result, nil
+}
+
+// RBAC: Group operations
+
+func (s *Service) GetGroupsByOrganisationID(orgID string) ([]*api.Group, error) {
+	var results []*api.Group
+
+	if err := s.stmtGetGroupsByOrgID.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: orgID,
+	}); err != nil {
+		return nil, err
+	}
+
+	// Load permissions for each group
+	for _, g := range results {
+		perms, err := s.GetGroupPermissions(g.ID)
+		if err != nil {
+			return nil, err
+		}
+		g.Permissions = perms
+	}
+
+	return results, nil
+}
+
+func (s *Service) GetGroupByID(groupID string) (*api.Group, error) {
+	var result api.Group
+
+	if err := s.stmtGetGroupByID.Get(&result, struct {
+		ID string `db:"id"`
+	}{
+		ID: groupID,
+	}); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	perms, err := s.GetGroupPermissions(result.ID)
+	if err != nil {
+		return nil, err
+	}
+	result.Permissions = perms
+
+	return &result, nil
+}
+
+func (s *Service) CreateGroup(group api.Group) (*string, error) {
+	var id string
+
+	if err := s.stmtCreateGroup.Get(&id, group); err != nil {
+		return nil, err
+	}
+
+	return &id, nil
+}
+
+func (s *Service) UpdateGroup(group api.Group) error {
+	_, err := s.stmtUpdateGroup.Exec(group)
+	return err
+}
+
+func (s *Service) DeleteGroup(groupID string) error {
+	_, err := s.stmtDeleteGroup.Exec(struct {
+		ID string `db:"id"`
+	}{
+		ID: groupID,
+	})
+	return err
+}
+
+func (s *Service) GetGroupMembers(groupID string) ([]*api.GroupMember, error) {
+	var results []*api.GroupMember
+
+	if err := s.stmtGetGroupMembers.Select(&results, struct {
+		GroupID string `db:"group_id"`
+	}{
+		GroupID: groupID,
+	}); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (s *Service) AddUserToGroup(groupID, userID string) error {
+	_, err := s.stmtAddUserToGroup.Exec(struct {
+		GroupID string `db:"group_id"`
+		UserID  string `db:"user_id"`
+	}{
+		GroupID: groupID,
+		UserID:  userID,
+	})
+	return err
+}
+
+func (s *Service) RemoveUserFromGroup(groupID, userID string) error {
+	_, err := s.stmtRemoveUserFromGroup.Exec(struct {
+		GroupID string `db:"group_id"`
+		UserID  string `db:"user_id"`
+	}{
+		GroupID: groupID,
+		UserID:  userID,
+	})
+	return err
+}
+
+func (s *Service) GetGroupPermissions(groupID string) ([]string, error) {
+	var results []string
+
+	rows, err := s.stmtGetGroupPermissions.Queryx(struct {
+		GroupID string `db:"group_id"`
+	}{
+		GroupID: groupID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var perm string
+		if err := rows.Scan(&perm); err != nil {
+			return nil, err
+		}
+		results = append(results, perm)
+	}
+
+	return results, nil
+}
+
+func (s *Service) SetGroupPermissions(groupID string, permissions []string) error {
+	// Delete existing permissions
+	if _, err := s.stmtDeleteGroupPermissions.Exec(struct {
+		GroupID string `db:"group_id"`
+	}{
+		GroupID: groupID,
+	}); err != nil {
+		return err
+	}
+
+	// Insert new permissions
+	for _, perm := range permissions {
+		if _, err := s.stmtInsertGroupPermission.Exec(struct {
+			GroupID    string `db:"group_id"`
+			Permission string `db:"permission"`
+		}{
+			GroupID:    groupID,
+			Permission: perm,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) GetUserPermissionsInOrganisation(orgID, userID string) ([]string, error) {
+	var results []string
+
+	rows, err := s.stmtGetUserPermissionsInOrg.Queryx(struct {
+		OrganisationID string `db:"organisation_id"`
+		UserID         string `db:"user_id"`
+	}{
+		OrganisationID: orgID,
+		UserID:         userID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var perm string
+		if err := rows.Scan(&perm); err != nil {
+			return nil, err
+		}
+		results = append(results, perm)
+	}
+
+	return results, nil
+}
+
+func (s *Service) GetDefaultGroupsForOrganisation(orgID string) ([]string, error) {
+	var results []string
+
+	rows, err := s.stmtGetDefaultGroups.Queryx(struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: orgID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		results = append(results, id)
+	}
+
+	return results, nil
+}
+
+func (s *Service) CountUserGroupsInOrganisation(orgID, userID string) (int, error) {
+	var count int
+
+	if err := s.stmtCountUserGroupsInOrg.Get(&count, struct {
+		OrganisationID string `db:"organisation_id"`
+		UserID         string `db:"user_id"`
+	}{
+		OrganisationID: orgID,
+		UserID:         userID,
+	}); err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }

@@ -156,6 +156,18 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	orgs.DELETE("/:ID/member/:userID", s.removeOrganisationMember)
 	orgs.DELETE("/:ID/invite/:inviteID", s.revokeOrganisationInvite)
 
+	// RBAC Groups
+	orgs.GET("/:ID/group", s.getOrganisationGroups)
+	orgs.GET("/:ID/group/:groupID", s.getGroupByID)
+	orgs.POST("/:ID/group", s.createOrganisationGroup)
+	orgs.POST("/:ID/group/:groupID", s.updateGroup)
+	orgs.DELETE("/:ID/group/:groupID", s.deleteGroup)
+	orgs.GET("/:ID/group/:groupID/member", s.getGroupMembers)
+	orgs.POST("/:ID/group/:groupID/member", s.addGroupMember)
+	orgs.DELETE("/:ID/group/:groupID/member/:userID", s.removeGroupMember)
+	orgs.POST("/:ID/group/:groupID/permission", s.setGroupPermissions)
+	orgs.GET("/:ID/permissions", s.getMyPermissions)
+
 	// Invite acceptance (authenticated but not org-scoped)
 	v1.POST("invite/:code/accept", s.jwtMiddleware, s.acceptOrganisationInvite)
 
