@@ -331,6 +331,18 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			}
 		}
 
+		// For form triggers, extract and parse form_definition as the root trigger data
+		if typeName == "form" {
+			if fd, ok := triggerData["form_definition"]; ok {
+				if fdStr, ok := fd.(string); ok && fdStr != "" {
+					var formDef map[string]interface{}
+					if err := json.Unmarshal([]byte(fdStr), &formDef); err == nil {
+						triggerData = formDef
+					}
+				}
+			}
+		}
+
 		// Check if a trigger of this type already exists for this flow
 		var existingID *string
 		for _, et := range existingTriggers {
