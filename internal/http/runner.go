@@ -501,6 +501,34 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		return
 	}
 
+	// Enrich execution with author email
+	if author, err := s.persistence.GetUserByID(execution.OwnerID); err == nil && author != nil {
+		execution.AuthorEmail = author.EmailAddress
+		// Default triggerer to author (overridden below if trigger invocation has a different owner)
+		execution.TriggererEmail = author.EmailAddress
+	}
+
+	// Enrich with trigger type and triggerer email from trigger invocation chain
+	if execution.TriggeredBy != nil {
+		if invocation, err := s.persistence.GetTriggerInvocationById(*execution.TriggeredBy); err == nil && invocation != nil {
+			if trigger, err := s.persistence.GetTriggerByID(invocation.TriggerID); err == nil && trigger != nil {
+				execution.TriggerType = &trigger.TypeName
+			}
+			// If the invocation was triggered by a different user, look up their email
+			if invocation.OwnerID != nil && *invocation.OwnerID != execution.OwnerID {
+				if triggerer, err := s.persistence.GetUserByID(*invocation.OwnerID); err == nil && triggerer != nil {
+					execution.TriggererEmail = triggerer.EmailAddress
+				}
+			}
+		}
+	}
+
+	// Default trigger type to manual if not determined from invocation
+	if execution.TriggerType == nil {
+		manual := "manual"
+		execution.TriggerType = &manual
+	}
+
 	pe := api.PendingExecution{
 		Flow:      *flow,
 		Execution: *execution,
