@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,38 @@ import (
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
+
+// resolveVariables replaces ${secrets.X} and ${env.X} references with actual values.
+func resolveVariables(value string, secrets map[string]string, properties map[string]string) string {
+	if !strings.Contains(value, "${") {
+		return value
+	}
+
+	re := regexp.MustCompile(`\$\{([^}]+)\}`)
+	return re.ReplaceAllStringFunc(value, func(match string) string {
+		key := match[2 : len(match)-1] // strip ${ and }
+
+		if strings.HasPrefix(key, "secrets.") || strings.HasPrefix(key, "secret.") {
+			name := strings.TrimPrefix(key, "secrets.")
+			name = strings.TrimPrefix(name, "secret.")
+			if secrets != nil {
+				if v, ok := secrets[name]; ok {
+					return v
+				}
+			}
+		} else if strings.HasPrefix(key, "env.") {
+			name := strings.TrimPrefix(key, "env.")
+			if properties != nil {
+				if v, ok := properties[name]; ok {
+					return v
+				}
+			}
+		}
+
+		// Return the original reference if unresolved
+		return match
+	})
+}
 
 func (s *Service) getMyFlos(c *gin.Context) {
 	user := s.getUserFromContext(c)
@@ -301,6 +334,30 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		authToken = *tkn
 	}
 
+	// Load the flow's environment for variable resolution in trigger data
+	flo, _ := s.persistence.GetFloByID(FloID)
+	var envSecrets map[string]string
+	var envProperties map[string]string
+	if flo != nil && flo.EnvironmentID != nil {
+		env, err := s.persistence.GetEnvironmentByIDDirect(*flo.EnvironmentID)
+		if err == nil && env != nil {
+			envSecrets = make(map[string]string)
+			envProperties = make(map[string]string)
+
+			if secrets, err := s.persistence.GetEnvironmentSecrets(env.ID, env.SecretKey); err == nil {
+				for _, sec := range secrets {
+					envSecrets[sec.Name] = sec.Value
+				}
+			}
+
+			if props, err := s.persistence.GetEnvironmentProperties(env.ID, env.SecretKey); err == nil {
+				for _, prop := range props {
+					envProperties[prop.Name] = prop.Value
+				}
+			}
+		}
+	}
+
 	// Get existing triggers for this flow to avoid duplicates
 	existingTriggers, _ := s.persistence.GetTriggersByFloID(FloID)
 
@@ -321,13 +378,19 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		typeName := strings.TrimPrefix(label, "trigger/")
 		typeName = strings.ReplaceAll(typeName, "_", "-")
 
-		// Build trigger data from node inputs
+		// Build trigger data from node inputs, resolving variable references
 		triggerData := make(map[string]interface{})
 		for _, input := range node.Data.Config.Inputs {
 			name, _ := input["name"].(string)
 			value := input["value"]
 			if name != "" && value != nil {
-				triggerData[name] = value
+				// Resolve ${secrets.X} and ${env.X} references
+				if strVal, ok := value.(string); ok {
+					strVal = resolveVariables(strVal, envSecrets, envProperties)
+					triggerData[name] = strVal
+				} else {
+					triggerData[name] = value
+				}
 			}
 		}
 
