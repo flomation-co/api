@@ -3766,7 +3766,7 @@ func (s *Service) GetGroupPermissions(groupID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var perm string
@@ -3818,7 +3818,7 @@ func (s *Service) GetUserPermissionsInOrganisation(orgID, userID string) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var perm string
@@ -3842,7 +3842,7 @@ func (s *Service) GetDefaultGroupsForOrganisation(orgID string) ([]string, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var id string
