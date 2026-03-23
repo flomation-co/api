@@ -206,6 +206,24 @@ func (m *mockPersistence) GetTriggersByFloID(string) ([]*api.Trigger, error) {
 func (m *mockPersistence) LinkFloToTrigger(string, string) error { panic("not implemented") }
 func (m *mockPersistence) UpdateUser(*api.User) error                      { panic("not implemented") }
 
+// RBAC stubs
+func (m *mockPersistence) GetGroupsByOrganisationID(string) ([]*api.Group, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetGroupByID(string) (*api.Group, error)          { return nil, nil }
+func (m *mockPersistence) CreateGroup(api.Group) (*string, error)           { return nil, nil }
+func (m *mockPersistence) UpdateGroup(api.Group) error                      { return nil }
+func (m *mockPersistence) DeleteGroup(string) error                         { return nil }
+func (m *mockPersistence) GetGroupMembers(string) ([]*api.GroupMember, error) { return nil, nil }
+func (m *mockPersistence) AddUserToGroup(string, string) error              { return nil }
+func (m *mockPersistence) RemoveUserFromGroup(string, string) error         { return nil }
+func (m *mockPersistence) SetGroupPermissions(string, []string) error       { return nil }
+func (m *mockPersistence) GetUserPermissionsInOrganisation(string, string) ([]string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetDefaultGroupsForOrganisation(string) ([]string, error) { return nil, nil }
+func (m *mockPersistence) CountUserGroupsInOrganisation(string, string) (int, error) { return 0, nil }
+
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)
 	return &Service{
