@@ -196,6 +196,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	flos.POST("/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
 
+	favourites := v1.Group("favourite")
+	favourites.Use(s.jwtMiddleware)
+	favourites.GET("", s.getFloFavourites)
+	favourites.POST("/:FloID", s.addFloFavourite)
+	favourites.DELETE("/:FloID", s.removeFloFavourite)
+
 	executions := v1.Group("execution")
 	executions.POST("/:id/state", s.executionMiddleware, s.updateExecutionState)
 	executions.POST("/:id/logs", s.executionMiddleware, s.appendExecutionLogs)

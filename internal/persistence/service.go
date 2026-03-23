@@ -154,6 +154,10 @@ type Service struct {
 	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
 	stmtGetDefaultGroups         *sqlx.NamedStmt
 	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
+
+	stmtGetFloFavourites    *sqlx.NamedStmt
+	stmtAddFloFavourite     *sqlx.NamedStmt
+	stmtRemoveFloFavourite  *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2064,6 +2068,30 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// Flo favourites
+	s.stmtGetFloFavourites, err = s.conn.PrepareNamed(`
+		SELECT flo_id FROM flo_favourite WHERE user_id = :user_id ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtAddFloFavourite, err = s.conn.PrepareNamed(`
+		INSERT INTO flo_favourite (user_id, flo_id)
+		VALUES (:user_id, :flo_id)
+		ON CONFLICT (user_id, flo_id) DO NOTHING
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRemoveFloFavourite, err = s.conn.PrepareNamed(`
+		DELETE FROM flo_favourite WHERE user_id = :user_id AND flo_id = :flo_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &s, nil
 }
 
@@ -3869,4 +3897,52 @@ func (s *Service) CountUserGroupsInOrganisation(orgID, userID string) (int, erro
 	}
 
 	return count, nil
+}
+
+// Flo favourites
+
+func (s *Service) GetFloFavourites(userID string) ([]string, error) {
+	var results []string
+
+	rows, err := s.stmtGetFloFavourites.Queryx(struct {
+		UserID string `db:"user_id"`
+	}{
+		UserID: userID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var floID string
+		if err := rows.Scan(&floID); err != nil {
+			return nil, err
+		}
+		results = append(results, floID)
+	}
+
+	return results, nil
+}
+
+func (s *Service) AddFloFavourite(userID, floID string) error {
+	_, err := s.stmtAddFloFavourite.Exec(struct {
+		UserID string `db:"user_id"`
+		FloID  string `db:"flo_id"`
+	}{
+		UserID: userID,
+		FloID:  floID,
+	})
+	return err
+}
+
+func (s *Service) RemoveFloFavourite(userID, floID string) error {
+	_, err := s.stmtRemoveFloFavourite.Exec(struct {
+		UserID string `db:"user_id"`
+		FloID  string `db:"flo_id"`
+	}{
+		UserID: userID,
+		FloID:  floID,
+	})
+	return err
 }
