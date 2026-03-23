@@ -13,10 +13,32 @@ const (
 )
 
 type Organisation struct {
-	ID        string     `json:"id" db:"id"`
-	Name      string     `json:"name" db:"name"`
-	Icon      *string    `json:"icon,omitempty" db:"icon"`
-	CreatedAt *time.Time `json:"created_at" db:"created_at"`
+	ID                 string     `json:"id" db:"id"`
+	Name               string     `json:"name" db:"name"`
+	Icon               *string    `json:"icon,omitempty" db:"icon"`
+	Role               string     `json:"role,omitempty" db:"role"`
+	AllowPublicRunners bool       `json:"allow_public_runners" db:"allow_public_runners"`
+	CreatedAt          *time.Time `json:"created_at" db:"created_at"`
+}
+
+type OrganisationMember struct {
+	UserID   string     `json:"user_id" db:"user_id"`
+	Name     string     `json:"name" db:"name"`
+	Role     string     `json:"role" db:"role"`
+	JoinedAt *time.Time `json:"joined_at" db:"joined_at"`
+}
+
+type OrganisationInvite struct {
+	ID             string     `json:"id" db:"id"`
+	OrganisationID string     `json:"organisation_id" db:"organisation_id"`
+	Email          *string    `json:"email,omitempty" db:"email"`
+	InviteCode     string     `json:"invite_code" db:"invite_code"`
+	Role           string     `json:"role" db:"role"`
+	CreatedBy      string     `json:"created_by" db:"created_by"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	AcceptedAt     *time.Time `json:"accepted_at,omitempty" db:"accepted_at"`
+	AcceptedBy     *string    `json:"accepted_by,omitempty" db:"accepted_by"`
+	ExpiresAt      time.Time  `json:"expires_at" db:"expires_at"`
 }
 
 type User struct {
@@ -65,9 +87,10 @@ type Flo struct {
 	Duration           *int64     `json:"duration" db:"duration"`
 	DurationAdditional *int64     `json:"duration_additional" db:"duration_additional"`
 	LastExecution      *Execution `json:"last_execution" db:"last_execution"`
-	EnvironmentID      *string    `json:"environment_id" db:"environment_id"`
-	EnvironmentName    *string    `json:"environment_name" db:"environment_name"`
-	HasValidationErrors bool      `json:"has_validation_errors,omitempty"`
+	EnvironmentID       *string    `json:"environment_id" db:"environment_id"`
+	EnvironmentName     *string    `json:"environment_name" db:"environment_name"`
+	QueueID             *string    `json:"queue_id" db:"queue_id"`
+	HasValidationErrors bool       `json:"has_validation_errors,omitempty"`
 }
 
 type Execution struct {
@@ -170,6 +193,7 @@ type Action struct {
 type Queue struct {
 	ID               string    `json:"id" db:"id"`
 	OrganisationID   *string   `json:"organisation_id" db:"organisation_id"`
+	ParentID         *string   `json:"parent_id" db:"parent_id"`
 	Name             string    `json:"name" db:"name"`
 	RegistrationCode string    `json:"registration_code" db:"registration_code"`
 	CreatedAt        time.Time `json:"created_at" db:"created_at"`

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"flomation.app/automate/api"
@@ -55,6 +56,9 @@ func (s *Service) updateExecutionState(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+
+	// Notify SSE subscribers of the status change
+	s.logHub.Publish(id, []string{"__STATUS__:" + executionStatus.State})
 
 	c.Status(http.StatusOK)
 }
@@ -137,6 +141,7 @@ func (s *Service) updateExecution(c *gin.Context) {
 
 func (s *Service) getExecutionByID(c *gin.Context) {
 	id := c.Param("id")
+	user := s.getUserFromContext(c)
 
 	exec, err := s.persistence.GetExecutionByID(id)
 	if err != nil {
@@ -149,6 +154,11 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 
 	if exec == nil {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, exec.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 
@@ -205,7 +215,12 @@ func (s *Service) getExecutions(c *gin.Context) {
 
 	user := s.getUserFromContext(c)
 
-	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, nil)
+	var orgID *string
+	if len(user.Organisations) > 0 {
+		orgID = &user.Organisations[0].ID
+	}
+
+	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, orgID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -299,6 +314,12 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 				_, _ = fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", status)
 				c.Writer.Flush()
 				return
+			}
+			if strings.HasPrefix(line, "__STATUS__:") {
+				status := strings.TrimPrefix(line, "__STATUS__:")
+				_, _ = fmt.Fprintf(c.Writer, "event: status\ndata: %s\n\n", status)
+				c.Writer.Flush()
+				continue
 			}
 			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", line)
 			c.Writer.Flush()

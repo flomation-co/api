@@ -231,21 +231,69 @@ func (s *Service) unregisterRunner(c *gin.Context) {
 }
 
 func (s *Service) getRunners(c *gin.Context) {
-	runners, err := s.persistence.GetRunners()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-		}).Error("unable to get runners")
-		c.AbortWithStatus(http.StatusBadRequest)
+	user := s.getUserFromContext(c)
+	if user == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
-	if len(runners) == 0 {
+	var allRunners []*api.Runner
+
+	if len(user.Organisations) > 0 {
+		orgID := user.Organisations[0].ID
+
+		// Get runners from org queues
+		queues, err := s.persistence.GetQueuesByOrganisationID(orgID)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err}).Error("unable to get org queues")
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+
+		seen := make(map[string]bool)
+		for _, q := range queues {
+			qRunners, err := s.persistence.GetQueueRunners(q.ID)
+			if err != nil {
+				continue
+			}
+			for _, r := range qRunners {
+				if !seen[r.ID] {
+					seen[r.ID] = true
+					allRunners = append(allRunners, r)
+				}
+			}
+		}
+
+		// Also include public runners if org allows it
+		org, err := s.persistence.GetOrganisationByID(orgID)
+		if err == nil && org != nil && org.AllowPublicRunners {
+			publicRunners, err := s.persistence.GetRunners()
+			if err == nil {
+				for _, r := range publicRunners {
+					if !seen[r.ID] {
+						seen[r.ID] = true
+						allRunners = append(allRunners, r)
+					}
+				}
+			}
+		}
+	} else {
+		// Personal mode — show all public runners
+		runners, err := s.persistence.GetRunners()
+		if err != nil {
+			log.WithFields(log.Fields{"error": err}).Error("unable to get runners")
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		allRunners = runners
+	}
+
+	if len(allRunners) == 0 {
 		c.Status(http.StatusNoContent)
 		return
 	}
 
-	c.JSON(http.StatusOK, runners)
+	c.JSON(http.StatusOK, allRunners)
 }
 
 func (s *Service) registerRunner(c *gin.Context) {

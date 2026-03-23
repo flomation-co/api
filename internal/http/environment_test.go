@@ -45,6 +45,10 @@ func (m *mockPersistence) GetEnvironmentByID(ID string, ownerID string, organisa
 	return m.environments[ID], nil
 }
 
+func (m *mockPersistence) GetEnvironmentByIDDirect(ID string) (*api.Environment, error) {
+	return m.environments[ID], nil
+}
+
 func (m *mockPersistence) GetEnvironmentByName(name string, ownerID string, organisationID *string) (*api.Environment, error) {
 	for _, env := range m.environments {
 		if env.Name == name {
@@ -69,7 +73,29 @@ func (m *mockPersistence) GetEnvironmentSecretByName(environmentID string, envir
 }
 
 // Unused interface methods — panic to catch unintended calls during tests.
-func (m *mockPersistence) AddUserToOrganisation(string, string) error { panic("not implemented") }
+func (m *mockPersistence) AddUserToOrganisation(string, string, ...string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetOrganisationMembers(string) ([]*api.OrganisationMember, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) RemoveUserFromOrganisation(string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetUserRoleInOrganisation(string, string) (*string, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) CreateOrganisationInvite(string, *string, string, string) (*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetOrganisationInvites(string) ([]*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetInviteByCode(string) (*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) AcceptInvite(string, string) error { panic("not implemented") }
+func (m *mockPersistence) RevokeInvite(string, string) error { panic("not implemented") }
 func (m *mockPersistence) CreateEnvironment(api.Environment) (*string, error) {
 	panic("not implemented")
 }
@@ -119,7 +145,7 @@ func (m *mockPersistence) GetExecutions(int64, int64, string, string, *string) (
 func (m *mockPersistence) GetLatestRevisionByFloID(string) (*api.Revision, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetMyFlos(string, int64, int64, string) ([]*api.Flo, int64, error) {
+func (m *mockPersistence) GetMyFlos(string, int64, int64, string, ...string) ([]*api.Flo, int64, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) GetMyOrganisations(string) ([]*api.Organisation, error) {
@@ -131,6 +157,19 @@ func (m *mockPersistence) GetOrganisationByID(string) (*api.Organisation, error)
 func (m *mockPersistence) GetQueueByRegistrationCode(string) (*api.Queue, error) {
 	panic("not implemented")
 }
+func (m *mockPersistence) GetQueuesByOrganisationID(string) ([]*api.Queue, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetQueueByID(string) (*api.Queue, error) { panic("not implemented") }
+func (m *mockPersistence) CreateQueue(string, string, *string) (*string, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) DeleteQueue(string, string) error       { panic("not implemented") }
+func (m *mockPersistence) GetQueueRunners(string) ([]*api.Runner, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) AddRunnerToQueue(string, string) error    { panic("not implemented") }
+func (m *mockPersistence) RemoveRunnerFromQueue(string, string) error { panic("not implemented") }
 func (m *mockPersistence) GetRunnerByID(string) (*api.Runner, error)         { panic("not implemented") }
 func (m *mockPersistence) GetRunnerByIdentifier(string) (*api.Runner, error) { panic("not implemented") }
 func (m *mockPersistence) GetRunners() ([]*api.Runner, error)                { panic("not implemented") }
@@ -143,7 +182,10 @@ func (m *mockPersistence) GetUsage(string, *string) (*api.UserDashboard, error) 
 	panic("not implemented")
 }
 func (m *mockPersistence) RemoveEnvironmentProperty(string) error { panic("not implemented") }
-func (m *mockPersistence) RemoveEnvironmentSecret(string) error   { panic("not implemented") }
+func (m *mockPersistence) UpdateEnvironmentSecret(string, string, string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) RemoveEnvironmentSecret(string) error { panic("not implemented") }
 func (m *mockPersistence) TriggerExecution(string, string, interface{}) (*string, error) {
 	panic("not implemented")
 }
@@ -158,6 +200,10 @@ func (m *mockPersistence) UpdateFlo(api.Flo) error                        { pani
 func (m *mockPersistence) UpdateOrganisation(api.Organisation) error       { panic("not implemented") }
 func (m *mockPersistence) UpdateRunnerLastContact(string, string) error    { panic("not implemented") }
 func (m *mockPersistence) UpdateTrigger(api.Trigger) error                 { panic("not implemented") }
+func (m *mockPersistence) GetTriggersByFloID(string) ([]*api.Trigger, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) LinkFloToTrigger(string, string) error { panic("not implemented") }
 func (m *mockPersistence) UpdateUser(*api.User) error                      { panic("not implemented") }
 
 func setupTestService(mock *mockPersistence) *Service {

@@ -23,16 +23,28 @@ type Service struct {
 	stmtGetOrganisationByID   *sqlx.NamedStmt
 	stmtCreateOrganisation    *sqlx.NamedStmt
 	stmtUpdateOrganisation    *sqlx.NamedStmt
-	stmtAddUserToOrganisation *sqlx.NamedStmt
+	stmtAddUserToOrganisation        *sqlx.NamedStmt
+	stmtGetOrganisationMembers       *sqlx.NamedStmt
+	stmtRemoveUserFromOrganisation   *sqlx.NamedStmt
+	stmtGetUserRoleInOrganisation    *sqlx.NamedStmt
+	stmtCreateOrganisationInvite     *sqlx.NamedStmt
+	stmtGetOrganisationInvites       *sqlx.NamedStmt
+	stmtGetInviteByCode              *sqlx.NamedStmt
+	stmtAcceptInvite                 *sqlx.NamedStmt
+	stmtRevokeInvite                 *sqlx.NamedStmt
 
 	stmtGetUserByID *sqlx.NamedStmt
 	stmtCreateUser  *sqlx.NamedStmt
 	stmtUpdateUser  *sqlx.NamedStmt
 
-	stmtGetMyFlos             *sqlx.NamedStmt
-	stmtGetMyFlosWithFilter   *sqlx.NamedStmt
-	stmtCountMyFlos           *sqlx.NamedStmt
-	stmtCountMyFlosWithFilter *sqlx.NamedStmt
+	stmtGetMyFlos                *sqlx.NamedStmt
+	stmtGetMyFlosWithFilter      *sqlx.NamedStmt
+	stmtCountMyFlos              *sqlx.NamedStmt
+	stmtCountMyFlosWithFilter    *sqlx.NamedStmt
+	stmtGetOrgFlos               *sqlx.NamedStmt
+	stmtGetOrgFlosWithFilter     *sqlx.NamedStmt
+	stmtCountOrgFlos             *sqlx.NamedStmt
+	stmtCountOrgFlosWithFilter   *sqlx.NamedStmt
 	stmtGetFloByID            *sqlx.NamedStmt
 	stmtCreateFlo             *sqlx.NamedStmt
 	stmtUpdateFlo             *sqlx.NamedStmt
@@ -50,10 +62,14 @@ type Service struct {
 	stmtGetFloTriggers *sqlx.NamedStmt
 
 	stmtGetLatestExecutionForFlo  *sqlx.NamedStmt
-	stmtGetExecutions             *sqlx.NamedStmt
-	stmtGetExecutionsWithFilter   *sqlx.NamedStmt
-	stmtCountExecutions           *sqlx.NamedStmt
-	stmtCountExecutionsWithFilter *sqlx.NamedStmt
+	stmtGetExecutions               *sqlx.NamedStmt
+	stmtGetExecutionsWithFilter     *sqlx.NamedStmt
+	stmtCountExecutions             *sqlx.NamedStmt
+	stmtCountExecutionsWithFilter   *sqlx.NamedStmt
+	stmtGetOrgExecutions            *sqlx.NamedStmt
+	stmtGetOrgExecutionsWithFilter  *sqlx.NamedStmt
+	stmtCountOrgExecutions          *sqlx.NamedStmt
+	stmtCountOrgExecutionsWithFilter *sqlx.NamedStmt
 
 	stmtGetDefaultTriggerForFlo *sqlx.NamedStmt
 	stmtGetTriggerForFlo        *sqlx.NamedStmt
@@ -78,8 +94,14 @@ type Service struct {
 	stmtUpdateRunnerLastAccess *sqlx.NamedStmt
 	stmtInsertQueueRunner      *sqlx.NamedStmt
 	stmtCanRunnerAccessQueue   *sqlx.NamedStmt
+	stmtRemoveQueueRunner      *sqlx.NamedStmt
 
 	stmtGetQueueByRegistrationCode *sqlx.NamedStmt
+	stmtGetQueuesByOrganisationID  *sqlx.NamedStmt
+	stmtGetQueueByID               *sqlx.NamedStmt
+	stmtCreateQueue                *sqlx.NamedStmt
+	stmtDeleteQueue                *sqlx.NamedStmt
+	stmtGetQueueRunners            *sqlx.NamedStmt
 
 	stmtGetPendingExecutionByOrganisationID     *sqlx.NamedStmt
 	stmtGetPendingExecutionByNullOrganisationID *sqlx.NamedStmt
@@ -87,9 +109,11 @@ type Service struct {
 
 	stmtCreateEnvironment          *sqlx.NamedStmt
 	stmtGetEnvironmentByID         *sqlx.NamedStmt
+	stmtGetEnvironmentByIDDirect   *sqlx.NamedStmt
 	stmtGetEnvironmentByName       *sqlx.NamedStmt
 	stmtGetEnvironmentByIDAsRunner *sqlx.NamedStmt
 	stmtGetAllEnvironments         *sqlx.NamedStmt
+	stmtGetOrgEnvironments         *sqlx.NamedStmt
 	stmtDeleteEnvironmentByID      *sqlx.NamedStmt
 
 	stmtGetEnvironmentProperties     *sqlx.NamedStmt
@@ -104,8 +128,10 @@ type Service struct {
 	stmtGetEnvironmentSecretByName *sqlx.NamedStmt
 	stmtInsertEnvironmentSecret    *sqlx.NamedStmt
 	stmtDeleteEnvironmentSecret    *sqlx.NamedStmt
+	stmtUpdateEnvironmentSecret    *sqlx.NamedStmt
 
-	stmtGetUsageThisMonthForUserID *sqlx.NamedStmt
+	stmtGetUsageThisMonthForUserID    *sqlx.NamedStmt
+	stmtGetUsageThisMonthForOrgID    *sqlx.NamedStmt
 
 	stmtGetTriggers        *sqlx.NamedStmt
 	stmtGetTriggerByID     *sqlx.NamedStmt
@@ -139,10 +165,12 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetOrganisations, err = s.conn.PrepareNamed(`
 		SELECT
-		    id,
-		    name,
-		    icon,
-		    created_at
+		    o.id,
+		    o.name,
+		    o.icon,
+		    o.created_at,
+		    o.allow_public_runners,
+		    ou.role
 		FROM
 		    organisation o
 		INNER JOIN
@@ -161,6 +189,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    id,
 		    name,
 		    icon,
+		    allow_public_runners,
 		    created_at
 		FROM
 		    organisation
@@ -185,12 +214,13 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtUpdateOrganisation, err = s.conn.PrepareNamed(`
-		UPDATE 
+		UPDATE
 		    organisation
 		SET
 			name = :name,
-			icon = :icon
-		WHERE 
+			icon = :icon,
+			allow_public_runners = :allow_public_runners
+		WHERE
 		    id = :id
 	`)
 	if err != nil {
@@ -200,11 +230,106 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtAddUserToOrganisation, err = s.conn.PrepareNamed(`
 		INSERT INTO organisation_user (
 			organisation_id,
-			user_id
+			user_id,
+			role
 		) VALUES (
 		    :organisation_id,
-			:user_id
+			:user_id,
+			:role
 		);
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrganisationMembers, err = s.conn.PrepareNamed(`
+		SELECT
+		    ou.user_id,
+		    u.name,
+		    ou.role
+		FROM
+		    organisation_user ou
+		INNER JOIN
+		    users u ON u.id = ou.user_id
+		WHERE
+		    ou.organisation_id = :organisation_id
+		ORDER BY
+		    ou.role, u.name;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRemoveUserFromOrganisation, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_user
+		WHERE organisation_id = :organisation_id AND user_id = :user_id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUserRoleInOrganisation, err = s.conn.PrepareNamed(`
+		SELECT role FROM organisation_user
+		WHERE organisation_id = :organisation_id AND user_id = :user_id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateOrganisationInvite, err = s.conn.PrepareNamed(`
+		INSERT INTO organisation_invite (
+			organisation_id, email, role, created_by
+		) VALUES (
+			:organisation_id, :email, :role, :created_by
+		) RETURNING id, invite_code, created_at, expires_at;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrganisationInvites, err = s.conn.PrepareNamed(`
+		SELECT
+		    id, organisation_id, email, invite_code, role,
+		    created_by, created_at, accepted_at, accepted_by, expires_at
+		FROM
+		    organisation_invite
+		WHERE
+		    organisation_id = :organisation_id
+		    AND accepted_at IS NULL
+		    AND expires_at > CURRENT_TIMESTAMP
+		ORDER BY
+		    created_at DESC;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetInviteByCode, err = s.conn.PrepareNamed(`
+		SELECT
+		    id, organisation_id, email, invite_code, role,
+		    created_by, created_at, accepted_at, accepted_by, expires_at
+		FROM
+		    organisation_invite
+		WHERE
+		    invite_code = :invite_code
+		    AND accepted_at IS NULL
+		    AND expires_at > CURRENT_TIMESTAMP;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtAcceptInvite, err = s.conn.PrepareNamed(`
+		UPDATE organisation_invite
+		SET accepted_at = CURRENT_TIMESTAMP, accepted_by = :accepted_by
+		WHERE id = :id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRevokeInvite, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_invite WHERE id = :id AND organisation_id = :organisation_id;
 	`)
 	if err != nil {
 		return nil, err
@@ -268,6 +393,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -293,6 +419,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -313,6 +440,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -338,6 +466,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -360,6 +489,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -372,12 +502,89 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    author_id = :author_id
+		    AND organisation_id IS NULL
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
 			OR
 		    	CAST(id AS TEXT) LIKE LOWER(:search)
 		    )
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgFlos, err = s.conn.PrepareNamed(`
+		SELECT
+		    f.id,
+		    f.name,
+		    f.organisation_id,
+		    f.author_id,
+		    f.created_at,
+		    f.scale,
+		    f.x,
+		    f.y,
+		    f.environment_id,
+		    f.queue_id,
+		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
+			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
+			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
+			(SELECT e.created_at FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS last_run
+		FROM
+		    flo f
+		WHERE
+		    organisation_id = :organisation_id
+		ORDER BY
+		    created_at DESC
+		OFFSET :offset
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgFlosWithFilter, err = s.conn.PrepareNamed(`
+		SELECT
+		    f.id,
+		    f.name,
+		    f.organisation_id,
+		    f.author_id,
+		    f.created_at,
+		    f.scale,
+		    f.x,
+		    f.y,
+		    f.environment_id,
+		    f.queue_id,
+		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
+			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
+			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
+			(SELECT e.created_at FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS last_run
+		FROM
+		    flo f
+		WHERE
+		    organisation_id = :organisation_id
+		AND
+		    (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
+		ORDER BY
+		    created_at DESC
+		OFFSET :offset
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgFlos, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgFlosWithFilter, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM flo f
+		WHERE organisation_id = :organisation_id
+		AND (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 	`)
 	if err != nil {
 		return nil, err
@@ -394,6 +601,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.x,
 		    f.y,
 		    f.environment_id,
+		    f.queue_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,		    
 			(SELECT
 				 COUNT(1)
@@ -507,13 +715,14 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtUpdateFlo, err = s.conn.PrepareNamed(`
 		UPDATE flo
 		SET
-		    name = :name, 
-			organisation_id = :organisation_id, 
+		    name = :name,
+			organisation_id = :organisation_id,
 			author_id = :author_id,
 			scale = :scale,
 			x = :x,
 			y = :y,
-			environment_id = :environment_id
+			environment_id = :environment_id,
+			queue_id = :queue_id
 		WHERE
 		    id = :id
 	`)
@@ -638,10 +847,9 @@ func NewService(config *config.Config) (*Service, error) {
 		INNER JOIN
 			flo f ON f.id = e.flo_id
 		WHERE
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
-		ORDER BY 
+		    e.owner_id = :user_id
+		    AND e.organisation_id IS NULL
+		ORDER BY
 		    e.created_at DESC
 		OFFSET :offset
 		LIMIT :limit
@@ -652,72 +860,90 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT
-		    e.id,
-		    e.flo_id,
-		    f.name,
-		    e.owner_id,
-		    e.organisation_id,
-		    e.created_at,
-		    e.updated_at,
-		    e.completed_at,
-		    e.triggered_by,
-		    e.execution_status,
-		    e.completion_status,
-			e.result->'duration' AS duration,
-			e.result->'billingDuration' AS billing_duration,
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id
-		WHERE
-		    (CAST(e.id AS TEXT) LIKE LOWER(:search)
-		OR
-		    LOWER(f.name) LIKE LOWER(:search))
-		AND
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
-		ORDER BY 
-		    e.created_at DESC
-		OFFSET :offset
-		LIMIT :limit
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.owner_id = :user_id AND e.organisation_id IS NULL
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
 	`)
 	if err != nil {
 		return nil, err
 	}
 
 	s.stmtCountExecutions, err = s.conn.PrepareNamed(`
-		SELECT
-		    COUNT(1)
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id
-		WHERE
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
 	if err != nil {
 		return nil, err
 	}
 
 	s.stmtCountExecutionsWithFilter, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.owner_id = :user_id AND e.organisation_id IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgExecutions, err = s.conn.PrepareNamed(`
 		SELECT
-		    COUNT(1)
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id
-		WHERE
-		    (CAST(e.id AS TEXT) LIKE LOWER(:search)
-		OR
-		    LOWER(f.name) LIKE LOWER(:search))
-		AND
-		    (e.owner_id = :user_id
-		OR
-		     e.organisation_id = :organisation_id)
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.organisation_id = :organisation_id
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
+		SELECT
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.organisation_id = :organisation_id
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgExecutions, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.organisation_id = :organisation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
+		AND e.organisation_id = :organisation_id
 	`)
 	if err != nil {
 		return nil, err
@@ -1100,6 +1326,56 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	s.stmtRemoveQueueRunner, err = db.PrepareNamed(`
+		DELETE FROM queue_runner WHERE queue_id = :queue_id AND runner_id = :runner_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetQueuesByOrganisationID, err = db.PrepareNamed(`
+		SELECT id, organisation_id, parent_id, name, registration_code, created_at, location_code
+		FROM queue WHERE organisation_id = :organisation_id ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetQueueByID, err = db.PrepareNamed(`
+		SELECT id, organisation_id, parent_id, name, registration_code, created_at, location_code
+		FROM queue WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateQueue, err = db.PrepareNamed(`
+		INSERT INTO queue (organisation_id, parent_id, name) VALUES (:organisation_id, :parent_id, :name)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteQueue, err = db.PrepareNamed(`
+		DELETE FROM queue WHERE id = :id AND organisation_id = :organisation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetQueueRunners, err = db.PrepareNamed(`
+		SELECT r.id, r.identifier, r.name, r.enrolled_at, r.last_contact_at,
+		       r.ip, r.active, r.version, r.executor_version, r.public_key
+		FROM runner r
+		INNER JOIN queue_runner qr ON qr.runner_id = r.id
+		WHERE qr.queue_id = :queue_id
+		ORDER BY r.name
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	s.stmtGetOrganisationByRunnerIdentifier, err = db.PrepareNamed(`
 		SELECT
         	q.organisation_id
@@ -1144,29 +1420,31 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetPendingExecutionByNullOrganisationID, err = db.PrepareNamed(`
 		SELECT
-		    id,
-		    flo_id,
-		    name,
-		    owner_id,
-		    organisation_id,
-		    created_at,
-		    updated_at,
-		    completed_at,
-		    triggered_by,
-		    execution_status,
-		    completion_status,
-		    data,
-		    runner_id,
-		    result,
-			result->'duration' AS duration,
-			result->'billingDuration' AS billing_duration
+		    e.id,
+		    e.flo_id,
+		    e.name,
+		    e.owner_id,
+		    e.organisation_id,
+		    e.created_at,
+		    e.updated_at,
+		    e.completed_at,
+		    e.triggered_by,
+		    e.execution_status,
+		    e.completion_status,
+		    e.data,
+		    e.runner_id,
+		    e.result,
+			e.result->'duration' AS duration,
+			e.result->'billingDuration' AS billing_duration
 		FROM
 		    execution e
+		LEFT JOIN
+		    organisation o ON e.organisation_id = o.id
 		WHERE
-		    organisation_id IS NULL
+		    e.execution_status = 'created'
 		AND
-		    execution_status = 'created'
-		ORDER BY created_at DESC
+		    (e.organisation_id IS NULL OR o.allow_public_runners = true)
+		ORDER BY e.created_at DESC
 		LIMIT 1
 	`)
 	if err != nil {
@@ -1204,6 +1482,23 @@ func NewService(config *config.Config) (*Service, error) {
 		    id = :id
 		AND
 		    (owner_id = :owner_id OR organisation_id = :organisation_id)
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetEnvironmentByIDDirect, err = db.PrepareNamed(`
+		SELECT
+		    id,
+		    name,
+		    owner_id,
+		    organisation_id,
+		    PGP_SYM_DECRYPT(secret_key, :encrypt_key) AS secret_key,
+		    created_at
+		FROM
+		    environment
+		WHERE
+		    id = :id
 	`)
 	if err != nil {
 		return nil, err
@@ -1256,9 +1551,25 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 		    environment
 		WHERE
-		    (owner_id = :owner_id)
-		OR 
-		    (organisation_id = :organisation_id)
+		    owner_id = :owner_id
+		    AND organisation_id IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgEnvironments, err = db.PrepareNamed(`
+		SELECT
+		    id,
+		    name,
+		    owner_id,
+		    organisation_id,
+		    secret_key,
+		    created_at
+		FROM
+		    environment
+		WHERE
+		    organisation_id = :organisation_id
 	`)
 	if err != nil {
 		return nil, err
@@ -1464,6 +1775,15 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	s.stmtUpdateEnvironmentSecret, err = db.PrepareNamed(`
+		UPDATE environment_secret
+		SET value = PGP_SYM_ENCRYPT(:value, :environment_key)
+		WHERE id = :id AND environment_id = :environment_id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	s.stmtGetUsageThisMonthForUserID, err = db.PrepareNamed(`
 		SELECT
 			SUM(CASE
@@ -1471,14 +1791,32 @@ func NewService(config *config.Config) (*Service, error) {
 				ELSE CAST(e.result->>'duration' AS INT)
 			END) AS usage,
 		    50 * 1000 AS allowance
-		FROM 
+		FROM
 		    execution e
-		WHERE 
+		WHERE
 			created_at > cast(date_trunc('month', current_date) as date)
 		AND
-			(owner_id = :owner_id
-		OR
-			organisation_id = :organisation_id);
+			owner_id = :owner_id
+		AND
+			organisation_id IS NULL;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUsageThisMonthForOrgID, err = db.PrepareNamed(`
+		SELECT
+			SUM(CASE
+				WHEN e.result->'duration' IS NULL THEN 0
+				ELSE CAST(e.result->>'duration' AS INT)
+			END) AS usage,
+		    50 * 1000 AS allowance
+		FROM
+		    execution e
+		WHERE
+			created_at > cast(date_trunc('month', current_date) as date)
+		AND
+			organisation_id = :organisation_id;
 	`)
 	if err != nil {
 		return nil, err
@@ -1493,10 +1831,12 @@ func NewService(config *config.Config) (*Service, error) {
 			t.created_at,
 			t.type,
 			tt.name AS type_name,
-			t.data
+			t.data,
+			ft.flo_id
 		FROM
 			trigger t
 		INNER JOIN trigger_type tt ON t.type = tt.id
+		LEFT JOIN flo_trigger ft ON ft.trigger_id = t.id
 		WHERE
 		    t.owner_id = :owner_id
 		ORDER BY
@@ -1647,18 +1987,136 @@ func (s *Service) UpdateOrganisation(organisation api.Organisation) error {
 	return nil
 }
 
-func (s *Service) AddUserToOrganisation(organisationID string, userID string) error {
+func (s *Service) AddUserToOrganisation(organisationID string, userID string, role ...string) error {
+	r := "member"
+	if len(role) > 0 {
+		r = role[0]
+	}
+
 	if _, err := s.stmtAddUserToOrganisation.Exec(struct {
+		OrganisationID string `db:"organisation_id"`
+		UserID         string `db:"user_id"`
+		Role           string `db:"role"`
+	}{
+		OrganisationID: organisationID,
+		UserID:         userID,
+		Role:           r,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) GetOrganisationMembers(organisationID string) ([]*api.OrganisationMember, error) {
+	var results []*api.OrganisationMember
+	if err := s.stmtGetOrganisationMembers.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: organisationID,
+	}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) RemoveUserFromOrganisation(organisationID string, userID string) error {
+	_, err := s.stmtRemoveUserFromOrganisation.Exec(struct {
+		OrganisationID string `db:"organisation_id"`
+		UserID         string `db:"user_id"`
+	}{
+		OrganisationID: organisationID,
+		UserID:         userID,
+	})
+	return err
+}
+
+func (s *Service) GetUserRoleInOrganisation(organisationID string, userID string) (*string, error) {
+	var role string
+	if err := s.stmtGetUserRoleInOrganisation.Get(&role, struct {
 		OrganisationID string `db:"organisation_id"`
 		UserID         string `db:"user_id"`
 	}{
 		OrganisationID: organisationID,
 		UserID:         userID,
 	}); err != nil {
-		return err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
+	return &role, nil
+}
 
-	return nil
+func (s *Service) CreateOrganisationInvite(organisationID string, email *string, role string, createdBy string) (*api.OrganisationInvite, error) {
+	var invite api.OrganisationInvite
+	if err := s.stmtCreateOrganisationInvite.Get(&invite, struct {
+		OrganisationID string  `db:"organisation_id"`
+		Email          *string `db:"email"`
+		Role           string  `db:"role"`
+		CreatedBy      string  `db:"created_by"`
+	}{
+		OrganisationID: organisationID,
+		Email:          email,
+		Role:           role,
+		CreatedBy:      createdBy,
+	}); err != nil {
+		return nil, err
+	}
+	invite.OrganisationID = organisationID
+	invite.Email = email
+	invite.Role = role
+	invite.CreatedBy = createdBy
+	return &invite, nil
+}
+
+func (s *Service) GetOrganisationInvites(organisationID string) ([]*api.OrganisationInvite, error) {
+	var results []*api.OrganisationInvite
+	if err := s.stmtGetOrganisationInvites.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: organisationID,
+	}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) GetInviteByCode(code string) (*api.OrganisationInvite, error) {
+	var invite api.OrganisationInvite
+	if err := s.stmtGetInviteByCode.Get(&invite, struct {
+		InviteCode string `db:"invite_code"`
+	}{
+		InviteCode: code,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &invite, nil
+}
+
+func (s *Service) AcceptInvite(inviteID string, acceptedBy string) error {
+	_, err := s.stmtAcceptInvite.Exec(struct {
+		ID         string `db:"id"`
+		AcceptedBy string `db:"accepted_by"`
+	}{
+		ID:         inviteID,
+		AcceptedBy: acceptedBy,
+	})
+	return err
+}
+
+func (s *Service) RevokeInvite(inviteID string, organisationID string) error {
+	_, err := s.stmtRevokeInvite.Exec(struct {
+		ID             string `db:"id"`
+		OrganisationID string `db:"organisation_id"`
+	}{
+		ID:             inviteID,
+		OrganisationID: organisationID,
+	})
+	return err
 }
 
 func (s *Service) GetUserByID(ID string) (*api.User, error) {
@@ -1711,61 +2169,113 @@ func (s *Service) UpdateUser(user *api.User) error {
 	return nil
 }
 
-func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string) ([]*api.Flo, int64, error) {
+func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
 	var results []*api.Flo
 	var count int64
 
-	if search == "" {
-		if err := s.stmtGetMyFlos.Select(&results, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-		}); err != nil {
-			return nil, 0, err
-		}
+	// Organisation-scoped queries
+	if len(organisationID) > 0 && organisationID[0] != "" {
+		orgID := organisationID[0]
 
-		if err := s.stmtCountMyFlos.Get(&count, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-		}); err != nil {
-			return nil, 0, err
+		if search == "" {
+			if err := s.stmtGetOrgFlos.Select(&results, struct {
+				OrganisationID string `db:"organisation_id"`
+				Offset         int64  `db:"offset"`
+				Limit          int64  `db:"limit"`
+			}{
+				OrganisationID: orgID,
+				Offset:         offset,
+				Limit:          limit,
+			}); err != nil {
+				return nil, 0, err
+			}
+
+			if err := s.stmtCountOrgFlos.Get(&count, struct {
+				OrganisationID string `db:"organisation_id"`
+			}{
+				OrganisationID: orgID,
+			}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetOrgFlosWithFilter.Select(&results, struct {
+				OrganisationID string `db:"organisation_id"`
+				Offset         int64  `db:"offset"`
+				Limit          int64  `db:"limit"`
+				Search         string `db:"search"`
+			}{
+				OrganisationID: orgID,
+				Offset:         offset,
+				Limit:          limit,
+				Search:         "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
+
+			if err := s.stmtCountOrgFlosWithFilter.Get(&count, struct {
+				OrganisationID string `db:"organisation_id"`
+				Search         string `db:"search"`
+			}{
+				OrganisationID: orgID,
+				Search:         "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
 		}
 	} else {
-		if err := s.stmtGetMyFlosWithFilter.Select(&results, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-			Search   string `db:"search"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-			Search:   "%" + search + "%",
-		}); err != nil {
-			return nil, 0, err
-		}
+		// Personal flows — filter by author_id
+		if search == "" {
+			if err := s.stmtGetMyFlos.Select(&results, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+			}); err != nil {
+				return nil, 0, err
+			}
 
-		if err := s.stmtCountMyFlosWithFilter.Get(&count, struct {
-			AuthorID string `db:"author_id"`
-			Offset   int64  `db:"offset"`
-			Limit    int64  `db:"limit"`
-			Search   string `db:"search"`
-		}{
-			AuthorID: userID,
-			Offset:   offset,
-			Limit:    limit,
-			Search:   "%" + search + "%",
-		}); err != nil {
-			return nil, 0, err
+			if err := s.stmtCountMyFlos.Get(&count, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+			}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetMyFlosWithFilter.Select(&results, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+				Search   string `db:"search"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+				Search:   "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
+
+			if err := s.stmtCountMyFlosWithFilter.Get(&count, struct {
+				AuthorID string `db:"author_id"`
+				Offset   int64  `db:"offset"`
+				Limit    int64  `db:"limit"`
+				Search   string `db:"search"`
+			}{
+				AuthorID: userID,
+				Offset:   offset,
+				Limit:    limit,
+				Search:   "%" + search + "%",
+			}); err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 
@@ -1945,69 +2455,68 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 	var results []*api.Execution
 	var count int64
 
-	if search != "" {
-		if err := s.stmtGetExecutionsWithFilter.Select(&results, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			Search         string  `db:"search"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			Search:         "%" + search + "%",
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("1")
-			return nil, 0, err
-		}
+	isOrg := organisationID != nil && *organisationID != ""
 
-		if err := s.stmtCountExecutionsWithFilter.Get(&count, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			Search         string  `db:"search"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			Search:         "%" + search + "%",
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("2")
-			return nil, 0, err
+	if isOrg {
+		orgID := *organisationID
+		if search != "" {
+			if err := s.stmtGetOrgExecutionsWithFilter.Select(&results, struct {
+				Offset         int64  `db:"offset"`
+				Limited        int64  `db:"limit"`
+				Search         string `db:"search"`
+				OrganisationID string `db:"organisation_id"`
+			}{Offset: offset, Limited: limit, Search: "%" + search + "%", OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountOrgExecutionsWithFilter.Get(&count, struct {
+				Search         string `db:"search"`
+				OrganisationID string `db:"organisation_id"`
+			}{Search: "%" + search + "%", OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetOrgExecutions.Select(&results, struct {
+				Offset         int64  `db:"offset"`
+				Limited        int64  `db:"limit"`
+				OrganisationID string `db:"organisation_id"`
+			}{Offset: offset, Limited: limit, OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountOrgExecutions.Get(&count, struct {
+				OrganisationID string `db:"organisation_id"`
+			}{OrganisationID: orgID}); err != nil {
+				return nil, 0, err
+			}
 		}
 	} else {
-		if err := s.stmtGetExecutions.Select(&results, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("3")
-			return nil, 0, err
-		}
-
-		if err := s.stmtCountExecutions.Get(&count, struct {
-			Offset         int64   `db:"offset"`
-			Limited        int64   `db:"limit"`
-			UserID         string  `db:"user_id"`
-			OrganisationID *string `db:"organisation_id"`
-		}{
-			Offset:         offset,
-			Limited:        limit,
-			UserID:         userID,
-			OrganisationID: organisationID,
-		}); err != nil {
-			log.Info("4")
-			return nil, 0, err
+		if search != "" {
+			if err := s.stmtGetExecutionsWithFilter.Select(&results, struct {
+				Offset int64  `db:"offset"`
+				Limited int64  `db:"limit"`
+				Search string `db:"search"`
+				UserID string `db:"user_id"`
+			}{Offset: offset, Limited: limit, Search: "%" + search + "%", UserID: userID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountExecutionsWithFilter.Get(&count, struct {
+				Search string `db:"search"`
+				UserID string `db:"user_id"`
+			}{Search: "%" + search + "%", UserID: userID}); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := s.stmtGetExecutions.Select(&results, struct {
+				Offset int64  `db:"offset"`
+				Limited int64  `db:"limit"`
+				UserID string `db:"user_id"`
+			}{Offset: offset, Limited: limit, UserID: userID}); err != nil {
+				return nil, 0, err
+			}
+			if err := s.stmtCountExecutions.Get(&count, struct {
+				UserID string `db:"user_id"`
+			}{UserID: userID}); err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 
@@ -2323,6 +2832,41 @@ func (s *Service) GetExecutionForRunnerID(ID string) (*api.Execution, error) {
 		}
 	}
 
+	// Check queue assignment: if the flow has a queue_id, verify the runner is in that queue
+	flo, err := s.GetFloByID(execution.FloID)
+	if err != nil {
+		return nil, err
+	}
+
+	if flo != nil && flo.QueueID != nil {
+		// Walk queue hierarchy to check if runner is assigned
+		matched := false
+		queueID := *flo.QueueID
+
+		for {
+			var count int64
+			if err := s.stmtCanRunnerAccessQueue.Get(&count, struct {
+				QueueID  string `db:"queue_id"`
+				RunnerID string `db:"runner_id"`
+			}{QueueID: queueID, RunnerID: r.ID}); err == nil && count > 0 {
+				matched = true
+				break
+			}
+
+			// Check parent queue
+			q, err := s.GetQueueByID(queueID)
+			if err != nil || q == nil || q.ParentID == nil {
+				break
+			}
+			queueID = *q.ParentID
+		}
+
+		if !matched {
+			// Runner not in the flow's queue hierarchy — no execution for this runner
+			return nil, nil
+		}
+	}
+
 	return &execution, nil
 }
 
@@ -2357,6 +2901,75 @@ func (s *Service) GetQueueByRegistrationCode(code string) (*api.Queue, error) {
 	return &queue, nil
 }
 
+func (s *Service) GetQueuesByOrganisationID(organisationID string) ([]*api.Queue, error) {
+	var results []*api.Queue
+	if err := s.stmtGetQueuesByOrganisationID.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{OrganisationID: organisationID}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) GetQueueByID(id string) (*api.Queue, error) {
+	var queue api.Queue
+	if err := s.stmtGetQueueByID.Get(&queue, struct {
+		ID string `db:"id"`
+	}{ID: id}); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &queue, nil
+}
+
+func (s *Service) CreateQueue(organisationID string, name string, parentID *string) (*string, error) {
+	var id string
+	if err := s.stmtCreateQueue.Get(&id, struct {
+		OrganisationID string  `db:"organisation_id"`
+		ParentID       *string `db:"parent_id"`
+		Name           string  `db:"name"`
+	}{OrganisationID: organisationID, ParentID: parentID, Name: name}); err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func (s *Service) DeleteQueue(id string, organisationID string) error {
+	_, err := s.stmtDeleteQueue.Exec(struct {
+		ID             string `db:"id"`
+		OrganisationID string `db:"organisation_id"`
+	}{ID: id, OrganisationID: organisationID})
+	return err
+}
+
+func (s *Service) GetQueueRunners(queueID string) ([]*api.Runner, error) {
+	var results []*api.Runner
+	if err := s.stmtGetQueueRunners.Select(&results, struct {
+		QueueID string `db:"queue_id"`
+	}{QueueID: queueID}); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (s *Service) AddRunnerToQueue(queueID string, runnerID string) error {
+	_, err := s.stmtInsertQueueRunner.Exec(struct {
+		QueueID  string `db:"queue_id"`
+		RunnerID string `db:"runner_id"`
+	}{QueueID: queueID, RunnerID: runnerID})
+	return err
+}
+
+func (s *Service) RemoveRunnerFromQueue(queueID string, runnerID string) error {
+	_, err := s.stmtRemoveQueueRunner.Exec(struct {
+		QueueID  string `db:"queue_id"`
+		RunnerID string `db:"runner_id"`
+	}{QueueID: queueID, RunnerID: runnerID})
+	return err
+}
+
 func (s *Service) CreateEnvironment(environment api.Environment) (*string, error) {
 	var id string
 	if err := s.stmtCreateEnvironment.Get(&id, struct {
@@ -2375,18 +2988,45 @@ func (s *Service) CreateEnvironment(environment api.Environment) (*string, error
 func (s *Service) GetEnvironments(ownerID string, organisationID *string) ([]*api.Environment, error) {
 	var results []*api.Environment
 
-	err := s.stmtGetAllEnvironments.Select(&results, struct {
-		OwnerID        string  `db:"owner_id"`
-		OrganisationID *string `db:"organisation_id"`
-	}{
-		OwnerID:        ownerID,
-		OrganisationID: organisationID,
-	})
-	if err != nil {
-		return nil, err
+	if organisationID != nil && *organisationID != "" {
+		err := s.stmtGetOrgEnvironments.Select(&results, struct {
+			OrganisationID string `db:"organisation_id"`
+		}{
+			OrganisationID: *organisationID,
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err := s.stmtGetAllEnvironments.Select(&results, struct {
+			OwnerID string `db:"owner_id"`
+		}{
+			OwnerID: ownerID,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return results, nil
+}
+
+func (s *Service) GetEnvironmentByIDDirect(ID string) (*api.Environment, error) {
+	var result api.Environment
+	err := s.stmtGetEnvironmentByIDDirect.Get(&result, struct {
+		ID         string `db:"id"`
+		EncryptKey string `db:"encrypt_key"`
+	}{
+		ID:         ID,
+		EncryptKey: s.config.Database.EncryptionKey,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (s *Service) GetEnvironmentByID(ID string, ownerID string, organisationID *string) (*api.Environment, error) {
@@ -2672,6 +3312,21 @@ func (s *Service) CreateEnvironmentSecret(environmentID string, environmentKey s
 	return &id, nil
 }
 
+func (s *Service) UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error {
+	_, err := s.stmtUpdateEnvironmentSecret.Exec(struct {
+		ID             string `db:"id"`
+		EnvironmentID  string `db:"environment_id"`
+		Value          string `db:"value"`
+		EnvironmentKey string `db:"environment_key"`
+	}{
+		ID:             secretID,
+		EnvironmentID:  environmentID,
+		Value:          value,
+		EnvironmentKey: environmentKey,
+	})
+	return err
+}
+
 func (s *Service) RemoveEnvironmentSecret(secretID string) error {
 	query := struct {
 		ID string `db:"id"`
@@ -2748,6 +3403,29 @@ func (s *Service) CreateTriggerWithType(trigger api.Trigger) (*string, error) {
 	return &ID, nil
 }
 
+func (s *Service) GetTriggersByFloID(floID string) ([]*api.Trigger, error) {
+	var triggers []*api.Trigger
+	if err := s.stmtGetFloTriggers.Select(&triggers, struct {
+		FloID string `db:"id"`
+	}{
+		FloID: floID,
+	}); err != nil {
+		return nil, err
+	}
+	return triggers, nil
+}
+
+func (s *Service) LinkFloToTrigger(floID string, triggerID string) error {
+	_, err := s.stmtLinkFloToTrigger.Exec(struct {
+		FloID     string `db:"flo_id"`
+		TriggerID string `db:"trigger_id"`
+	}{
+		FloID:     floID,
+		TriggerID: triggerID,
+	})
+	return err
+}
+
 func (s *Service) UpdateTrigger(trigger api.Trigger) error {
 	dataBytes, err := json.Marshal(trigger.Data)
 	if err != nil {
@@ -2797,13 +3475,22 @@ func (s *Service) DeleteTrigger(id string) error {
 
 func (s *Service) GetUsage(ownerID string, organisationID *string) (*api.UserDashboard, error) {
 	var result api.UserDashboard
-	err := s.stmtGetUsageThisMonthForUserID.Get(&result, struct {
-		OwnerID        string  `db:"owner_id"`
-		OrganisationID *string `db:"organisation_id"`
-	}{
-		OwnerID:        ownerID,
-		OrganisationID: organisationID,
-	})
+	var err error
+
+	if organisationID != nil && *organisationID != "" {
+		err = s.stmtGetUsageThisMonthForOrgID.Get(&result, struct {
+			OrganisationID string `db:"organisation_id"`
+		}{
+			OrganisationID: *organisationID,
+		})
+	} else {
+		err = s.stmtGetUsageThisMonthForUserID.Get(&result, struct {
+			OwnerID string `db:"owner_id"`
+		}{
+			OwnerID: ownerID,
+		})
+	}
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

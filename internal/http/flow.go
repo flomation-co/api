@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,38 @@ import (
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
+
+// resolveVariables replaces ${secrets.X} and ${env.X} references with actual values.
+func resolveVariables(value string, secrets map[string]string, properties map[string]string) string {
+	if !strings.Contains(value, "${") {
+		return value
+	}
+
+	re := regexp.MustCompile(`\$\{([^}]+)\}`)
+	return re.ReplaceAllStringFunc(value, func(match string) string {
+		key := match[2 : len(match)-1] // strip ${ and }
+
+		if strings.HasPrefix(key, "secrets.") || strings.HasPrefix(key, "secret.") {
+			name := strings.TrimPrefix(key, "secrets.")
+			name = strings.TrimPrefix(name, "secret.")
+			if secrets != nil {
+				if v, ok := secrets[name]; ok {
+					return v
+				}
+			}
+		} else if strings.HasPrefix(key, "env.") {
+			name := strings.TrimPrefix(key, "env.")
+			if properties != nil {
+				if v, ok := properties[name]; ok {
+					return v
+				}
+			}
+		}
+
+		// Return the original reference if unresolved
+		return match
+	})
+}
 
 func (s *Service) getMyFlos(c *gin.Context) {
 	user := s.getUserFromContext(c)
@@ -37,7 +70,12 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		return
 	}
 
-	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery)
+	var orgID string
+	if len(user.Organisations) > 0 {
+		orgID = user.Organisations[0].ID
+	}
+
+	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -67,6 +105,7 @@ func (s *Service) getMyFlos(c *gin.Context) {
 
 func (s *Service) getFloByID(c *gin.Context) {
 	ID := c.Param("FloID")
+	user := s.getUserFromContext(c)
 
 	flo, err := s.persistence.GetFloByID(ID)
 	if err != nil {
@@ -79,6 +118,11 @@ func (s *Service) getFloByID(c *gin.Context) {
 
 	if flo == nil {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, flo.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 
@@ -124,6 +168,10 @@ func (s *Service) createFlo(c *gin.Context) {
 
 	user := s.getUserFromContext(c)
 	flo.AuthorID = &user.ID
+
+	if len(user.Organisations) > 0 {
+		flo.OrganisationID = &user.Organisations[0].ID
+	}
 
 	id, err := s.persistence.CreateFlo(flo)
 	if err != nil {
@@ -193,6 +241,7 @@ func (s *Service) updateFlo(c *gin.Context) {
 
 func (s *Service) deleteFlo(c *gin.Context) {
 	ID := c.Param("FloID")
+	user := s.getUserFromContext(c)
 
 	flo, err := s.persistence.GetFloByID(ID)
 	if err != nil {
@@ -205,6 +254,11 @@ func (s *Service) deleteFlo(c *gin.Context) {
 
 	if flo == nil {
 		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, flo.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 
@@ -233,6 +287,26 @@ func (s *Service) createFloRevision(c *gin.Context) {
 
 	revision.FloID = FloID
 
+	// Parse revision data to extract trigger nodes before marshalling
+	var revisionData struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+			Data struct {
+				ID     string `json:"id"`
+				Label  string `json:"label"`
+				Config struct {
+					Type   int64                    `json:"type"`
+					Plugin string                   `json:"plugin"`
+					Inputs []map[string]interface{} `json:"inputs"`
+				} `json:"config"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+
+	rawData, _ := json.Marshal(revision.Data)
+	_ = json.Unmarshal(rawData, &revisionData)
+
 	j, err := json.Marshal(revision.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -251,6 +325,158 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		}).Error("unable to create flo revision")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	// Sync trigger nodes with API triggers and Launch service
+	user := s.getUserFromContext(c)
+	authToken := ""
+	if tkn := s.getTokenFromContext(c); tkn != nil {
+		authToken = *tkn
+	}
+
+	// Get existing triggers for this flow to avoid duplicates
+	existingTriggers, _ := s.persistence.GetTriggersByFloID(FloID)
+
+	for _, node := range revisionData.Nodes {
+		label := node.Data.Label
+		if label == "" {
+			continue
+		}
+
+		// Check if this is a non-manual trigger node
+		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
+		isManual := label == "trigger/manual"
+		if !isTrigger || isManual {
+			continue
+		}
+
+		// Map the trigger type name
+		typeName := strings.TrimPrefix(label, "trigger/")
+		typeName = strings.ReplaceAll(typeName, "_", "-")
+
+		// Build trigger data from node inputs (unresolved — Launch resolves at poll time)
+		triggerData := make(map[string]interface{})
+		for _, input := range node.Data.Config.Inputs {
+			name, _ := input["name"].(string)
+			value := input["value"]
+			if name != "" && value != nil {
+				triggerData[name] = value
+			}
+		}
+
+		// Check if a trigger of this type already exists for this flow
+		var existingID *string
+		for _, et := range existingTriggers {
+			if et.TypeName == typeName {
+				existingID = &et.ID
+				break
+			}
+		}
+
+		if existingID != nil {
+			// Update existing trigger data
+			trigger := api.Trigger{
+				ID:       *existingID,
+				Name:     label,
+				TypeName: typeName,
+				FloID:    &FloID,
+				Data:     triggerData,
+			}
+
+			if err := s.persistence.UpdateTrigger(trigger); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": *existingID,
+				}).Warn("unable to update trigger from revision node")
+			}
+
+			s.registerTriggerWithLaunch(*existingID, trigger, authToken)
+		} else {
+			// Create new trigger
+			trigger := api.Trigger{
+				Name:     label,
+				TypeName: typeName,
+				FloID:    &FloID,
+				Data:     triggerData,
+			}
+
+			if user != nil {
+				trigger.OwnerID = &user.ID
+				if len(user.Organisations) > 0 {
+					trigger.OrganisationID = &user.Organisations[0].ID
+				}
+			}
+
+			triggerID, err := s.persistence.CreateTriggerWithType(trigger)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err,
+					"type":  typeName,
+				}).Warn("unable to create trigger from revision node")
+				continue
+			}
+
+			if err := s.persistence.LinkFloToTrigger(FloID, *triggerID); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": *triggerID,
+					"flo_id":     FloID,
+				}).Warn("unable to link trigger to flow")
+			}
+
+			s.registerTriggerWithLaunch(*triggerID, trigger, authToken)
+
+			log.WithFields(log.Fields{
+				"trigger_id": *triggerID,
+				"type":       typeName,
+				"flo_id":     FloID,
+			}).Info("registered trigger from flow revision")
+		}
+	}
+
+	// Remove triggers that are no longer in the revision
+	// Collect type names of triggers found in this revision
+	revisionTriggerTypes := make(map[string]bool)
+	for _, node := range revisionData.Nodes {
+		label := node.Data.Label
+		if label == "" {
+			continue
+		}
+		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
+		isManual := label == "trigger/manual"
+		if isTrigger && !isManual {
+			tn := strings.TrimPrefix(label, "trigger/")
+			tn = strings.ReplaceAll(tn, "_", "-")
+			revisionTriggerTypes[tn] = true
+		}
+	}
+
+	for _, et := range existingTriggers {
+		if et.TypeName == "manual" {
+			continue
+		}
+		if !revisionTriggerTypes[et.TypeName] {
+			// Trigger was removed from the flow — disable in Launch and delete from API
+			if err := s.launch.DisableTrigger(et.ID, authToken); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": et.ID,
+				}).Warn("unable to disable removed trigger in launch service")
+			}
+
+			if err := s.persistence.DeleteTrigger(et.ID); err != nil {
+				log.WithFields(log.Fields{
+					"error":      err,
+					"trigger_id": et.ID,
+				}).Warn("unable to delete removed trigger")
+			}
+
+			log.WithFields(log.Fields{
+				"trigger_id": et.ID,
+				"type":       et.TypeName,
+				"flo_id":     FloID,
+			}).Info("removed trigger no longer in flow revision")
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

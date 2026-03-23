@@ -146,9 +146,18 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	orgs.Use(s.jwtMiddleware)
 	orgs.GET("", s.getMyOrganisations)
 	orgs.GET("/:ID", s.getOrganisation)
+	orgs.GET("/:ID/member", s.getOrganisationMembers)
+	orgs.GET("/:ID/invite", s.getOrganisationInvites)
 
 	orgs.POST("", s.createOrganisation)
 	orgs.POST("/:ID", s.updateOrganisation)
+	orgs.POST("/:ID/invite", s.createOrganisationInvite)
+
+	orgs.DELETE("/:ID/member/:userID", s.removeOrganisationMember)
+	orgs.DELETE("/:ID/invite/:inviteID", s.revokeOrganisationInvite)
+
+	// Invite acceptance (authenticated but not org-scoped)
+	v1.POST("invite/:code/accept", s.jwtMiddleware, s.acceptOrganisationInvite)
 
 	users := v1.Group("user")
 	users.Use(s.jwtMiddleware)
@@ -195,7 +204,13 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	runners.DELETE("/:id", s.jwtMiddleware, s.unregisterRunner)
 
 	queue := v1.Group("queue")
-	queue.GET("", s.jwtMiddleware, s.getQueues)
+	queue.Use(s.jwtMiddleware)
+	queue.GET("", s.getQueues)
+	queue.POST("", s.createQueue)
+	queue.DELETE("/:id", s.deleteQueue)
+	queue.GET("/:id/runner", s.getQueueRunners)
+	queue.POST("/:id/runner", s.addRunnerToQueue)
+	queue.DELETE("/:id/runner/:runnerID", s.removeRunnerFromQueue)
 
 	triggers := v1.Group("trigger")
 	triggers.GET("", s.jwtMiddleware, s.getTriggers)
@@ -203,6 +218,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	triggers.POST("", s.jwtMiddleware, s.createTrigger)
 	triggers.POST("/:id", s.jwtMiddleware, s.updateTrigger)
 	triggers.DELETE("/:id", s.jwtMiddleware, s.deleteTrigger)
+	triggers.POST("/:id/resolve", s.resolveTriggerVariables)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
@@ -219,6 +235,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)
 	environment.GET("/:environment/secret/:name", s.jwtMiddleware, s.getEnvironmentSecretByName)
 	environment.POST("/:environment/secret", s.jwtMiddleware, s.createEnvironmentSecret)
+	environment.POST("/:environment/secret/:id", s.jwtMiddleware, s.updateEnvironmentSecretByID)
 	environment.DELETE("/:environment/secret/:id", s.jwtMiddleware, s.deleteEnvironmentSecretByID)
 
 	return s
@@ -282,4 +299,17 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 	}
 
 	return u
+}
+
+// verifyOrgAccess checks that the resource's organisation_id matches the
+// user's current org context. In personal mode (no org selected), only
+// resources with null organisation_id are accessible. In org mode, only
+// resources belonging to that organisation are accessible.
+func (s *Service) verifyOrgAccess(user *api.User, resourceOrgID *string) bool {
+	if len(user.Organisations) > 0 {
+		// Org mode — resource must belong to this org
+		return resourceOrgID != nil && *resourceOrgID == user.Organisations[0].ID
+	}
+	// Personal mode — resource must have no org
+	return resourceOrgID == nil
 }

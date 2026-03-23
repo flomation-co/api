@@ -48,27 +48,29 @@ func (s *Service) validateExecutionEnvironment(c *gin.Context) *api.Environment 
 		return nil
 	}
 
-	user := s.getUserFromContext(c)
-	if user == nil {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return nil
-	}
-
-	var organisation *string
-	if len(user.Organisations) > 0 {
-		organisation = &user.Organisations[0].ID
-	}
-
-	// Resolve the environment — by UUID or name
+	// Look up the environment directly — the flow-environment binding check below
+	// provides the access control, so we don't need ownership filters here.
+	// This ensures execution context can access the flow's environment regardless
+	// of whether it's personal or org-owned.
 	var env *api.Environment
 	if err := uuid.Validate(environmentParam); err == nil {
-		env, err = s.persistence.GetEnvironmentByID(environmentParam, user.ID, organisation)
+		env, err = s.persistence.GetEnvironmentByIDDirect(environmentParam)
 		if err != nil {
 			log.WithFields(log.Fields{"error": err}).Error("unable to get environment by id")
 			c.AbortWithStatus(http.StatusBadRequest)
 			return nil
 		}
 	} else {
+		// For name-based lookup, we still need user context
+		user := s.getUserFromContext(c)
+		if user == nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return nil
+		}
+		var organisation *string
+		if len(user.Organisations) > 0 {
+			organisation = &user.Organisations[0].ID
+		}
 		env, err = s.persistence.GetEnvironmentByName(environmentParam, user.ID, organisation)
 		if err != nil {
 			log.WithFields(log.Fields{"error": err}).Error("unable to get environment by name")
@@ -153,20 +155,8 @@ func (s *Service) getExecutionEnvironmentSecret(c *gin.Context) {
 		return
 	}
 
-	decryptQueryParameter := c.DefaultQuery("decrypt", "false")
-
-	decrypt, err := strconv.ParseBool(decryptQueryParameter)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-		}).Error("unable to parse decrypt parameter")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	if decrypt {
-		prop.DecryptedValue = &prop.Value
-	}
+	// Execution context always needs the decrypted value
+	prop.DecryptedValue = &prop.Value
 
 	c.JSON(http.StatusOK, prop)
 }
@@ -208,8 +198,9 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 		organisation = &user.Organisations[0].ID
 	}
 
+	var env *api.Environment
 	if err := uuid.Validate(id); err == nil {
-		env, err := s.persistence.GetEnvironmentByID(id, user.ID, organisation)
+		env, err = s.persistence.GetEnvironmentByID(id, user.ID, organisation)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -217,15 +208,8 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-
-		if env == nil {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		c.JSON(http.StatusOK, env)
 	} else {
-		env, err := s.persistence.GetEnvironmentByName(id, user.ID, organisation)
+		env, err = s.persistence.GetEnvironmentByName(id, user.ID, organisation)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -233,14 +217,19 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 			c.AbortWithStatus(http.StatusBadRequest)
 			return
 		}
-
-		if env == nil {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		c.JSON(http.StatusOK, env)
 	}
+
+	if env == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, env.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	c.JSON(http.StatusOK, env)
 }
 
 func (s *Service) createEnvironment(c *gin.Context) {
@@ -578,6 +567,45 @@ func (s *Service) createEnvironmentProperty(c *gin.Context) {
 	}
 
 	c.Status(http.StatusCreated)
+}
+
+func (s *Service) updateEnvironmentSecretByID(c *gin.Context) {
+	environmentID := c.Param("environment")
+	user := s.getUserFromContext(c)
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get environment by id")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if env == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	id := c.Param("id")
+
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if err := s.persistence.UpdateEnvironmentSecret(env.ID, env.SecretKey, id, body.Value); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to update environment secret")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	c.Status(http.StatusOK)
 }
 
 func (s *Service) deleteEnvironmentSecretByID(c *gin.Context) {
