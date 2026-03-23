@@ -343,6 +343,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			}
 		}
 
+
 		// Check if a trigger of this type already exists for this flow
 		var existingID *string
 		for _, et := range existingTriggers {
@@ -353,6 +354,8 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		}
 
 		if existingID != nil {
+			triggerData["id"] = *existingID
+
 			// Update existing trigger data
 			trigger := api.Trigger{
 				ID:       *existingID,
