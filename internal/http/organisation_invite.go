@@ -84,6 +84,24 @@ func (s *Service) revokeOrganisationInvite(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (s *Service) getInvitePreview(c *gin.Context) {
+	code := c.Param("code")
+
+	preview, err := s.persistence.GetInvitePreview(code)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get invite preview")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if preview == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
+}
+
 func (s *Service) acceptOrganisationInvite(c *gin.Context) {
 	code := c.Param("code")
 	user := s.getUserFromContext(c)
@@ -105,15 +123,22 @@ func (s *Service) acceptOrganisationInvite(c *gin.Context) {
 	}
 
 	// Add user to the organisation with the invite's role
+	// Ignore duplicate membership errors (user may already be a member)
 	if err := s.persistence.AddUserToOrganisation(invite.OrganisationID, user.ID, invite.Role); err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("unable to add user to organisation")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
+		log.WithFields(log.Fields{
+			"error":           err,
+			"organisation_id": invite.OrganisationID,
+			"user_id":         user.ID,
+		}).Warn("unable to add user to organisation (may already be a member)")
 	}
 
 	// Mark invite as accepted
 	if err := s.persistence.AcceptInvite(invite.ID, user.ID); err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("unable to accept invite")
+		log.WithFields(log.Fields{
+			"error":     err,
+			"invite_id": invite.ID,
+			"user_id":   user.ID,
+		}).Error("unable to accept invite")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}

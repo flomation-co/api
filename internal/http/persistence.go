@@ -1,6 +1,9 @@
 package http
 
-import "flomation.app/automate/api"
+import (
+	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
+)
 
 // Persistence defines the data access methods used by the HTTP handlers.
 // This interface is satisfied by *persistence.Service and enables testing
@@ -13,6 +16,7 @@ type Persistence interface {
 	CreateOrganisationInvite(organisationID string, email *string, role string, createdBy string) (*api.OrganisationInvite, error)
 	GetOrganisationInvites(organisationID string) ([]*api.OrganisationInvite, error)
 	GetInviteByCode(code string) (*api.OrganisationInvite, error)
+	GetInvitePreview(code string) (*persistence.InvitePreview, error)
 	AcceptInvite(inviteID string, acceptedBy string) error
 	RevokeInvite(inviteID string, organisationID string) error
 	CreateEnvironment(environment api.Environment) (*string, error)

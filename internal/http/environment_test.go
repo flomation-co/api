@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	. "github.com/onsi/gomega"
 
 	"github.com/gin-gonic/gin"
@@ -92,6 +93,9 @@ func (m *mockPersistence) GetOrganisationInvites(string) ([]*api.OrganisationInv
 	panic("not implemented")
 }
 func (m *mockPersistence) GetInviteByCode(string) (*api.OrganisationInvite, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetInvitePreview(string) (*persistence.InvitePreview, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) AcceptInvite(string, string) error { panic("not implemented") }

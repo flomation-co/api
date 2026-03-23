@@ -30,6 +30,7 @@ type Service struct {
 	stmtCreateOrganisationInvite     *sqlx.NamedStmt
 	stmtGetOrganisationInvites       *sqlx.NamedStmt
 	stmtGetInviteByCode              *sqlx.NamedStmt
+	stmtGetInvitePreview             *sqlx.NamedStmt
 	stmtAcceptInvite                 *sqlx.NamedStmt
 	stmtRevokeInvite                 *sqlx.NamedStmt
 
@@ -331,8 +332,22 @@ func NewService(config *config.Config) (*Service, error) {
 		    organisation_invite
 		WHERE
 		    invite_code = :invite_code
-		    AND accepted_at IS NULL
-		    AND expires_at > CURRENT_TIMESTAMP;
+		    AND accepted_at IS NULL;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetInvitePreview, err = s.conn.PrepareNamed(`
+		SELECT
+		    o.name AS organisation_name,
+		    oi.role
+		FROM
+		    organisation_invite oi
+		    JOIN organisation o ON o.id = oi.organisation_id
+		WHERE
+		    oi.invite_code = :invite_code
+		    AND oi.accepted_at IS NULL;
 	`)
 	if err != nil {
 		return nil, err
@@ -2269,6 +2284,26 @@ func (s *Service) GetInviteByCode(code string) (*api.OrganisationInvite, error) 
 		return nil, err
 	}
 	return &invite, nil
+}
+
+type InvitePreview struct {
+	OrganisationName string `db:"organisation_name" json:"organisation_name"`
+	Role             string `db:"role" json:"role"`
+}
+
+func (s *Service) GetInvitePreview(code string) (*InvitePreview, error) {
+	var preview InvitePreview
+	if err := s.stmtGetInvitePreview.Get(&preview, struct {
+		InviteCode string `db:"invite_code"`
+	}{
+		InviteCode: code,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &preview, nil
 }
 
 func (s *Service) AcceptInvite(inviteID string, acceptedBy string) error {
