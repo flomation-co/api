@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -12,38 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
-
-// resolveVariables replaces ${secrets.X} and ${env.X} references with actual values.
-func resolveVariables(value string, secrets map[string]string, properties map[string]string) string {
-	if !strings.Contains(value, "${") {
-		return value
-	}
-
-	re := regexp.MustCompile(`\$\{([^}]+)\}`)
-	return re.ReplaceAllStringFunc(value, func(match string) string {
-		key := match[2 : len(match)-1] // strip ${ and }
-
-		if strings.HasPrefix(key, "secrets.") || strings.HasPrefix(key, "secret.") {
-			name := strings.TrimPrefix(key, "secrets.")
-			name = strings.TrimPrefix(name, "secret.")
-			if secrets != nil {
-				if v, ok := secrets[name]; ok {
-					return v
-				}
-			}
-		} else if strings.HasPrefix(key, "env.") {
-			name := strings.TrimPrefix(key, "env.")
-			if properties != nil {
-				if v, ok := properties[name]; ok {
-					return v
-				}
-			}
-		}
-
-		// Return the original reference if unresolved
-		return match
-	})
-}
 
 func (s *Service) getMyFlos(c *gin.Context) {
 	user := s.getUserFromContext(c)
