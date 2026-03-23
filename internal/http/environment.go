@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/rbac"
 	"flomation.app/automate/api/internal/utils"
 	log "github.com/sirupsen/logrus"
 
@@ -233,6 +234,10 @@ func (s *Service) getEnvironmentByID(c *gin.Context) {
 }
 
 func (s *Service) createEnvironment(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	user := s.getUserFromContext(c)
 	var organisation *string
 	if len(user.Organisations) > 0 {
@@ -274,6 +279,10 @@ func (s *Service) createEnvironment(c *gin.Context) {
 }
 
 func (s *Service) deleteEnvironment(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	id := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -482,6 +491,10 @@ func (s *Service) getEnvironmentPropertyByName(c *gin.Context) {
 }
 
 func (s *Service) createEnvironmentSecret(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -527,6 +540,10 @@ func (s *Service) createEnvironmentSecret(c *gin.Context) {
 }
 
 func (s *Service) createEnvironmentProperty(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -570,6 +587,10 @@ func (s *Service) createEnvironmentProperty(c *gin.Context) {
 }
 
 func (s *Service) updateEnvironmentSecretByID(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -609,6 +630,10 @@ func (s *Service) updateEnvironmentSecretByID(c *gin.Context) {
 }
 
 func (s *Service) deleteEnvironmentSecretByID(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -658,6 +683,10 @@ func (s *Service) deleteEnvironmentSecretByID(c *gin.Context) {
 }
 
 func (s *Service) updateEnvironmentPropertyByID(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -719,6 +748,10 @@ func (s *Service) updateEnvironmentPropertyByID(c *gin.Context) {
 }
 
 func (s *Service) deleteEnvironmentPropertyByID(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentManage) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string

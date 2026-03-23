@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -86,6 +87,10 @@ func (s *Service) createOrganisation(c *gin.Context) {
 }
 
 func (s *Service) updateOrganisation(c *gin.Context) {
+	if !s.checkPermission(c, rbac.OrganisationManage) {
+		return
+	}
+
 	var org api.Organisation
 	if err := c.BindJSON(&org); err != nil {
 		log.WithFields(log.Fields{

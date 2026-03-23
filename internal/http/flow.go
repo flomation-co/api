@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -124,6 +125,10 @@ func (s *Service) getFloByID(c *gin.Context) {
 }
 
 func (s *Service) createFlo(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowCreate) {
+		return
+	}
+
 	var flo api.Flo
 	if err := c.BindJSON(&flo); err != nil {
 		log.WithFields(log.Fields{
@@ -173,6 +178,10 @@ func (s *Service) createFlo(c *gin.Context) {
 }
 
 func (s *Service) updateFlo(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowEdit) {
+		return
+	}
+
 	ID := c.Param("FloID")
 
 	var flo api.Flo
@@ -207,6 +216,10 @@ func (s *Service) updateFlo(c *gin.Context) {
 }
 
 func (s *Service) deleteFlo(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowDelete) {
+		return
+	}
+
 	ID := c.Param("FloID")
 	user := s.getUserFromContext(c)
 
@@ -241,6 +254,10 @@ func (s *Service) deleteFlo(c *gin.Context) {
 }
 
 func (s *Service) createFloRevision(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowEdit) {
+		return
+	}
+
 	FloID := c.Param("FloID")
 
 	var revision api.Revision

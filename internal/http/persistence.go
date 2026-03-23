@@ -78,4 +78,18 @@ type Persistence interface {
 	GetTriggersByFloID(floID string) ([]*api.Trigger, error)
 	LinkFloToTrigger(floID string, triggerID string) error
 	UpdateUser(user *api.User) error
+
+	// RBAC
+	GetGroupsByOrganisationID(orgID string) ([]*api.Group, error)
+	GetGroupByID(groupID string) (*api.Group, error)
+	CreateGroup(group api.Group) (*string, error)
+	UpdateGroup(group api.Group) error
+	DeleteGroup(groupID string) error
+	GetGroupMembers(groupID string) ([]*api.GroupMember, error)
+	AddUserToGroup(groupID, userID string) error
+	RemoveUserFromGroup(groupID, userID string) error
+	SetGroupPermissions(groupID string, permissions []string) error
+	GetUserPermissionsInOrganisation(orgID, userID string) ([]string, error)
+	GetDefaultGroupsForOrganisation(orgID string) ([]string, error)
+	CountUserGroupsInOrganisation(orgID, userID string) (int, error)
 }

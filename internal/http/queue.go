@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -40,6 +41,10 @@ type CreateQueueRequest struct {
 }
 
 func (s *Service) createQueue(c *gin.Context) {
+	if !s.checkPermission(c, rbac.RunnerManage) {
+		return
+	}
+
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -52,12 +57,6 @@ func (s *Service) createQueue(c *gin.Context) {
 	}
 
 	orgID := user.Organisations[0].ID
-
-	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
 
 	var req CreateQueueRequest
 	if err := c.BindJSON(&req); err != nil {
@@ -87,6 +86,10 @@ func (s *Service) createQueue(c *gin.Context) {
 }
 
 func (s *Service) deleteQueue(c *gin.Context) {
+	if !s.checkPermission(c, rbac.RunnerManage) {
+		return
+	}
+
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -99,12 +102,6 @@ func (s *Service) deleteQueue(c *gin.Context) {
 	}
 
 	orgID := user.Organisations[0].ID
-
-	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
 
 	queueID := c.Param("id")
 	if err := s.persistence.DeleteQueue(queueID, orgID); err != nil {
@@ -144,20 +141,7 @@ type QueueRunnerRequest struct {
 }
 
 func (s *Service) addRunnerToQueue(c *gin.Context) {
-	user := s.getUserFromContext(c)
-	if user == nil {
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	if len(user.Organisations) == 0 {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-
-	role, err := s.persistence.GetUserRoleInOrganisation(user.Organisations[0].ID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
+	if !s.checkPermission(c, rbac.RunnerManage) {
 		return
 	}
 
@@ -178,20 +162,7 @@ func (s *Service) addRunnerToQueue(c *gin.Context) {
 }
 
 func (s *Service) removeRunnerFromQueue(c *gin.Context) {
-	user := s.getUserFromContext(c)
-	if user == nil {
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	if len(user.Organisations) == 0 {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-
-	role, err := s.persistence.GetUserRoleInOrganisation(user.Organisations[0].ID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
+	if !s.checkPermission(c, rbac.RunnerManage) {
 		return
 	}
 

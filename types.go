@@ -284,3 +284,26 @@ type UserDashboard struct {
 	Usage     *int64 `json:"usage" db:"usage"`
 	Allowance *int64 `json:"allowance" db:"allowance"`
 }
+
+type Group struct {
+	ID             string    `json:"id" db:"id"`
+	OrganisationID string    `json:"organisation_id" db:"organisation_id"`
+	Name           string    `json:"name" db:"name"`
+	Description    *string   `json:"description,omitempty" db:"description"`
+	IsDefault      bool      `json:"is_default" db:"is_default"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	Permissions    []string  `json:"permissions,omitempty"`
+	MemberCount    int       `json:"member_count,omitempty" db:"member_count"`
+}
+
+type GroupMember struct {
+	UserID  string     `json:"user_id" db:"user_id"`
+	Name    string     `json:"name" db:"name"`
+	AddedAt *time.Time `json:"added_at,omitempty" db:"added_at"`
+}
+
+type UserPermissions struct {
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
+	IsAdmin     bool     `json:"is_admin"`
+}

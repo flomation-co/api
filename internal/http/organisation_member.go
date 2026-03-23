@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -38,18 +39,15 @@ func (s *Service) getOrganisationMembers(c *gin.Context) {
 }
 
 func (s *Service) removeOrganisationMember(c *gin.Context) {
+	if !s.checkPermission(c, rbac.OrganisationManage) {
+		return
+	}
+
 	orgID := c.Param("ID")
 	targetUserID := c.Param("userID")
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	// Only admins can remove members
-	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 

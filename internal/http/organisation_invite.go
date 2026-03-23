@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -13,17 +14,14 @@ type CreateInviteRequest struct {
 }
 
 func (s *Service) createOrganisationInvite(c *gin.Context) {
+	if !s.checkPermission(c, rbac.OrganisationManage) {
+		return
+	}
+
 	orgID := c.Param("ID")
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	// Only admins can create invites
-	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
 
@@ -48,19 +46,11 @@ func (s *Service) createOrganisationInvite(c *gin.Context) {
 }
 
 func (s *Service) getOrganisationInvites(c *gin.Context) {
-	orgID := c.Param("ID")
-	user := s.getUserFromContext(c)
-	if user == nil {
-		c.AbortWithStatus(http.StatusUnauthorized)
+	if !s.checkPermission(c, rbac.OrganisationManage) {
 		return
 	}
 
-	// Only admins can view invites
-	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
+	orgID := c.Param("ID")
 
 	invites, err := s.persistence.GetOrganisationInvites(orgID)
 	if err != nil {
@@ -78,20 +68,12 @@ func (s *Service) getOrganisationInvites(c *gin.Context) {
 }
 
 func (s *Service) revokeOrganisationInvite(c *gin.Context) {
-	orgID := c.Param("ID")
-	inviteID := c.Param("inviteID")
-	user := s.getUserFromContext(c)
-	if user == nil {
-		c.AbortWithStatus(http.StatusUnauthorized)
+	if !s.checkPermission(c, rbac.OrganisationManage) {
 		return
 	}
 
-	// Only admins can revoke invites
-	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
-	if err != nil || role == nil || *role != "admin" {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
+	orgID := c.Param("ID")
+	inviteID := c.Param("inviteID")
 
 	if err := s.persistence.RevokeInvite(inviteID, orgID); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("unable to revoke invite")
@@ -134,6 +116,20 @@ func (s *Service) acceptOrganisationInvite(c *gin.Context) {
 		log.WithFields(log.Fields{"error": err}).Error("unable to accept invite")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	// Auto-add user to default groups
+	defaultGroups, err := s.persistence.GetDefaultGroupsForOrganisation(invite.OrganisationID)
+	if err == nil {
+		for _, groupID := range defaultGroups {
+			if err := s.persistence.AddUserToGroup(groupID, user.ID); err != nil {
+				log.WithFields(log.Fields{
+					"error":    err,
+					"group_id": groupID,
+					"user_id":  user.ID,
+				}).Warn("unable to add user to default group")
+			}
+		}
 	}
 
 	org, err := s.persistence.GetOrganisationByID(invite.OrganisationID)
