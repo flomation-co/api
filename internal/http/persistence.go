@@ -79,6 +79,11 @@ type Persistence interface {
 	LinkFloToTrigger(floID string, triggerID string) error
 	UpdateUser(user *api.User) error
 
+	// Favourites
+	GetFloFavourites(userID string) ([]string, error)
+	AddFloFavourite(userID, floID string) error
+	RemoveFloFavourite(userID, floID string) error
+
 	// RBAC
 	GetGroupsByOrganisationID(orgID string) ([]*api.Group, error)
 	GetGroupByID(groupID string) (*api.Group, error)

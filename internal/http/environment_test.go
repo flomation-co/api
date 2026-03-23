@@ -206,6 +206,11 @@ func (m *mockPersistence) GetTriggersByFloID(string) ([]*api.Trigger, error) {
 func (m *mockPersistence) LinkFloToTrigger(string, string) error { panic("not implemented") }
 func (m *mockPersistence) UpdateUser(*api.User) error                      { panic("not implemented") }
 
+// Favourites stubs
+func (m *mockPersistence) GetFloFavourites(string) ([]string, error)  { return nil, nil }
+func (m *mockPersistence) AddFloFavourite(string, string) error       { return nil }
+func (m *mockPersistence) RemoveFloFavourite(string, string) error    { return nil }
+
 // RBAC stubs
 func (m *mockPersistence) GetGroupsByOrganisationID(string) ([]*api.Group, error) {
 	return nil, nil
