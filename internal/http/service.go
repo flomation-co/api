@@ -218,7 +218,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	triggers.POST("", s.jwtMiddleware, s.createTrigger)
 	triggers.POST("/:id", s.jwtMiddleware, s.updateTrigger)
 	triggers.DELETE("/:id", s.jwtMiddleware, s.deleteTrigger)
-	triggers.POST("/:id/resolve", s.jwtMiddleware, s.resolveTriggerVariables)
+	triggers.POST("/:id/resolve", s.resolveTriggerVariables)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
