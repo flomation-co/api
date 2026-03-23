@@ -168,6 +168,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	orgs.POST("/:ID/group/:groupID/permission", s.setGroupPermissions)
 	orgs.GET("/:ID/permissions", s.getMyPermissions)
 
+	// Invite preview (public, no auth required)
+	v1.GET("invite/:code", s.getInvitePreview)
 	// Invite acceptance (authenticated but not org-scoped)
 	v1.POST("invite/:code/accept", s.jwtMiddleware, s.acceptOrganisationInvite)
 

@@ -84,6 +84,24 @@ func (s *Service) revokeOrganisationInvite(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (s *Service) getInvitePreview(c *gin.Context) {
+	code := c.Param("code")
+
+	preview, err := s.persistence.GetInvitePreview(code)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get invite preview")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if preview == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
+}
+
 func (s *Service) acceptOrganisationInvite(c *gin.Context) {
 	code := c.Param("code")
 	user := s.getUserFromContext(c)
