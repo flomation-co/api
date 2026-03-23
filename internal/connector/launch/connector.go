@@ -75,12 +75,6 @@ func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID str
 		return fmt.Errorf("launch service returned status %v for trigger %v", resp.Status, id)
 	}
 
-	log.WithFields(log.Fields{
-		"trigger_id": id,
-		"type":       typeName,
-		"flow_id":    flowID,
-	}).Info("registered trigger with launch service")
-
 	return nil
 }
 
