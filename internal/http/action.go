@@ -25,15 +25,42 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"trigger":     {Key: "trigger", Name: "Triggers", Icon: "bolt-lightning", Description: "Start a Flow"},
 }
 
+// subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
+var subCategoryMetadata = map[string]struct {
+	Name        string
+	Icon        string
+	Description string
+}{
+	"aws/s3":  {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
+	"aws/ec2": {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+}
+
 func getCategoryForAction(actionID string) *api.ActionCategory {
-	parts := strings.SplitN(actionID, "/", 2)
+	parts := strings.Split(actionID, "/")
 	if len(parts) == 0 {
 		return nil
 	}
-	if cat, ok := categoryMetadata[parts[0]]; ok {
-		return &cat
+	cat, ok := categoryMetadata[parts[0]]
+	if !ok {
+		return nil
 	}
-	return nil
+
+	// For 3+ segment action IDs, populate sub-category fields
+	if len(parts) >= 3 {
+		subPath := parts[0] + "/" + parts[1]
+		if sub, ok := subCategoryMetadata[subPath]; ok {
+			cat.SubKey = subPath
+			cat.SubName = sub.Name
+			cat.SubIcon = sub.Icon
+			cat.SubDescription = sub.Description
+		} else {
+			// Auto-generate from directory name
+			cat.SubKey = subPath
+			cat.SubName = strings.ToUpper(parts[1][:1]) + parts[1][1:]
+		}
+	}
+
+	return &cat
 }
 
 func (s *Service) getActions(c *gin.Context) {

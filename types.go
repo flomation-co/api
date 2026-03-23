@@ -169,10 +169,14 @@ type OutputDefinition struct {
 }
 
 type ActionCategory struct {
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	Icon        string `json:"icon"`
-	Description string `json:"description"`
+	Key            string `json:"key"`
+	Name           string `json:"name"`
+	Icon           string `json:"icon"`
+	Description    string `json:"description"`
+	SubKey         string `json:"sub_key,omitempty"`
+	SubName        string `json:"sub_name,omitempty"`
+	SubIcon        string `json:"sub_icon,omitempty"`
+	SubDescription string `json:"sub_description,omitempty"`
 }
 
 type Action struct {
