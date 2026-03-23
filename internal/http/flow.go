@@ -334,30 +334,6 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		authToken = *tkn
 	}
 
-	// Load the flow's environment for variable resolution in trigger data
-	flo, _ := s.persistence.GetFloByID(FloID)
-	var envSecrets map[string]string
-	var envProperties map[string]string
-	if flo != nil && flo.EnvironmentID != nil {
-		env, err := s.persistence.GetEnvironmentByIDDirect(*flo.EnvironmentID)
-		if err == nil && env != nil {
-			envSecrets = make(map[string]string)
-			envProperties = make(map[string]string)
-
-			if secrets, err := s.persistence.GetEnvironmentSecrets(env.ID, env.SecretKey); err == nil {
-				for _, sec := range secrets {
-					envSecrets[sec.Name] = sec.Value
-				}
-			}
-
-			if props, err := s.persistence.GetEnvironmentProperties(env.ID, env.SecretKey); err == nil {
-				for _, prop := range props {
-					envProperties[prop.Name] = prop.Value
-				}
-			}
-		}
-	}
-
 	// Get existing triggers for this flow to avoid duplicates
 	existingTriggers, _ := s.persistence.GetTriggersByFloID(FloID)
 
@@ -378,19 +354,13 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		typeName := strings.TrimPrefix(label, "trigger/")
 		typeName = strings.ReplaceAll(typeName, "_", "-")
 
-		// Build trigger data from node inputs, resolving variable references
+		// Build trigger data from node inputs (unresolved — Launch resolves at poll time)
 		triggerData := make(map[string]interface{})
 		for _, input := range node.Data.Config.Inputs {
 			name, _ := input["name"].(string)
 			value := input["value"]
 			if name != "" && value != nil {
-				// Resolve ${secrets.X} and ${env.X} references
-				if strVal, ok := value.(string); ok {
-					strVal = resolveVariables(strVal, envSecrets, envProperties)
-					triggerData[name] = strVal
-				} else {
-					triggerData[name] = value
-				}
+				triggerData[name] = value
 			}
 		}
 

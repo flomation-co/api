@@ -191,6 +191,64 @@ func (s *Service) deleteTrigger(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+// resolveTriggerVariables resolves ${secrets.X} and ${env.X} references
+// for a trigger using its flow's assigned environment.
+func (s *Service) resolveTriggerVariables(c *gin.Context) {
+	triggerID := c.Param("id")
+
+	trigger, err := s.persistence.GetTriggerByID(triggerID)
+	if err != nil || trigger == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if trigger.FloID == nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	flo, err := s.persistence.GetFloByID(*trigger.FloID)
+	if err != nil || flo == nil || flo.EnvironmentID == nil {
+		// No environment — return empty resolution
+		c.JSON(http.StatusOK, gin.H{})
+		return
+	}
+
+	env, err := s.persistence.GetEnvironmentByIDDirect(*flo.EnvironmentID)
+	if err != nil || env == nil {
+		c.JSON(http.StatusOK, gin.H{})
+		return
+	}
+
+	var request struct {
+		Variables []string `json:"variables"`
+	}
+	if err := c.BindJSON(&request); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	resolved := make(map[string]string)
+	for _, v := range request.Variables {
+		if strings.HasPrefix(v, "secrets.") || strings.HasPrefix(v, "secret.") {
+			name := strings.TrimPrefix(v, "secrets.")
+			name = strings.TrimPrefix(name, "secret.")
+			sec, err := s.persistence.GetEnvironmentSecretByName(env.ID, env.SecretKey, name)
+			if err == nil && sec != nil {
+				resolved[v] = sec.Value
+			}
+		} else if strings.HasPrefix(v, "env.") {
+			name := strings.TrimPrefix(v, "env.")
+			prop, err := s.persistence.GetEnvironmentPropertyByName(env.ID, env.SecretKey, name)
+			if err == nil && prop != nil {
+				resolved[v] = prop.Value
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, resolved)
+}
+
 func (s *Service) extractAuthToken(c *gin.Context) string {
 	header := c.GetHeader("Authorization")
 	parts := strings.Split(header, " ")
