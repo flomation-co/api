@@ -62,7 +62,8 @@ type Service struct {
 
 	stmtGetFloTriggers *sqlx.NamedStmt
 
-	stmtGetLatestExecutionForFlo  *sqlx.NamedStmt
+	stmtGetLatestExecutionForFlo   *sqlx.NamedStmt
+	stmtGetRecentExecutionsForFlo  *sqlx.NamedStmt
 	stmtGetExecutions               *sqlx.NamedStmt
 	stmtGetExecutionsWithFilter     *sqlx.NamedStmt
 	stmtCountExecutions             *sqlx.NamedStmt
@@ -863,6 +864,17 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo_id = :flo_id
 		ORDER BY created_at DESC
 		LIMIT 1
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetRecentExecutionsForFlo, err = s.conn.PrepareNamed(`
+		SELECT id, execution_status, completion_status
+		FROM execution
+		WHERE flo_id = :flo_id
+		ORDER BY created_at DESC
+		LIMIT 5
 	`)
 	if err != nil {
 		return nil, err
@@ -2525,6 +2537,22 @@ func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search str
 
 		if execution.FloID == r.ID {
 			results[idx].LastExecution = &execution
+		}
+
+		var recentExecs []api.ExecutionStatus
+		if err := s.stmtGetRecentExecutionsForFlo.Select(&recentExecs, struct {
+			FloID string `db:"flo_id"`
+		}{
+			FloID: r.ID,
+		}); err != nil {
+			if err != sql.ErrNoRows {
+				log.WithFields(log.Fields{
+					"error": err,
+				}).Error("unable to get recent executions")
+			}
+		}
+		if len(recentExecs) > 0 {
+			results[idx].RecentExecutions = recentExecs
 		}
 	}
 
