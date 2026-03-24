@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
@@ -508,11 +509,29 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		execution.TriggererEmail = author.EmailAddress
 	}
 
-	// Enrich with trigger type and triggerer email from trigger invocation chain
+	// Enrich with trigger type, triggerer email, and entry node ID from trigger invocation chain
 	if execution.TriggeredBy != nil {
 		if invocation, err := s.persistence.GetTriggerInvocationById(*execution.TriggeredBy); err == nil && invocation != nil {
 			if trigger, err := s.persistence.GetTriggerByID(invocation.TriggerID); err == nil && trigger != nil {
 				execution.TriggerType = &trigger.TypeName
+
+				// Extract entry node ID from trigger data if available
+				if trigger.Data != nil {
+					var triggerData map[string]interface{}
+					switch d := trigger.Data.(type) {
+					case []byte:
+						_ = json.Unmarshal(d, &triggerData)
+					case map[string]interface{}:
+						triggerData = d
+					default:
+						if raw, err := json.Marshal(d); err == nil {
+							_ = json.Unmarshal(raw, &triggerData)
+						}
+					}
+					if nodeID, ok := triggerData["__node_id"].(string); ok && nodeID != "" {
+						execution.EntryNodeID = &nodeID
+					}
+				}
 			}
 			// If the invocation was triggered by a different user, look up their email
 			if invocation.OwnerID != nil && *invocation.OwnerID != execution.OwnerID {
@@ -527,6 +546,35 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 	if execution.TriggerType == nil {
 		manual := "manual"
 		execution.TriggerType = &manual
+	}
+
+	// If entry node not yet determined, scan the flow revision for the first matching trigger node.
+	// rev.Data has already been unmarshalled from []byte to map[string]interface{} above,
+	// so we re-marshal and parse into a typed struct.
+	if execution.EntryNodeID == nil && rev != nil && rev.Data != nil {
+		var revNodes struct {
+			Nodes []struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+				Data struct {
+					Label string `json:"label"`
+				} `json:"data"`
+			} `json:"nodes"`
+		}
+		if rawData, err := json.Marshal(rev.Data); err == nil {
+			if err := json.Unmarshal(rawData, &revNodes); err == nil {
+				triggerType := "trigger/manual"
+				if execution.TriggerType != nil && *execution.TriggerType != "manual" {
+					triggerType = "trigger/" + strings.ReplaceAll(*execution.TriggerType, "-", "_")
+				}
+				for _, n := range revNodes.Nodes {
+					if n.Type == triggerType || n.Data.Label == triggerType {
+						execution.EntryNodeID = &n.ID
+						break
+					}
+				}
+			}
+		}
 	}
 
 	pe := api.PendingExecution{
