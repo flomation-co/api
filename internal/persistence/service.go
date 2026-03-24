@@ -854,7 +854,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    completed_at,
 		    triggered_by,
 		    execution_status,
-		    completion_status
+		    completion_status,
+		    result->'duration' AS duration,
+		    result->'billingDuration' AS billing_duration
 		FROM
 		    execution
 		WHERE
