@@ -1,11 +1,14 @@
 package http
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/rbac"
@@ -510,6 +513,272 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"id": i,
 	})
+}
+
+func (s *Service) exportFlos(c *gin.Context) {
+	user := s.getUserFromContext(c)
+
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to bind export request")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids array is required"})
+		return
+	}
+
+	var results []gin.H
+	for _, id := range req.IDs {
+		flo, err := s.persistence.GetFloByID(id)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err, "flo_id": id}).Error("unable to get flo for export")
+			continue
+		}
+		if flo == nil {
+			continue
+		}
+
+		if !s.verifyOrgAccess(user, flo.OrganisationID) {
+			continue
+		}
+
+		revision, err := s.persistence.GetLatestRevisionByFloID(flo.ID)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err, "flo_id": id}).Error("unable to get revision for export")
+			continue
+		}
+
+		var revisionData interface{}
+		if revision != nil && revision.Data != nil {
+			var r interface{}
+			if err := json.Unmarshal(revision.Data.([]byte), &r); err == nil {
+				revisionData = r
+			}
+		}
+
+		results = append(results, gin.H{
+			"id":               flo.ID,
+			"name":             flo.Name,
+			"scale":            flo.Scale,
+			"x":                flo.XPosition,
+			"y":                flo.YPosition,
+			"environment_name": flo.EnvironmentName,
+			"revision":         revisionData,
+		})
+	}
+
+	if len(results) == 0 {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, results)
+}
+
+func (s *Service) importFlo(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowCreate) {
+		return
+	}
+
+	var wrapper struct {
+		FlomationExport struct {
+			Version        int    `json:"version"`
+			ExportedAt     string `json:"exported_at"`
+			SourceFlowID   string `json:"source_flow_id"`
+			SourceFlowName string `json:"source_flow_name"`
+			AuthorEmail    string `json:"author_email"`
+			Hash           string `json:"hash"`
+		} `json:"flomation_export"`
+		FlowData json.RawMessage `json:"flow_data"`
+	}
+
+	if err := c.BindJSON(&wrapper); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to bind import request")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if wrapper.FlomationExport.Version == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing flomation_export metadata"})
+		return
+	}
+
+	if len(wrapper.FlowData) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing flow_data"})
+		return
+	}
+
+	// Verify SHA-256 hash
+	hash := sha256.Sum256(wrapper.FlowData)
+	computedHash := hex.EncodeToString(hash[:])
+	if computedHash != wrapper.FlomationExport.Hash {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "hash verification failed — file may have been tampered with"})
+		return
+	}
+
+	// Parse flow data
+	var flowData struct {
+		Name     string      `json:"name"`
+		Scale    float32     `json:"scale"`
+		X        float32     `json:"x"`
+		Y        float32     `json:"y"`
+		Revision interface{} `json:"revision"`
+	}
+	if err := json.Unmarshal(wrapper.FlowData, &flowData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow_data structure"})
+		return
+	}
+
+	user := s.getUserFromContext(c)
+
+	// Create new flow with importing user as author
+	flo := api.Flo{
+		Name:  flowData.Name,
+		Scale: flowData.Scale,
+		XPosition: flowData.X,
+		YPosition: flowData.Y,
+	}
+	flo.AuthorID = &user.ID
+	if len(user.Organisations) > 0 {
+		flo.OrganisationID = &user.Organisations[0].ID
+	}
+
+	floID, err := s.persistence.CreateFlo(flo)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to create imported flo")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// Create initial revision if we have revision data
+	if flowData.Revision != nil {
+		revisionJSON, err := json.Marshal(flowData.Revision)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err}).Error("unable to marshal imported revision")
+		} else {
+			revision := api.Revision{
+				FloID: *floID,
+				Data:  revisionJSON,
+			}
+
+			if _, err := s.persistence.CreateFloRevision(revision); err != nil {
+				log.WithFields(log.Fields{"error": err}).Error("unable to create imported revision")
+			}
+		}
+	}
+
+	// Register default trigger(s) with Launch service
+	f, err := s.persistence.GetFloByID(*floID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get imported flo")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	for _, t := range f.Triggers {
+		if err := s.launch.RegisterTrigger(t.ID, t.TypeName, nil, f.ID, s.extractAuthToken(c)); err != nil {
+			log.WithFields(log.Fields{
+				"error":      err,
+				"trigger_id": t.ID,
+				"flo_id":     f.ID,
+			}).Warn("unable to register trigger with launch service for imported flo")
+		}
+	}
+
+	// Run trigger sync from revision data (same as createFloRevision)
+	if flowData.Revision != nil {
+		s.syncImportedTriggers(*floID, flowData.Revision, user, s.extractAuthToken(c))
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":         f.ID,
+		"name":       f.Name,
+		"created_at": f.CreatedAt,
+		"imported":   true,
+		"imported_at": time.Now().UTC().Format(time.RFC3339),
+		"source_flow_id":   wrapper.FlomationExport.SourceFlowID,
+		"source_flow_name": wrapper.FlomationExport.SourceFlowName,
+	})
+}
+
+// syncImportedTriggers extracts non-manual trigger nodes from imported revision
+// data and creates corresponding trigger records.
+func (s *Service) syncImportedTriggers(floID string, revisionData interface{}, user *api.User, authToken string) {
+	raw, err := json.Marshal(revisionData)
+	if err != nil {
+		return
+	}
+
+	var parsed struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Data struct {
+				Label  string `json:"label"`
+				Config struct {
+					Type   int64                    `json:"type"`
+					Inputs []map[string]interface{} `json:"inputs"`
+				} `json:"config"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return
+	}
+
+	for _, node := range parsed.Nodes {
+		label := node.Data.Label
+		if label == "" {
+			continue
+		}
+
+		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
+		isManual := label == "trigger/manual"
+		if !isTrigger || isManual {
+			continue
+		}
+
+		typeName := strings.TrimPrefix(label, "trigger/")
+		typeName = strings.ReplaceAll(typeName, "_", "-")
+
+		triggerData := make(map[string]interface{})
+		for _, input := range node.Data.Config.Inputs {
+			name, _ := input["name"].(string)
+			value := input["value"]
+			if name != "" && value != nil {
+				triggerData[name] = value
+			}
+		}
+		triggerData["__node_id"] = node.ID
+
+		trigger := api.Trigger{
+			Name:     label,
+			TypeName: typeName,
+			FloID:    &floID,
+			Data:     triggerData,
+		}
+
+		if user != nil {
+			trigger.OwnerID = &user.ID
+			if len(user.Organisations) > 0 {
+				trigger.OrganisationID = &user.Organisations[0].ID
+			}
+		}
+
+		triggerID, err := s.persistence.CreateTriggerWithType(trigger)
+		if err != nil {
+			continue
+		}
+
+		_ = s.persistence.LinkFloToTrigger(floID, *triggerID)
+		s.registerTriggerWithLaunch(*triggerID, trigger, authToken)
+	}
 }
 
 // buildRequiredFieldsMap parses action definitions to find which inputs

@@ -194,6 +194,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	flos.POST("/:FloID", s.jwtMiddleware, s.updateFlo)
 	flos.DELETE("/:FloID", s.jwtMiddleware, s.deleteFlo)
 
+	flos.POST("/export", s.jwtMiddleware, s.exportFlos)
+	flos.POST("/import", s.jwtMiddleware, s.importFlo)
 	flos.POST("/:FloID/revision", s.jwtMiddleware, s.createFloRevision)
 
 	flos.POST("/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
