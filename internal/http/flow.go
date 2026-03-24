@@ -348,6 +348,9 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			}
 		}
 
+		// Store the flow node ID so the executor can be started from the correct entry node
+		triggerData["__node_id"] = node.ID
+
 		// For form triggers, extract and parse form_definition as the root trigger data
 		if typeName == "form" {
 			if fd, ok := triggerData["form_definition"]; ok {

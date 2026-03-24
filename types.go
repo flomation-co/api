@@ -114,6 +114,7 @@ type Execution struct {
 	TriggerType      *string     `json:"trigger_type,omitempty"`
 	AuthorEmail      *string     `json:"author_email,omitempty"`
 	TriggererEmail   *string     `json:"triggerer_email,omitempty"`
+	EntryNodeID      *string     `json:"entry_node_id,omitempty"`
 }
 
 type Revision struct {
