@@ -454,6 +454,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
+		    AND f.archived_at IS NULL
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -501,6 +502,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
+		    AND f.archived_at IS NULL
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -524,6 +526,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
+		    AND f.archived_at IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -537,6 +540,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
+		    AND f.archived_at IS NULL
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -568,6 +572,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    organisation_id = :organisation_id
+		    AND f.archived_at IS NULL
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -597,6 +602,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    organisation_id = :organisation_id
+		    AND f.archived_at IS NULL
 		AND
 		    (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 		ORDER BY
@@ -609,7 +615,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCountOrgFlos, err = s.conn.PrepareNamed(`
-		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id
+		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id AND f.archived_at IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -617,7 +623,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgFlosWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM flo f
-		WHERE organisation_id = :organisation_id
+		WHERE organisation_id = :organisation_id AND f.archived_at IS NULL
 		AND (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 	`)
 	if err != nil {
@@ -765,7 +771,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtDeleteFlo, err = s.conn.PrepareNamed(`
-		DELETE FROM flo 
+		UPDATE flo SET archived_at = NOW()
 		WHERE
 		    id = :id
 	`)
@@ -879,7 +885,7 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 		    execution e
 		INNER JOIN
-			flo f ON f.id = e.flo_id
+			flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE
 		    e.owner_id = :user_id
 		    AND e.organisation_id IS NULL
@@ -900,7 +906,7 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -912,7 +918,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountExecutions, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
 	if err != nil {
@@ -921,7 +927,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
@@ -937,7 +943,7 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -954,7 +960,7 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -966,7 +972,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgExecutions, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE e.organisation_id = :organisation_id
 	`)
 	if err != nil {
@@ -975,7 +981,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 	`)
