@@ -1,0 +1,1 @@
+INSERT INTO trigger_type (name) VALUES ('s3') ON CONFLICT DO NOTHING;
