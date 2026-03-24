@@ -517,13 +517,19 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 
 				// Extract entry node ID from trigger data if available
 				if trigger.Data != nil {
-					if dataBytes, ok := trigger.Data.([]byte); ok {
-						var triggerData map[string]interface{}
-						if err := json.Unmarshal(dataBytes, &triggerData); err == nil {
-							if nodeID, ok := triggerData["__node_id"].(string); ok && nodeID != "" {
-								execution.EntryNodeID = &nodeID
-							}
+					var triggerData map[string]interface{}
+					switch d := trigger.Data.(type) {
+					case []byte:
+						_ = json.Unmarshal(d, &triggerData)
+					case map[string]interface{}:
+						triggerData = d
+					default:
+						if raw, err := json.Marshal(d); err == nil {
+							_ = json.Unmarshal(raw, &triggerData)
 						}
+					}
+					if nodeID, ok := triggerData["__node_id"].(string); ok && nodeID != "" {
+						execution.EntryNodeID = &nodeID
 					}
 				}
 			}
@@ -542,7 +548,9 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		execution.TriggerType = &manual
 	}
 
-	// If entry node not yet determined, scan the flow revision for the first matching trigger node
+	// If entry node not yet determined, scan the flow revision for the first matching trigger node.
+	// rev.Data has already been unmarshalled from []byte to map[string]interface{} above,
+	// so we re-marshal and parse into a typed struct.
 	if execution.EntryNodeID == nil && rev != nil && rev.Data != nil {
 		var revNodes struct {
 			Nodes []struct {
@@ -553,7 +561,7 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 				} `json:"data"`
 			} `json:"nodes"`
 		}
-		if rawData, ok := rev.Data.([]byte); ok {
+		if rawData, err := json.Marshal(rev.Data); err == nil {
 			if err := json.Unmarshal(rawData, &revNodes); err == nil {
 				triggerType := "trigger/manual"
 				if execution.TriggerType != nil && *execution.TriggerType != "manual" {
