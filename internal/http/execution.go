@@ -283,7 +283,15 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 
 	// Send buffered lines first
 	for _, line := range buffered {
-		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+		if strings.HasPrefix(line, "__NODE__:") {
+			nodeData := strings.TrimPrefix(line, "__NODE__:")
+			_, _ = fmt.Fprintf(c.Writer, "event: node\ndata: %s\n\n", nodeData)
+		} else if strings.HasPrefix(line, "__STATUS__:") {
+			status := strings.TrimPrefix(line, "__STATUS__:")
+			_, _ = fmt.Fprintf(c.Writer, "event: status\ndata: %s\n\n", status)
+		} else {
+			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+		}
 	}
 	c.Writer.Flush()
 
@@ -314,6 +322,12 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 				_, _ = fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", status)
 				c.Writer.Flush()
 				return
+			}
+			if strings.HasPrefix(line, "__NODE__:") {
+				nodeData := strings.TrimPrefix(line, "__NODE__:")
+				_, _ = fmt.Fprintf(c.Writer, "event: node\ndata: %s\n\n", nodeData)
+				c.Writer.Flush()
+				continue
 			}
 			if strings.HasPrefix(line, "__STATUS__:") {
 				status := strings.TrimPrefix(line, "__STATUS__:")
