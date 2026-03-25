@@ -29,11 +29,20 @@ type LaunchConfig struct {
 	URL string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
 }
 
+type SMTPConfig struct {
+	Host     string `json:"host" env:"SMTP_HOST" arg:"smtp-host"`
+	Port     int    `json:"port" env:"SMTP_PORT" arg:"smtp-port"`
+	Username string `json:"username" env:"SMTP_USERNAME" arg:"smtp-username"`
+	Password string `json:"password" env:"SMTP_PASSWORD" arg:"smtp-password"`
+	From     string `json:"from" env:"SMTP_FROM" arg:"smtp-from"`
+}
+
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
 	Security         SecurityConfig   `json:"security"`
 	Launch           LaunchConfig     `json:"launch"`
+	SMTP             SMTPConfig       `json:"smtp"`
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -91,8 +91,11 @@ type Flo struct {
 	EnvironmentID       *string    `json:"environment_id" db:"environment_id"`
 	EnvironmentName     *string    `json:"environment_name" db:"environment_name"`
 	QueueID             *string    `json:"queue_id" db:"queue_id"`
-	HasValidationErrors bool              `json:"has_validation_errors,omitempty"`
-	RecentExecutions    []ExecutionStatus `json:"recent_executions,omitempty"`
+	HasValidationErrors  bool              `json:"has_validation_errors,omitempty"`
+	RecentExecutions     []ExecutionStatus `json:"recent_executions,omitempty"`
+	NotifyOnSuccess      bool              `json:"notify_on_success" db:"notify_on_success"`
+	NotifyOnFailure      bool              `json:"notify_on_failure" db:"notify_on_failure"`
+	NotificationEmails   *string           `json:"notification_emails,omitempty" db:"notification_emails"`
 }
 
 type ExecutionStatus struct {

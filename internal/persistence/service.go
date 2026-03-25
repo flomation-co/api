@@ -644,7 +644,10 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
-		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,		    
+		    f.notify_on_success,
+		    f.notify_on_failure,
+		    f.notification_emails,
+		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
 			 FROM
@@ -764,7 +767,10 @@ func NewService(config *config.Config) (*Service, error) {
 			x = :x,
 			y = :y,
 			environment_id = :environment_id,
-			queue_id = :queue_id
+			queue_id = :queue_id,
+			notify_on_success = :notify_on_success,
+			notify_on_failure = :notify_on_failure,
+			notification_emails = :notification_emails
 		WHERE
 		    id = :id
 	`)
