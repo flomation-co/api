@@ -1420,8 +1420,14 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtGetQueueRunners, err = db.PrepareNamed(`
-		SELECT r.id, r.identifier, r.name, r.enrolled_at, r.last_contact_at,
-		       r.ip, r.active, r.version, r.executor_version, r.public_key
+		SELECT r.id, r.identifier, r.name, r.registration_code, r.enrolled_at, r.last_contact_at,
+		       r.ip, r.active, r.version, r.executor_version, r.public_key,
+		       CASE
+		           WHEN (CURRENT_TIMESTAMP - r.last_contact_at) > '6 hours' THEN 'terminated'
+		           WHEN (CURRENT_TIMESTAMP - r.last_contact_at) > '1 hour' THEN 'suspended'
+		           ELSE 'active'
+		       END AS state,
+		       CASE WHEN r.public_key IS NOT NULL THEN true ELSE false END AS verified
 		FROM runner r
 		INNER JOIN queue_runner qr ON qr.runner_id = r.id
 		WHERE qr.queue_id = :queue_id
