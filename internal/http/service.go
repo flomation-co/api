@@ -198,6 +198,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	flos.POST("/import", s.jwtMiddleware, s.importFlo)
 	flos.POST("/:FloID/revision", s.jwtMiddleware, s.createFloRevision)
 
+	flos.POST("/:FloID/execute", s.executeFlo)
 	flos.POST("/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
 
 	favourites := v1.Group("favourite")
@@ -259,6 +260,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.POST("/:environment/secret", s.jwtMiddleware, s.createEnvironmentSecret)
 	environment.POST("/:environment/secret/:id", s.jwtMiddleware, s.updateEnvironmentSecretByID)
 	environment.DELETE("/:environment/secret/:id", s.jwtMiddleware, s.deleteEnvironmentSecretByID)
+
+	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
 
 	return s
 }

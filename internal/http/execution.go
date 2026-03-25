@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/smtp"
 	"strconv"
 	"strings"
 	"time"
@@ -135,6 +136,9 @@ func (s *Service) updateExecution(c *gin.Context) {
 		time.Sleep(5 * time.Second)
 		s.logHub.Cleanup(id)
 	}()
+
+	// Send notification emails if configured
+	go s.sendExecutionNotification(execution.FloID, completion, execution)
 
 	c.Status(http.StatusOK)
 }
@@ -346,5 +350,74 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 		case <-c.Request.Context().Done():
 			return
 		}
+	}
+}
+
+// sendExecutionNotification checks if the flow has notification settings
+// and sends an email for the given completion status.
+func (s *Service) sendExecutionNotification(floID string, completion string, execution *api.Execution) {
+	flo, err := s.persistence.GetFloByID(floID)
+	if err != nil || flo == nil {
+		return
+	}
+
+	shouldNotify := (completion == "success" && flo.NotifyOnSuccess) ||
+		(completion == "fail" && flo.NotifyOnFailure)
+
+	if !shouldNotify || flo.NotificationEmails == nil || *flo.NotificationEmails == "" {
+		return
+	}
+
+	if s.config.SMTP.Host == "" {
+		log.Warn("notification email configured but SMTP not set up")
+		return
+	}
+
+	recipients := strings.Split(*flo.NotificationEmails, ",")
+	for i := range recipients {
+		recipients[i] = strings.TrimSpace(recipients[i])
+	}
+
+	status := "succeeded"
+	if completion == "fail" {
+		status = "failed"
+	}
+
+	subject := fmt.Sprintf("Flow %q %s", flo.Name, status)
+	body := fmt.Sprintf(
+		"Flow: %s\nExecution ID: %s\nStatus: %s\nTimestamp: %s\n\n—\nFlomation · www.flomation.co",
+		flo.Name,
+		execution.ID,
+		strings.ToUpper(completion),
+		time.Now().UTC().Format(time.RFC3339),
+	)
+
+	msg := fmt.Sprintf(
+		"From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s",
+		s.config.SMTP.From,
+		strings.Join(recipients, ", "),
+		subject,
+		body,
+	)
+
+	addr := fmt.Sprintf("%s:%d", s.config.SMTP.Host, s.config.SMTP.Port)
+
+	var auth smtp.Auth
+	if s.config.SMTP.Username != "" {
+		auth = smtp.PlainAuth("", s.config.SMTP.Username, s.config.SMTP.Password, s.config.SMTP.Host)
+	}
+
+	if err := smtp.SendMail(addr, auth, s.config.SMTP.From, recipients, []byte(msg)); err != nil {
+		log.WithFields(log.Fields{
+			"error":      err,
+			"flo_id":     floID,
+			"recipients": recipients,
+		}).Error("failed to send notification email")
+	} else {
+		log.WithFields(log.Fields{
+			"flo_id":     floID,
+			"recipients": recipients,
+			"status":     completion,
+		}).Info("notification email sent")
 	}
 }

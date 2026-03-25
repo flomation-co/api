@@ -156,6 +156,7 @@ type Service struct {
 	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
 	stmtGetDefaultGroups         *sqlx.NamedStmt
 	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
+	stmtCreateFeedback           *sqlx.NamedStmt
 
 	stmtGetFloFavourites    *sqlx.NamedStmt
 	stmtAddFloFavourite     *sqlx.NamedStmt
@@ -644,7 +645,10 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
-		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,		    
+		    f.notify_on_success,
+		    f.notify_on_failure,
+		    f.notification_emails,
+		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
 			 FROM
@@ -764,7 +768,10 @@ func NewService(config *config.Config) (*Service, error) {
 			x = :x,
 			y = :y,
 			environment_id = :environment_id,
-			queue_id = :queue_id
+			queue_id = :queue_id,
+			notify_on_success = :notify_on_success,
+			notify_on_failure = :notify_on_failure,
+			notification_emails = :notification_emails
 		WHERE
 		    id = :id
 	`)
@@ -896,7 +903,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.completion_status,
 			e.result->'duration' AS duration,
 			e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM
 		    execution e
 		INNER JOIN
@@ -919,7 +927,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
@@ -956,7 +965,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE e.organisation_id = :organisation_id
@@ -973,7 +983,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
@@ -2105,6 +2116,14 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM organisation_group_member gm
 		INNER JOIN organisation_group g ON g.id = gm.group_id
 		WHERE g.organisation_id = :organisation_id AND gm.user_id = :user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateFeedback, err = s.conn.PrepareNamed(`
+		INSERT INTO feedback (user_id, name, subject, category, message, url, user_agent)
+		VALUES (:user_id, :name, :subject, :category, :message, :url, :user_agent)
 	`)
 	if err != nil {
 		return nil, err
@@ -4024,5 +4043,10 @@ func (s *Service) RemoveFloFavourite(userID, floID string) error {
 		UserID: userID,
 		FloID:  floID,
 	})
+	return err
+}
+
+func (s *Service) CreateFeedback(feedback api.Feedback) error {
+	_, err := s.stmtCreateFeedback.Exec(feedback)
 	return err
 }

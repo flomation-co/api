@@ -91,8 +91,11 @@ type Flo struct {
 	EnvironmentID       *string    `json:"environment_id" db:"environment_id"`
 	EnvironmentName     *string    `json:"environment_name" db:"environment_name"`
 	QueueID             *string    `json:"queue_id" db:"queue_id"`
-	HasValidationErrors bool              `json:"has_validation_errors,omitempty"`
-	RecentExecutions    []ExecutionStatus `json:"recent_executions,omitempty"`
+	HasValidationErrors  bool              `json:"has_validation_errors,omitempty"`
+	RecentExecutions     []ExecutionStatus `json:"recent_executions,omitempty"`
+	NotifyOnSuccess      bool              `json:"notify_on_success" db:"notify_on_success"`
+	NotifyOnFailure      bool              `json:"notify_on_failure" db:"notify_on_failure"`
+	NotificationEmails   *string           `json:"notification_emails,omitempty" db:"notification_emails"`
 }
 
 type ExecutionStatus struct {
@@ -119,7 +122,7 @@ type Execution struct {
 	Result           interface{} `json:"result" db:"result"`
 	Duration         *int64      `json:"duration" db:"duration"`
 	BillingDuration  *int64      `json:"billing_duration" db:"billing_duration"`
-	TriggerType      *string     `json:"trigger_type,omitempty"`
+	TriggerType      *string     `json:"trigger_type,omitempty" db:"trigger_type"`
 	AuthorEmail      *string     `json:"author_email,omitempty"`
 	TriggererEmail   *string     `json:"triggerer_email,omitempty"`
 	EntryNodeID      *string     `json:"entry_node_id,omitempty"`
@@ -290,6 +293,17 @@ type EnvironmentSecret struct {
 	Provider       string     `json:"provider" db:"provider"`
 	ExpiresAt      *time.Time `json:"expires_at,omitempty" db:"expires_at"`
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+}
+
+type Feedback struct {
+	ID        string  `json:"id" db:"id"`
+	UserID    *string `json:"user_id,omitempty" db:"user_id"`
+	Name      string  `json:"name" db:"name"`
+	Subject   string  `json:"subject" db:"subject"`
+	Category  string  `json:"category" db:"category"`
+	Message   string  `json:"message" db:"message"`
+	URL       string  `json:"url,omitempty" db:"url"`
+	UserAgent string  `json:"user_agent,omitempty" db:"user_agent"`
 }
 
 type UserDashboard struct {
