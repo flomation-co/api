@@ -26,6 +26,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"sql":         {Key: "sql", Name: "SQL", Icon: "database", Description: "Relational database queries"},
 	"script":      {Key: "script", Name: "Script", Icon: "terminal", Description: "Execute scripts and commands"},
 	"trigger":     {Key: "trigger", Name: "Triggers", Icon: "bolt-lightning", Description: "Start a Flow"},
+	"error":       {Key: "error", Name: "Error Handling", Icon: "triangle-exclamation", Description: "Handle and recover from flow errors"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
