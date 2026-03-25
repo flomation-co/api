@@ -267,7 +267,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT
 		    ou.user_id,
 		    u.name,
-		    u.email_address,
+		    PGP_SYM_DECRYPT(u.email_address, :encrypt_key) AS email_address,
 		    ou.role
 		FROM
 		    organisation_user ou
@@ -2222,8 +2222,10 @@ func (s *Service) GetOrganisationMembers(organisationID string) ([]*api.Organisa
 	var results []*api.OrganisationMember
 	if err := s.stmtGetOrganisationMembers.Select(&results, struct {
 		OrganisationID string `db:"organisation_id"`
+		EncryptKey     string `db:"encrypt_key"`
 	}{
 		OrganisationID: organisationID,
+		EncryptKey:     s.config.Database.EncryptionKey,
 	}); err != nil {
 		return nil, err
 	}
