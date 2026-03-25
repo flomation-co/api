@@ -902,7 +902,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.completion_status,
 			e.result->'duration' AS duration,
 			e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM
 		    execution e
 		INNER JOIN
@@ -925,7 +926,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
@@ -962,7 +964,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE e.organisation_id = :organisation_id
@@ -979,7 +982,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
