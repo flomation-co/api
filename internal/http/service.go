@@ -261,6 +261,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.POST("/:environment/secret/:id", s.jwtMiddleware, s.updateEnvironmentSecretByID)
 	environment.DELETE("/:environment/secret/:id", s.jwtMiddleware, s.deleteEnvironmentSecretByID)
 
+	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
+
 	return s
 }
 

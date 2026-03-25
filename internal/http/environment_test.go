@@ -232,6 +232,7 @@ func (m *mockPersistence) GetUserPermissionsInOrganisation(string, string) ([]st
 }
 func (m *mockPersistence) GetDefaultGroupsForOrganisation(string) ([]string, error) { return nil, nil }
 func (m *mockPersistence) CountUserGroupsInOrganisation(string, string) (int, error) { return 0, nil }
+func (m *mockPersistence) CreateFeedback(api.Feedback) error                        { return nil }
 
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)

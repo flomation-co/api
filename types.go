@@ -295,6 +295,17 @@ type EnvironmentSecret struct {
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
 }
 
+type Feedback struct {
+	ID        string  `json:"id" db:"id"`
+	UserID    *string `json:"user_id,omitempty" db:"user_id"`
+	Name      string  `json:"name" db:"name"`
+	Subject   string  `json:"subject" db:"subject"`
+	Category  string  `json:"category" db:"category"`
+	Message   string  `json:"message" db:"message"`
+	URL       string  `json:"url,omitempty" db:"url"`
+	UserAgent string  `json:"user_agent,omitempty" db:"user_agent"`
+}
+
 type UserDashboard struct {
 	Usage     *int64 `json:"usage" db:"usage"`
 	Allowance *int64 `json:"allowance" db:"allowance"`

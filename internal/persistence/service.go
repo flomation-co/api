@@ -156,6 +156,7 @@ type Service struct {
 	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
 	stmtGetDefaultGroups         *sqlx.NamedStmt
 	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
+	stmtCreateFeedback           *sqlx.NamedStmt
 
 	stmtGetFloFavourites    *sqlx.NamedStmt
 	stmtAddFloFavourite     *sqlx.NamedStmt
@@ -2120,6 +2121,14 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	s.stmtCreateFeedback, err = s.conn.PrepareNamed(`
+		INSERT INTO feedback (user_id, name, subject, category, message, url, user_agent)
+		VALUES (:user_id, :name, :subject, :category, :message, :url, :user_agent)
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	// Flo favourites
 	s.stmtGetFloFavourites, err = s.conn.PrepareNamed(`
 		SELECT flo_id FROM flo_favourite WHERE user_id = :user_id ORDER BY created_at DESC
@@ -4034,5 +4043,10 @@ func (s *Service) RemoveFloFavourite(userID, floID string) error {
 		UserID: userID,
 		FloID:  floID,
 	})
+	return err
+}
+
+func (s *Service) CreateFeedback(feedback api.Feedback) error {
+	_, err := s.stmtCreateFeedback.Exec(feedback)
 	return err
 }

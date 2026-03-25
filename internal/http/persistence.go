@@ -101,4 +101,7 @@ type Persistence interface {
 	GetUserPermissionsInOrganisation(orgID, userID string) ([]string, error)
 	GetDefaultGroupsForOrganisation(orgID string) ([]string, error)
 	CountUserGroupsInOrganisation(orgID, userID string) (int, error)
+
+	// Feedback
+	CreateFeedback(feedback api.Feedback) error
 }
