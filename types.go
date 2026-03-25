@@ -22,10 +22,11 @@ type Organisation struct {
 }
 
 type OrganisationMember struct {
-	UserID   string     `json:"user_id" db:"user_id"`
-	Name     string     `json:"name" db:"name"`
-	Role     string     `json:"role" db:"role"`
-	JoinedAt *time.Time `json:"joined_at" db:"joined_at"`
+	UserID       string     `json:"user_id" db:"user_id"`
+	Name         string     `json:"name" db:"name"`
+	EmailAddress *string    `json:"email_address,omitempty" db:"email_address"`
+	Role         string     `json:"role" db:"role"`
+	JoinedAt     *time.Time `json:"joined_at" db:"joined_at"`
 }
 
 type OrganisationInvite struct {
@@ -90,7 +91,14 @@ type Flo struct {
 	EnvironmentID       *string    `json:"environment_id" db:"environment_id"`
 	EnvironmentName     *string    `json:"environment_name" db:"environment_name"`
 	QueueID             *string    `json:"queue_id" db:"queue_id"`
-	HasValidationErrors bool       `json:"has_validation_errors,omitempty"`
+	HasValidationErrors bool              `json:"has_validation_errors,omitempty"`
+	RecentExecutions    []ExecutionStatus `json:"recent_executions,omitempty"`
+}
+
+type ExecutionStatus struct {
+	ID               string `json:"id" db:"id"`
+	ExecutionStatus  string `json:"execution_status" db:"execution_status"`
+	CompletionStatus string `json:"completion_status" db:"completion_status"`
 }
 
 type Execution struct {
