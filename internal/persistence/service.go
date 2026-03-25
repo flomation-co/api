@@ -267,6 +267,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT
 		    ou.user_id,
 		    u.name,
+		    u.email_address,
 		    ou.role
 		FROM
 		    organisation_user ou

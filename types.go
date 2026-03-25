@@ -22,10 +22,11 @@ type Organisation struct {
 }
 
 type OrganisationMember struct {
-	UserID   string     `json:"user_id" db:"user_id"`
-	Name     string     `json:"name" db:"name"`
-	Role     string     `json:"role" db:"role"`
-	JoinedAt *time.Time `json:"joined_at" db:"joined_at"`
+	UserID       string     `json:"user_id" db:"user_id"`
+	Name         string     `json:"name" db:"name"`
+	EmailAddress *string    `json:"email_address,omitempty" db:"email_address"`
+	Role         string     `json:"role" db:"role"`
+	JoinedAt     *time.Time `json:"joined_at" db:"joined_at"`
 }
 
 type OrganisationInvite struct {
