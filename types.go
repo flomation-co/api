@@ -122,7 +122,7 @@ type Execution struct {
 	Result           interface{} `json:"result" db:"result"`
 	Duration         *int64      `json:"duration" db:"duration"`
 	BillingDuration  *int64      `json:"billing_duration" db:"billing_duration"`
-	TriggerType      *string     `json:"trigger_type,omitempty"`
+	TriggerType      *string     `json:"trigger_type,omitempty" db:"trigger_type"`
 	AuthorEmail      *string     `json:"author_email,omitempty"`
 	TriggererEmail   *string     `json:"triggerer_email,omitempty"`
 	EntryNodeID      *string     `json:"entry_node_id,omitempty"`
