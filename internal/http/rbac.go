@@ -54,7 +54,7 @@ func (s *Service) checkPermission(c *gin.Context, required rbac.Permission) bool
 }
 
 // getEffectivePermissions returns the user's effective permissions in the org.
-// If the user has no group memberships, returns the default member permissions.
+// Members not assigned to any team have no permissions.
 func (s *Service) getEffectivePermissions(orgID, userID string) []string {
 	count, err := s.persistence.CountUserGroupsInOrganisation(orgID, userID)
 	if err != nil {
@@ -62,9 +62,9 @@ func (s *Service) getEffectivePermissions(orgID, userID string) []string {
 		return nil
 	}
 
-	// No groups configured for this user — grant defaults
+	// User is not in any team — no permissions
 	if count == 0 {
-		return rbac.DefaultMemberPermissions
+		return nil
 	}
 
 	perms, err := s.persistence.GetUserPermissionsInOrganisation(orgID, userID)
