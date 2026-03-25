@@ -515,6 +515,45 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	})
 }
 
+func (s *Service) executeFlo(c *gin.Context) {
+	floID := c.Param("FloID")
+
+	// Find the manual trigger for this flow
+	triggers, err := s.persistence.GetTriggersByFloID(floID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get triggers for flow")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	var triggerID string
+	for _, t := range triggers {
+		if t.TypeName == "manual" {
+			triggerID = t.ID
+			break
+		}
+	}
+
+	if triggerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "flow has no manual trigger"})
+		return
+	}
+
+	var data interface{}
+	_ = c.ShouldBindJSON(&data)
+
+	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to trigger execution")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id": i,
+	})
+}
+
 func (s *Service) exportFlos(c *gin.Context) {
 	user := s.getUserFromContext(c)
 

@@ -198,6 +198,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	flos.POST("/import", s.jwtMiddleware, s.importFlo)
 	flos.POST("/:FloID/revision", s.jwtMiddleware, s.createFloRevision)
 
+	flos.POST("/:FloID/execute", s.executeFlo)
 	flos.POST("/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
 
 	favourites := v1.Group("favourite")
