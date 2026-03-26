@@ -210,10 +210,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	executions := v1.Group("execution")
 	executions.POST("/:id/state", s.executionMiddleware, s.updateExecutionState)
 	executions.POST("/:id/logs", s.executionMiddleware, s.appendExecutionLogs)
+	executions.POST("/:id/cancel", s.jwtMiddleware, s.cancelExecution)
 	executions.POST("/:id", s.executionMiddleware, s.updateExecution)
 
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
+	executions.GET("/:id/status", s.executionMiddleware, s.getExecutionStatus)
 	executions.GET("/:id/stream", s.streamAuthMiddleware, s.streamExecutionLogs)
 
 	executions.GET("/:id/environment/:environment", s.executionMiddleware, s.getExecutionEnvironment)

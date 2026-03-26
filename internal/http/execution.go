@@ -64,6 +64,85 @@ func (s *Service) updateExecutionState(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (s *Service) cancelExecution(c *gin.Context) {
+	id := c.Param("id")
+	user := s.getUserFromContext(c)
+
+	execution, err := s.persistence.GetExecutionByID(id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to get execution")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if execution == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if !s.verifyOrgAccess(user, execution.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	// Only cancel executions that are still in progress
+	if execution.CompletionStatus != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "execution is not in progress"})
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"id":   id,
+		"user": user.ID,
+	}).Info("cancelling execution")
+
+	if err := s.persistence.UpdateCompletionStatus(id, "cancel"); err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to update completion status")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.persistence.UpdateExecutionStatus(id, "executed"); err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Error("unable to update execution status")
+	}
+
+	// Notify SSE subscribers
+	s.logHub.Publish(id, []string{"__STATUS__:cancelled"})
+	s.logHub.Complete(id)
+	go func() {
+		time.Sleep(5 * time.Second)
+		s.logHub.Cleanup(id)
+	}()
+
+	c.Status(http.StatusOK)
+}
+
+func (s *Service) getExecutionStatus(c *gin.Context) {
+	id := c.Param("id")
+
+	execution, err := s.persistence.GetExecutionByID(id)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if execution == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"execution_status":  execution.ExecutionStatus,
+		"completion_status": execution.CompletionStatus,
+	})
+}
+
 func (s *Service) updateExecution(c *gin.Context) {
 	id := c.Param("id")
 
@@ -99,7 +178,9 @@ func (s *Service) updateExecution(c *gin.Context) {
 	}
 
 	completion := "success"
-	if result.HasErrored {
+	if result.Cancelled {
+		completion = "cancel"
+	} else if result.HasErrored {
 		completion = "fail"
 	}
 
