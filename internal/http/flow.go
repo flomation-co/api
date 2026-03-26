@@ -921,6 +921,34 @@ func checkFloValidation(s *Service, floID string, actionInputs map[string]map[st
 				continue
 			}
 
+			// Skip hidden inputs (visible_when condition not met)
+			if vw, ok := input["visible_when"].(map[string]interface{}); ok {
+				field, _ := vw["field"].(string)
+				values, _ := vw["values"].([]interface{})
+				if field != "" && len(values) > 0 {
+					// Find the referenced field's value
+					refValue := ""
+					for _, inp2 := range inputs {
+						if ref, ok := inp2.(map[string]interface{}); ok {
+							if rn, _ := ref["name"].(string); rn == field {
+								refValue, _ = ref["value"].(string)
+								break
+							}
+						}
+					}
+					visible := false
+					for _, v := range values {
+						if vs, ok := v.(string); ok && vs == refValue {
+							visible = true
+							break
+						}
+					}
+					if !visible {
+						continue
+					}
+				}
+			}
+
 			value, _ := input["value"].(string)
 			if strings.TrimSpace(value) == "" {
 				return true

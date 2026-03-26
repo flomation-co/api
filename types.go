@@ -167,14 +167,20 @@ type InputOption struct {
 	Value string `json:"value"`
 }
 
+type InputVisibleWhen struct {
+	Field  string   `json:"field"`
+	Values []string `json:"values"`
+}
+
 type InputDefinition struct {
-	Name        string        `json:"name" db:"name"`
-	Value       string        `json:"value" db:"value"`
-	Type        string        `json:"type" db:"type"`
-	Label       string        `json:"label"`
-	Placeholder string        `json:"placeholder"`
-	Required    bool          `json:"required,omitempty"`
-	Options     []InputOption `json:"options,omitempty"`
+	Name        string            `json:"name" db:"name"`
+	Value       string            `json:"value" db:"value"`
+	Type        string            `json:"type" db:"type"`
+	Label       string            `json:"label"`
+	Placeholder string            `json:"placeholder"`
+	Required    bool              `json:"required,omitempty"`
+	Options     []InputOption     `json:"options,omitempty"`
+	VisibleWhen *InputVisibleWhen `json:"visible_when,omitempty"`
 }
 
 type OutputDefinition struct {
