@@ -1,8 +1,10 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
+	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -132,8 +134,12 @@ func (s *Service) acceptOrganisationInvite(c *gin.Context) {
 		}).Warn("unable to add user to organisation (may already be a member)")
 	}
 
-	// Mark invite as accepted
+	// Mark invite as accepted (atomic — only succeeds if not already accepted)
 	if err := s.persistence.AcceptInvite(invite.ID, user.ID); err != nil {
+		if errors.Is(err, persistence.ErrInviteAlreadyAccepted) {
+			c.JSON(http.StatusConflict, gin.H{"error": "invite has already been accepted"})
+			return
+		}
 		log.WithFields(log.Fields{
 			"error":     err,
 			"invite_id": invite.ID,
