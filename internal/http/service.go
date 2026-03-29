@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"flomation.app/automate/api/internal/actions"
 	"flomation.app/automate/api/internal/connector/identity"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"github.com/flomation-co/sentinel-client"
+	"github.com/google/uuid"
 
 	"flomation.app/automate/api/internal/version"
 
@@ -20,21 +23,29 @@ import (
 )
 
 type Service struct {
-	config      *config.Config
-	engine      *gin.Engine
-	persistence Persistence
-	identity    *identity.Connector
-	launch      *launchconnector.Connector
-	migrator    *actions.Migrator
-	logHub      *LogHub
+	config         *config.Config
+	engine         *gin.Engine
+	persistence    Persistence
+	identity       *identity.Connector
+	launch         *launchconnector.Connector
+	migrator       *actions.Migrator
+	logHub         *LogHub
+	allowedOrigins []string
+	streamTokens   *StreamTokenStore
 }
 
-func corsMiddleware(c *gin.Context) {
-	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-	c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-	c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items")
-	c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
-	c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+func (s *Service) corsMiddleware(c *gin.Context) {
+	origin := c.GetHeader("Origin")
+	allowedOrigin := s.matchOrigin(origin)
+
+	if allowedOrigin != "" {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items, X-Flomation-Runner-Signature")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		c.Writer.Header().Set("Vary", "Origin")
+	}
 
 	if c.Request.Method == "OPTIONS" {
 		c.AbortWithStatus(204)
@@ -42,6 +53,24 @@ func corsMiddleware(c *gin.Context) {
 	}
 
 	c.Next()
+}
+
+// matchOrigin checks the request origin against the configured allowlist.
+// Returns the matching origin or empty string if not allowed.
+func (s *Service) matchOrigin(origin string) string {
+	if origin == "" {
+		return ""
+	}
+	if len(s.allowedOrigins) == 0 {
+		// No allowlist configured — allow all (dev mode)
+		return origin
+	}
+	for _, allowed := range s.allowedOrigins {
+		if strings.EqualFold(origin, allowed) {
+			return origin
+		}
+	}
+	return ""
 }
 
 func hstsMiddleware(c *gin.Context) {
@@ -84,8 +113,9 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	c.Next()
 }
 
-// streamAuthMiddleware authenticates SSE connections using a query parameter token,
-// since EventSource does not support custom headers.
+// streamAuthMiddleware authenticates SSE connections. It first checks for an
+// opaque stream token (issued via POST /auth/stream-token), then falls back
+// to JWT validation. This avoids exposing long-lived JWTs in query parameters.
 func (s *Service) streamAuthMiddleware(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -93,6 +123,14 @@ func (s *Service) streamAuthMiddleware(c *gin.Context) {
 		return
 	}
 
+	// Try opaque stream token first
+	if userID, ok := s.streamTokens.Validate(token); ok {
+		c.Set("account_id", userID)
+		c.Next()
+		return
+	}
+
+	// Fall back to JWT validation
 	userID, err := sentinel.GetUser(s.config.Security.IdentityService, token)
 	if err != nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -104,6 +142,116 @@ func (s *Service) streamAuthMiddleware(c *gin.Context) {
 	c.Next()
 }
 
+// flexAuthMiddleware accepts either JWT (browser/editor) or runner signature
+// (service-to-service) authentication. Used for endpoints that both users and
+// runners need to access (e.g. execute endpoints).
+func (s *Service) flexAuthMiddleware(c *gin.Context) {
+	// Try JWT first
+	header := c.GetHeader("Authorization")
+	if header != "" {
+		headerParts := strings.Split(header, " ")
+		if len(headerParts) == 2 && strings.ToLower(headerParts[0]) == "bearer" {
+			userID, err := sentinel.GetUser(s.config.Security.IdentityService, headerParts[1])
+			if err == nil && userID != nil {
+				c.Set("account_id", *userID)
+				c.Set("jwt", headerParts[1])
+
+				organisationID := c.Query("organisation")
+				if organisationID != "" {
+					c.Set("organisation_id", organisationID)
+				}
+
+				c.Next()
+				return
+			}
+		}
+	}
+
+	// Try runner signature — look for X-Flomation-Runner-Signature header
+	sig := c.GetHeader("X-Flomation-Runner-Signature")
+	if sig != "" {
+		// For runner auth, we need to verify against a registered runner's public key.
+		// The runner ID is passed via X-Flomation-Runner-ID header.
+		runnerID := c.GetHeader("X-Flomation-Runner-ID")
+		if runnerID != "" {
+			runner, err := s.persistence.GetRunnerByIdentifier(runnerID)
+			if err == nil && runner != nil && runner.PublicKey != nil {
+				if err := s.verifyPayload(*runner.PublicKey, c); err == nil {
+					c.Set("runner_auth", true)
+					c.Next()
+					return
+				}
+			}
+		}
+	}
+
+	c.AbortWithStatus(http.StatusUnauthorized)
+}
+
+// StreamTokenStore manages short-lived opaque tokens for SSE authentication.
+type StreamTokenStore struct {
+	mu     sync.Mutex
+	tokens map[string]streamTokenEntry
+}
+
+type streamTokenEntry struct {
+	userID    string
+	expiresAt time.Time
+}
+
+func NewStreamTokenStore() *StreamTokenStore {
+	s := &StreamTokenStore{
+		tokens: make(map[string]streamTokenEntry),
+	}
+	go s.cleanup()
+	return s
+}
+
+// Issue creates a new stream token valid for 60 seconds.
+func (s *StreamTokenStore) Issue(userID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	token := uuid.New().String()
+	s.tokens[token] = streamTokenEntry{
+		userID:    userID,
+		expiresAt: time.Now().Add(60 * time.Second),
+	}
+	return token
+}
+
+// Validate checks and consumes a stream token (single-use).
+func (s *StreamTokenStore) Validate(token string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.tokens[token]
+	if !ok {
+		return "", false
+	}
+	delete(s.tokens, token)
+
+	if time.Now().After(entry.expiresAt) {
+		return "", false
+	}
+	return entry.userID, true
+}
+
+func (s *StreamTokenStore) cleanup() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.mu.Lock()
+		now := time.Now()
+		for k, v := range s.tokens {
+			if now.After(v.expiresAt) {
+				delete(s.tokens, k)
+			}
+		}
+		s.mu.Unlock()
+	}
+}
+
 func NewService(config *config.Config, persistence *persistence.Service) *Service {
 	m, err := actions.NewMigrator(config)
 	if err != nil {
@@ -113,18 +261,35 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		return nil
 	}
 
+	// Parse allowed origins from config
+	var allowedOrigins []string
+	if config.Security.AllowedOrigins != "" {
+		for _, o := range strings.Split(config.Security.AllowedOrigins, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				allowedOrigins = append(allowedOrigins, o)
+			}
+		}
+	}
+
+	if len(allowedOrigins) == 0 {
+		log.Warn("ALLOWED_ORIGINS not configured — CORS will allow all origins. Set ALLOWED_ORIGINS for production use.")
+	}
+
 	s := &Service{
-		config:      config,
-		engine:      gin.New(),
-		persistence: persistence,
-		identity:    identity.NewConnector(config),
-		launch:      launchconnector.NewConnector(config),
-		migrator:    m,
-		logHub:      NewLogHub(),
+		config:         config,
+		engine:         gin.New(),
+		persistence:    persistence,
+		identity:       identity.NewConnector(config),
+		launch:         launchconnector.NewConnector(config),
+		migrator:       m,
+		logHub:         NewLogHub(),
+		allowedOrigins: allowedOrigins,
+		streamTokens:   NewStreamTokenStore(),
 	}
 
 	// API Group
-	s.engine.Use(corsMiddleware, hstsMiddleware)
+	s.engine.Use(s.corsMiddleware, hstsMiddleware)
 
 	s.engine.GET("version", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -198,8 +363,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	flos.POST("/import", s.jwtMiddleware, s.importFlo)
 	flos.POST("/:FloID/revision", s.jwtMiddleware, s.createFloRevision)
 
-	flos.POST("/:FloID/execute", s.executeFlo)
-	flos.POST("/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
+	flos.POST("/:FloID/execute", s.flexAuthMiddleware, s.executeFlo)
+	flos.POST("/:FloID/trigger/:TriggerID/execute", s.flexAuthMiddleware, s.triggerFlo)
 
 	favourites := v1.Group("favourite")
 	favourites.Use(s.jwtMiddleware)
@@ -243,7 +408,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	triggers.POST("", s.jwtMiddleware, s.createTrigger)
 	triggers.POST("/:id", s.jwtMiddleware, s.updateTrigger)
 	triggers.DELETE("/:id", s.jwtMiddleware, s.deleteTrigger)
-	triggers.POST("/:id/resolve", s.resolveTriggerVariables)
+	triggers.POST("/:id/resolve", s.executionMiddleware, s.resolveTriggerVariables)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
@@ -262,6 +427,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.POST("/:environment/secret", s.jwtMiddleware, s.createEnvironmentSecret)
 	environment.POST("/:environment/secret/:id", s.jwtMiddleware, s.updateEnvironmentSecretByID)
 	environment.DELETE("/:environment/secret/:id", s.jwtMiddleware, s.deleteEnvironmentSecretByID)
+
+	// Stream token exchange for SSE authentication
+	v1.POST("auth/stream-token", s.jwtMiddleware, s.issueStreamToken)
 
 	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
 

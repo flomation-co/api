@@ -15,6 +15,9 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// ErrInviteAlreadyAccepted is returned when an invite has already been accepted.
+var ErrInviteAlreadyAccepted = errors.New("invite has already been accepted")
+
 type Service struct {
 	config *config.Config
 	conn   *sqlx.DB
@@ -359,7 +362,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtAcceptInvite, err = s.conn.PrepareNamed(`
 		UPDATE organisation_invite
 		SET accepted_at = CURRENT_TIMESTAMP, accepted_by = :accepted_by
-		WHERE id = :id;
+		WHERE id = :id AND accepted_at IS NULL;
 	`)
 	if err != nil {
 		return nil, err
@@ -2355,14 +2358,25 @@ func (s *Service) GetInvitePreview(code string) (*InvitePreview, error) {
 }
 
 func (s *Service) AcceptInvite(inviteID string, acceptedBy string) error {
-	_, err := s.stmtAcceptInvite.Exec(struct {
+	result, err := s.stmtAcceptInvite.Exec(struct {
 		ID         string `db:"id"`
 		AcceptedBy string `db:"accepted_by"`
 	}{
 		ID:         inviteID,
 		AcceptedBy: acceptedBy,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrInviteAlreadyAccepted
+	}
+	return nil
 }
 
 func (s *Service) RevokeInvite(inviteID string, organisationID string) error {

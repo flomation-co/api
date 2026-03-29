@@ -23,6 +23,7 @@ type DatabaseConfig struct {
 
 type SecurityConfig struct {
 	IdentityService string `json:"identity_service" env:"IDENTITY_SERVICE" arg:"identity-service"`
+	AllowedOrigins  string `json:"allowed_origins" env:"ALLOWED_ORIGINS" arg:"allowed-origins"`
 }
 
 type LaunchConfig struct {

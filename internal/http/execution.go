@@ -434,6 +434,19 @@ func (s *Service) streamExecutionLogs(c *gin.Context) {
 	}
 }
 
+// issueStreamToken creates a short-lived opaque token for SSE authentication,
+// avoiding exposure of long-lived JWTs in query parameters.
+func (s *Service) issueStreamToken(c *gin.Context) {
+	userIDFromContext, exists := c.Get("account_id")
+	if !exists {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	token := s.streamTokens.Issue(userIDFromContext.(string))
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
 // sendExecutionNotification checks if the flow has notification settings
 // and sends an email for the given completion status.
 func (s *Service) sendExecutionNotification(floID string, completion string, execution *api.Execution) {
