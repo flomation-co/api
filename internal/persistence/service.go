@@ -3095,11 +3095,11 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 		e.agent_id
 	FROM execution e
 	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
-	WHERE e.parent_execution_id IS NULL`
+	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	baseCount := `SELECT COUNT(1) FROM execution e
 	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
-	WHERE e.parent_execution_id IS NULL`
+	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	var args []interface{}
 	argIdx := 1
