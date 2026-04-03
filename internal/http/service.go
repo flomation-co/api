@@ -433,6 +433,27 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
 
+	// Agents
+	agents := v1.Group("agent")
+	agents.Use(s.jwtMiddleware)
+	agents.GET("", s.getAgents)
+	agents.GET("/:id", s.getAgentByID)
+	agents.POST("", s.createAgent)
+	agents.POST("/:id", s.updateAgent)
+	agents.DELETE("/:id", s.archiveAgent)
+	agents.POST("/:id/start", s.startAgent)
+	agents.POST("/:id/stop", s.stopAgent)
+	agents.POST("/:id/pause", s.pauseAgent)
+	agents.GET("/:id/session", s.getAgentSessions)
+	agents.GET("/:id/session/:sessionId", s.getAgentSessionByID)
+	agents.GET("/:id/state", s.getAgentState)
+	agents.GET("/:id/state/:key", s.getAgentStateKey)
+	agents.POST("/:id/state/:key", s.setAgentStateKey)
+	agents.DELETE("/:id/state/:key", s.deleteAgentStateKey)
+	agents.GET("/:id/message", s.getAgentMessages)
+	agents.POST("/:id/message", s.createAgentMessage)
+	agents.GET("/:id/execution", s.getAgentExecutions)
+
 	return s
 }
 

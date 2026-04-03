@@ -1,6 +1,8 @@
 package http
 
 import (
+	"time"
+
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
 )
@@ -104,4 +106,37 @@ type Persistence interface {
 
 	// Feedback
 	CreateFeedback(feedback api.Feedback) error
+
+	// Agents
+	GetAgents(ownerID string) ([]*api.Agent, error)
+	GetAgentsByOrgID(organisationID string) ([]*api.Agent, error)
+	GetAgentByID(id string) (*api.Agent, error)
+	CreateAgent(agent api.Agent) (*string, error)
+	UpdateAgent(agent api.Agent) error
+	ArchiveAgent(id string) error
+	UpdateAgentStatus(id string, status string, startedAt *time.Time, stoppedAt *time.Time) error
+
+	// Agent Sessions
+	CreateAgentSession(agentID string) (*string, error)
+	EndAgentSession(id string, status string, errorMessage *string) error
+	GetAgentSessions(agentID string, limit int, offset int) ([]*api.AgentSession, error)
+	GetAgentSessionByID(id string) (*api.AgentSession, error)
+	GetActiveAgentSession(agentID string) (*api.AgentSession, error)
+
+	// Agent State
+	GetAgentState(agentID string) ([]*api.AgentState, error)
+	GetAgentStateKey(agentID string, key string) (*api.AgentState, error)
+	UpsertAgentState(agentID string, key string, value interface{}) error
+	DeleteAgentStateKey(agentID string, key string) error
+
+	// Agent Messages
+	GetAgentMessages(agentID string, limit int, offset int) ([]*api.AgentMessage, error)
+	GetAgentSessionMessages(sessionID string, limit int, offset int) ([]*api.AgentMessage, error)
+	CreateAgentMessage(msg api.AgentMessage) (*string, error)
+
+	// Agent Executions
+	GetAgentExecutions(agentID string, limit int, offset int) ([]*api.AgentExecution, error)
+	CreateAgentExecution(exec api.AgentExecution) (*string, error)
+	UpdateAgentExecutionStatus(id string, status string, approvedBy *string, completedAt *time.Time) error
+	CountAgentExecutionsInHour(agentID string) (int64, error)
 }
