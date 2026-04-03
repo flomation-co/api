@@ -3235,6 +3235,11 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 	return &id, tx.Commit()
 }
 
+func (s *Service) SetExecutionAgentID(executionID string, agentID string) error {
+	_, err := s.conn.Exec("UPDATE execution SET agent_id = $1 WHERE id = $2", agentID, executionID)
+	return err
+}
+
 func (s *Service) UpdateExecutionStatus(ID string, status string) error {
 	if _, err := s.stmtUpdateFloExecutionStatus.Exec(struct {
 		ID              string `db:"id"`

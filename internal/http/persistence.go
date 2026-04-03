@@ -107,6 +107,8 @@ type Persistence interface {
 	// Feedback
 	CreateFeedback(feedback api.Feedback) error
 
+	SetExecutionAgentID(executionID string, agentID string) error
+
 	// Agents
 	GetAgents(ownerID string) ([]*api.Agent, error)
 	GetAgentsByOrgID(organisationID string) ([]*api.Agent, error)

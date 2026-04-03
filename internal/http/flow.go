@@ -574,6 +574,13 @@ func (s *Service) executeFlo(c *gin.Context) {
 		return
 	}
 
+	// If this execution was agent-dispatched, tag it with the agent ID
+	if i != nil && data != nil {
+		if agentID, ok := data["agent_id"].(string); ok && agentID != "" {
+			s.persistence.SetExecutionAgentID(*i, agentID)
+		}
+	}
+
 	// Wake any long-polling runners
 	s.executionNotifier.Notify()
 
