@@ -1,0 +1,681 @@
+package http
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"flomation.app/automate/api"
+	. "github.com/onsi/gomega"
+
+	"github.com/gin-gonic/gin"
+)
+
+// agentMock extends mockPersistence with agent-specific behaviour.
+type agentMock struct {
+	mockPersistence
+	agents   map[string]*api.Agent
+	sessions map[string]*api.AgentSession
+	state    map[string]map[string]*api.AgentState
+	messages []*api.AgentMessage
+	users    map[string]*api.User
+}
+
+func newAgentMock() *agentMock {
+	return &agentMock{
+		mockPersistence: *newMockPersistence(),
+		agents:          make(map[string]*api.Agent),
+		sessions:        make(map[string]*api.AgentSession),
+		state:           make(map[string]map[string]*api.AgentState),
+		users:           make(map[string]*api.User),
+	}
+}
+
+func (m *agentMock) GetUserByID(id string) (*api.User, error) {
+	if u, ok := m.users[id]; ok {
+		return u, nil
+	}
+	return nil, nil
+}
+
+func (m *agentMock) GetAgents(ownerID string) ([]*api.Agent, error) {
+	var results []*api.Agent
+	for _, a := range m.agents {
+		if a.OwnerID == ownerID && a.ArchivedAt == nil {
+			results = append(results, a)
+		}
+	}
+	return results, nil
+}
+
+func (m *agentMock) GetAgentsByOrgID(orgID string) ([]*api.Agent, error) {
+	var results []*api.Agent
+	for _, a := range m.agents {
+		if a.OrganisationID != nil && *a.OrganisationID == orgID && a.ArchivedAt == nil {
+			results = append(results, a)
+		}
+	}
+	return results, nil
+}
+
+func (m *agentMock) GetAgentByID(id string) (*api.Agent, error) {
+	if a, ok := m.agents[id]; ok {
+		return a, nil
+	}
+	return nil, nil
+}
+
+func (m *agentMock) CreateAgent(agent api.Agent) (*string, error) {
+	id := "agent-new"
+	agent.ID = id
+	agent.CreatedAt = time.Now()
+	agent.UpdatedAt = time.Now()
+	m.agents[id] = &agent
+	return &id, nil
+}
+
+func (m *agentMock) UpdateAgent(agent api.Agent) error {
+	if existing, ok := m.agents[agent.ID]; ok {
+		existing.Name = agent.Name
+		existing.Description = agent.Description
+	}
+	return nil
+}
+
+func (m *agentMock) ArchiveAgent(id string) error {
+	if a, ok := m.agents[id]; ok {
+		now := time.Now()
+		a.ArchivedAt = &now
+		a.Status = api.AgentStatusStopped
+	}
+	return nil
+}
+
+func (m *agentMock) UpdateAgentStatus(id string, status string, startedAt *time.Time, stoppedAt *time.Time) error {
+	if a, ok := m.agents[id]; ok {
+		a.Status = status
+		a.StartedAt = startedAt
+		a.StoppedAt = stoppedAt
+	}
+	return nil
+}
+
+func (m *agentMock) CreateAgentSession(agentID string) (*string, error) {
+	id := "session-new"
+	m.sessions[id] = &api.AgentSession{
+		ID:        id,
+		AgentID:   agentID,
+		StartedAt: time.Now(),
+		Status:    api.AgentSessionActive,
+	}
+	return &id, nil
+}
+
+func (m *agentMock) GetActiveAgentSession(agentID string) (*api.AgentSession, error) {
+	for _, s := range m.sessions {
+		if s.AgentID == agentID && s.Status == api.AgentSessionActive {
+			return s, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *agentMock) EndAgentSession(id string, status string, errorMsg *string) error {
+	if s, ok := m.sessions[id]; ok {
+		now := time.Now()
+		s.Status = status
+		s.EndedAt = &now
+	}
+	return nil
+}
+
+func (m *agentMock) GetAgentState(agentID string) ([]*api.AgentState, error) {
+	var results []*api.AgentState
+	if stateMap, ok := m.state[agentID]; ok {
+		for _, s := range stateMap {
+			results = append(results, s)
+		}
+	}
+	return results, nil
+}
+
+func (m *agentMock) GetAgentStateKey(agentID string, key string) (*api.AgentState, error) {
+	if stateMap, ok := m.state[agentID]; ok {
+		if s, ok := stateMap[key]; ok {
+			return s, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *agentMock) UpsertAgentState(agentID string, key string, value interface{}) error {
+	if _, ok := m.state[agentID]; !ok {
+		m.state[agentID] = make(map[string]*api.AgentState)
+	}
+	m.state[agentID][key] = &api.AgentState{
+		AgentID:    agentID,
+		StateKey:   key,
+		StateValue: value,
+		UpdatedAt:  time.Now(),
+	}
+	return nil
+}
+
+func (m *agentMock) DeleteAgentStateKey(agentID string, key string) error {
+	if stateMap, ok := m.state[agentID]; ok {
+		delete(stateMap, key)
+	}
+	return nil
+}
+
+func (m *agentMock) CreateAgentMessage(msg api.AgentMessage) (*string, error) {
+	id := "msg-new"
+	msg.ID = id
+	m.messages = append(m.messages, &msg)
+	return &id, nil
+}
+
+func setupAgentRouter(svc *Service) *gin.Engine {
+	router := gin.New()
+	agents := router.Group("/agent")
+	agents.GET("", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.getAgents(c)
+	})
+	agents.GET("/:id", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.getAgentByID(c)
+	})
+	agents.POST("", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.createAgent(c)
+	})
+	agents.POST("/:id", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.updateAgent(c)
+	})
+	agents.DELETE("/:id", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.archiveAgent(c)
+	})
+	agents.POST("/:id/start", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.startAgent(c)
+	})
+	agents.POST("/:id/stop", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.stopAgent(c)
+	})
+	agents.POST("/:id/pause", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.pauseAgent(c)
+	})
+	agents.GET("/:id/state", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.getAgentState(c)
+	})
+	agents.GET("/:id/state/:key", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.getAgentStateKey(c)
+	})
+	agents.POST("/:id/state/:key", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.setAgentStateKey(c)
+	})
+	agents.DELETE("/:id/state/:key", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.deleteAgentStateKey(c)
+	})
+	agents.POST("/:id/message", func(c *gin.Context) {
+		c.Set("account_id", "user-1")
+		svc.createAgentMessage(c)
+	})
+	return router
+}
+
+func Test_GetAgents_Empty_ReturnsEmptyArray(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/agent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+
+	var result []interface{}
+	Expect(json.Unmarshal(w.Body.Bytes(), &result)).To(Succeed())
+	Expect(result).To(BeEmpty())
+}
+
+func Test_GetAgents_ReturnsOwnedAgents(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/agent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+
+	var result []map[string]interface{}
+	Expect(json.Unmarshal(w.Body.Bytes(), &result)).To(Succeed())
+	Expect(result).To(HaveLen(1))
+	Expect(result[0]["name"]).To(Equal("Test Agent"))
+}
+
+func Test_CreateAgent_Success(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":        "My Agent",
+		"description": "A helpful agent",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusCreated))
+
+	var result map[string]interface{}
+	Expect(json.Unmarshal(w.Body.Bytes(), &result)).To(Succeed())
+	Expect(result["id"]).To(Equal("agent-new"))
+}
+
+func Test_CreateAgent_MissingName_ReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	body, _ := json.Marshal(map[string]interface{}{})
+	req := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusBadRequest))
+}
+
+func Test_GetAgentByID_NotFound(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/agent/nonexistent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusNotFound))
+}
+
+func Test_GetAgentByID_Forbidden_WrongOwner(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Other's Agent", OwnerID: "user-2",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/agent/agent-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusForbidden))
+}
+
+func Test_StartAgent_Success(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1/start", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+
+	var result map[string]interface{}
+	Expect(json.Unmarshal(w.Body.Bytes(), &result)).To(Succeed())
+	Expect(result["status"]).To(Equal("running"))
+	Expect(result["session_id"]).To(Equal("session-new"))
+
+	// Verify agent status was updated
+	Expect(mock.agents["agent-1"].Status).To(Equal(api.AgentStatusRunning))
+}
+
+func Test_StartAgent_AlreadyRunning_ReturnsConflict(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusRunning, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1/start", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusConflict))
+}
+
+func Test_StopAgent_Success(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	now := time.Now()
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusRunning, StartedAt: &now,
+		Channels: json.RawMessage("[]"),
+	}
+	mock.sessions["session-1"] = &api.AgentSession{
+		ID: "session-1", AgentID: "agent-1", Status: api.AgentSessionActive,
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1/stop", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(mock.agents["agent-1"].Status).To(Equal(api.AgentStatusStopped))
+	Expect(mock.sessions["session-1"].Status).To(Equal(api.AgentSessionEnded))
+}
+
+func Test_PauseAgent_Success(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	now := time.Now()
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusRunning, StartedAt: &now,
+		Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1/pause", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(mock.agents["agent-1"].Status).To(Equal(api.AgentStatusPaused))
+}
+
+func Test_AgentState_SetAndGet(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	// Set state
+	body, _ := json.Marshal(map[string]interface{}{"value": map[string]string{"conversation": "hello"}})
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1/state/memory", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	Expect(w.Code).To(Equal(http.StatusOK))
+
+	// Get state
+	req = httptest.NewRequest(http.MethodGet, "/agent/agent-1/state/memory", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	Expect(w.Code).To(Equal(http.StatusOK))
+
+	var result map[string]interface{}
+	Expect(json.Unmarshal(w.Body.Bytes(), &result)).To(Succeed())
+	Expect(result["state_key"]).To(Equal("memory"))
+}
+
+func Test_AgentState_GetNonExistent_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/agent/agent-1/state/nonexistent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusNotFound))
+}
+
+func Test_AgentState_Delete(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+	mock.state["agent-1"] = map[string]*api.AgentState{
+		"memory": {AgentID: "agent-1", StateKey: "memory", StateValue: "test"},
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/agent/agent-1/state/memory", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(mock.state["agent-1"]).To(BeEmpty())
+}
+
+func Test_ArchiveAgent_StopsRunningAgent(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	now := time.Now()
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusRunning, StartedAt: &now,
+		Channels: json.RawMessage("[]"),
+	}
+	mock.sessions["session-1"] = &api.AgentSession{
+		ID: "session-1", AgentID: "agent-1", Status: api.AgentSessionActive,
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/agent/agent-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(mock.agents["agent-1"].ArchivedAt).NotTo(BeNil())
+	Expect(mock.sessions["session-1"].Status).To(Equal(api.AgentSessionEnded))
+}
+
+func Test_CreateAgentMessage_Success(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Test Agent", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"direction":    "inbound",
+		"channel_type": "telegram",
+		"content":      "Hello agent!",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1/message", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusCreated))
+
+	var result map[string]interface{}
+	Expect(json.Unmarshal(w.Body.Bytes(), &result)).To(Succeed())
+	Expect(result["id"]).To(Equal("msg-new"))
+}
+
+func Test_UpdateAgent_Success(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newAgentMock()
+	mock.users["user-1"] = &api.User{ID: "user-1"}
+	mock.agents["agent-1"] = &api.Agent{
+		ID: "agent-1", Name: "Old Name", OwnerID: "user-1",
+		Status: api.AgentStatusStopped, Channels: json.RawMessage("[]"),
+	}
+
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupAgentRouter(svc)
+
+	body, _ := json.Marshal(map[string]interface{}{"name": "New Name"})
+	req := httptest.NewRequest(http.MethodPost, "/agent/agent-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(mock.agents["agent-1"].Name).To(Equal("New Name"))
+}
+
+func Test_CanAccessAgent_OrgMember(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	svc := &Service{}
+	orgID := "org-1"
+	user := &api.User{
+		ID:            "user-1",
+		Organisations: []api.Organisation{{ID: "org-1"}},
+	}
+	agent := &api.Agent{
+		ID: "agent-1", OwnerID: "user-2", OrganisationID: &orgID,
+	}
+
+	Expect(svc.canAccessAgent(user, agent)).To(BeTrue())
+}
+
+func Test_CanAccessAgent_NoAccess(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	svc := &Service{}
+	orgID := "org-2"
+	user := &api.User{
+		ID:            "user-1",
+		Organisations: []api.Organisation{{ID: "org-1"}},
+	}
+	agent := &api.Agent{
+		ID: "agent-1", OwnerID: "user-2", OrganisationID: &orgID,
+	}
+
+	Expect(svc.canAccessAgent(user, agent)).To(BeFalse())
+}
