@@ -227,8 +227,23 @@ func (s *Service) startAgent(c *gin.Context) {
 		return
 	}
 
-	// TODO: Register agent with Launch service for webhook/polling activation
-	// s.launch.RegisterAgent(id, agent)
+	// Register agent with Launch service for webhook/polling activation
+	if s.launch != nil {
+		// Find the first trigger associated with the orchestrator flow (if any)
+		var triggerID *string
+		if agent.OrchestratorFlowID != nil {
+			triggers, _ := s.persistence.GetTriggersByFloID(*agent.OrchestratorFlowID)
+			if len(triggers) > 0 {
+				triggerID = &triggers[0].ID
+			}
+		}
+
+		if err := s.launch.RegisterAgent(id, agent.OrchestratorFlowID, triggerID,
+			agent.Channels, agent.EnvironmentID, agent.MaxExecutionsPerHour, agent.RequiresApproval); err != nil {
+			log.WithFields(log.Fields{"error": err, "id": id}).Warn("unable to register agent with launch service")
+			// Non-fatal — agent is started locally even if Launch registration fails
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "running", "session_id": *sessionID})
 }
@@ -617,8 +632,12 @@ func (s *Service) stopAgentRuntime(agent *api.Agent) {
 	now := time.Now()
 	_ = s.persistence.UpdateAgentStatus(agent.ID, api.AgentStatusStopped, agent.StartedAt, &now)
 
-	// TODO: Deregister agent from Launch service
-	// s.launch.DeregisterAgent(agent.ID)
+	// Deregister agent from Launch service
+	if s.launch != nil {
+		if err := s.launch.DeregisterAgent(agent.ID); err != nil {
+			log.WithFields(log.Fields{"error": err, "agent_id": agent.ID}).Warn("unable to deregister agent from launch service")
+		}
+	}
 }
 
 // parsePagination extracts limit/offset from query parameters with sensible defaults.
