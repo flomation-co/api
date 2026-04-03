@@ -120,9 +120,9 @@ type Execution struct {
 	ExecutionStatus  string      `json:"execution_status" db:"execution_status"`
 	CompletionStatus string      `json:"completion_status" db:"completion_status"`
 	Sequence         int64       `json:"sequence" db:"sequence"`
-	Data             json.RawMessage `json:"data" db:"data"`
-	RunnerID         *string         `json:"runner_id" db:"runner_id"`
-	Result           json.RawMessage `json:"result" db:"result"`
+	Data             json.RawMessage  `json:"data" db:"data"`
+	RunnerID         *string          `json:"runner_id" db:"runner_id"`
+	Result           *json.RawMessage `json:"result" db:"result"`
 	Duration         *int64      `json:"duration" db:"duration"`
 	BillingDuration  *int64      `json:"billing_duration" db:"billing_duration"`
 	TriggerType        *string     `json:"trigger_type,omitempty" db:"trigger_type"`
