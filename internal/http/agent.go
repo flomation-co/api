@@ -243,18 +243,12 @@ func (s *Service) startAgent(c *gin.Context) {
 		return
 	}
 
-	// Register agent with Launch service for webhook/polling activation
+	// Register agent with Launch service for webhook/polling activation.
+	// Don't send a trigger ID — let executeFlo match channel_type to the correct
+	// trigger at dispatch time. This supports multi-channel agents with different
+	// trigger types (e.g. Telegram + Slack in the same flow).
 	if s.launch != nil {
-		// Find the first trigger associated with the orchestrator flow (if any)
-		var triggerID *string
-		if agent.OrchestratorFlowID != nil {
-			triggers, _ := s.persistence.GetTriggersByFloID(*agent.OrchestratorFlowID)
-			if len(triggers) > 0 {
-				triggerID = &triggers[0].ID
-			}
-		}
-
-		if err := s.launch.RegisterAgent(id, agent.OrchestratorFlowID, triggerID,
+		if err := s.launch.RegisterAgent(id, agent.OrchestratorFlowID, nil,
 			agent.Channels, agent.EnvironmentID, agent.MaxExecutionsPerHour, agent.RequiresApproval); err != nil {
 			log.WithFields(log.Fields{"error": err, "id": id}).Warn("unable to register agent with launch service")
 			// Non-fatal — agent is started locally even if Launch registration fails
