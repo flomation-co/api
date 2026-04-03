@@ -233,11 +233,6 @@ func (s *Service) startAgent(c *gin.Context) {
 		var triggerID *string
 		if agent.OrchestratorFlowID != nil {
 			triggers, _ := s.persistence.GetTriggersByFloID(*agent.OrchestratorFlowID)
-			log.WithFields(log.Fields{
-				"agent_id": id,
-				"flow_id":  *agent.OrchestratorFlowID,
-				"triggers": len(triggers),
-			}).Info("agent orchestrator flow trigger lookup")
 			if len(triggers) > 0 {
 				triggerID = &triggers[0].ID
 			}
