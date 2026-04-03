@@ -282,26 +282,15 @@ func (s *Service) getExecutions(c *gin.Context) {
 		orgID = &user.Organisations[0].ID
 	}
 
-	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, orgID)
+	rootOnly := c.DefaultQuery("root_only", "false") == "true"
+
+	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, orgID, rootOnly)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to get executions")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
-	}
-
-	// Filter to root executions only (hide agent worker children) if requested
-	rootOnly := c.DefaultQuery("root_only", "false")
-	if rootOnly == "true" {
-		var filtered []*api.Execution
-		for _, e := range executions {
-			if e.ParentExecutionID == nil {
-				filtered = append(filtered, e)
-			}
-		}
-		executions = filtered
-		count = int64(len(filtered))
 	}
 
 	if len(executions) == 0 {

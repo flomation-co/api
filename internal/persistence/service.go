@@ -961,7 +961,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
@@ -999,7 +1000,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE e.organisation_id = :organisation_id
@@ -1017,7 +1019,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.execution_status, e.completion_status,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type
+			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
@@ -3002,11 +3005,18 @@ func (s *Service) GetRevisionByID(ID string) (*api.Revision, error) {
 	return &result, nil
 }
 
-func (s *Service) GetExecutions(offset int64, limit int64, search string, userID string, organisationID *string) ([]*api.Execution, int64, error) {
+func (s *Service) GetExecutions(offset int64, limit int64, search string, userID string, organisationID *string, rootOnly ...bool) ([]*api.Execution, int64, error) {
 	var results []*api.Execution
 	var count int64
 
+	filterRoot := len(rootOnly) > 0 && rootOnly[0]
 	isOrg := organisationID != nil && *organisationID != ""
+
+	// When filtering root-only, use dynamic SQL to add the parent_execution_id IS NULL condition.
+	// This ensures correct pagination and counts.
+	if filterRoot {
+		return s.getExecutionsRootOnly(offset, limit, search, userID, organisationID, isOrg)
+	}
 
 	if isOrg {
 		orgID := *organisationID
@@ -3069,6 +3079,61 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 				return nil, 0, err
 			}
 		}
+	}
+
+	return results, count, nil
+}
+
+// getExecutionsRootOnly uses parameterised raw SQL to filter out child executions.
+func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string, userID string, organisationID *string, isOrg bool) ([]*api.Execution, int64, error) {
+	baseSelect := `SELECT e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		e.execution_status, e.completion_status,
+		e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
+		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+		(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+		e.agent_id
+	FROM execution e
+	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+	WHERE e.parent_execution_id IS NULL`
+
+	baseCount := `SELECT COUNT(1) FROM execution e
+	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+	WHERE e.parent_execution_id IS NULL`
+
+	var args []interface{}
+	argIdx := 1
+
+	if isOrg && organisationID != nil {
+		baseSelect += fmt.Sprintf(" AND e.organisation_id = $%d", argIdx)
+		baseCount += fmt.Sprintf(" AND e.organisation_id = $%d", argIdx)
+		args = append(args, *organisationID)
+		argIdx++
+	} else {
+		baseSelect += fmt.Sprintf(" AND e.owner_id = $%d", argIdx)
+		baseCount += fmt.Sprintf(" AND e.owner_id = $%d", argIdx)
+		args = append(args, userID)
+		argIdx++
+	}
+
+	if search != "" {
+		baseSelect += fmt.Sprintf(" AND (CAST(e.id AS TEXT) LIKE LOWER($%d) OR LOWER(f.name) LIKE LOWER($%d))", argIdx, argIdx)
+		baseCount += fmt.Sprintf(" AND (CAST(e.id AS TEXT) LIKE LOWER($%d) OR LOWER(f.name) LIKE LOWER($%d))", argIdx, argIdx)
+		args = append(args, "%"+search+"%")
+		argIdx++
+	}
+
+	baseSelect += fmt.Sprintf(" ORDER BY e.created_at DESC OFFSET $%d LIMIT $%d", argIdx, argIdx+1)
+	selectArgs := append(args, offset, limit)
+
+	var results []*api.Execution
+	if err := s.conn.Select(&results, baseSelect, selectArgs...); err != nil {
+		return nil, 0, err
+	}
+
+	var count int64
+	if err := s.conn.Get(&count, baseCount, args...); err != nil {
+		return nil, 0, err
 	}
 
 	return results, count, nil

@@ -144,7 +144,7 @@ func (m *mockPersistence) GetEnvironments(string, *string) ([]*api.Environment, 
 func (m *mockPersistence) GetExecutionForRunnerID(string) (*api.Execution, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetExecutions(int64, int64, string, string, *string) ([]*api.Execution, int64, error) {
+func (m *mockPersistence) GetExecutions(int64, int64, string, string, *string, ...bool) ([]*api.Execution, int64, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) GetLatestRevisionByFloID(string) (*api.Revision, error) {

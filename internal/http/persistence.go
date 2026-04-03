@@ -46,7 +46,7 @@ type Persistence interface {
 	GetEnvironments(ownerID string, organisationID *string) ([]*api.Environment, error)
 	GetExecutionByID(ID string) (*api.Execution, error)
 	GetExecutionForRunnerID(ID string) (*api.Execution, error)
-	GetExecutions(offset int64, limit int64, search string, userID string, organisationID *string) ([]*api.Execution, int64, error)
+	GetExecutions(offset int64, limit int64, search string, userID string, organisationID *string, rootOnly ...bool) ([]*api.Execution, int64, error)
 	GetFloByID(floID string) (*api.Flo, error)
 	GetLatestRevisionByFloID(ID string) (*api.Revision, error)
 	GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error)
