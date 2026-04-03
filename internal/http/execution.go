@@ -291,6 +291,19 @@ func (s *Service) getExecutions(c *gin.Context) {
 		return
 	}
 
+	// Filter to root executions only (hide agent worker children) if requested
+	rootOnly := c.DefaultQuery("root_only", "false")
+	if rootOnly == "true" {
+		var filtered []*api.Execution
+		for _, e := range executions {
+			if e.ParentExecutionID == nil {
+				filtered = append(filtered, e)
+			}
+		}
+		executions = filtered
+		count = int64(len(filtered))
+	}
+
 	if len(executions) == 0 {
 		c.Status(http.StatusNoContent)
 		return
