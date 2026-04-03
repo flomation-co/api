@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const (
@@ -375,7 +377,7 @@ type Agent struct {
 	MaxConcurrentExecutions int              `json:"max_concurrent_executions" db:"max_concurrent_executions"`
 	IdleTimeoutSeconds      int              `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
 	Channels                json.RawMessage  `json:"channels" db:"channels"`
-	AllowedFlowIDs          []string         `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
+	AllowedFlowIDs          pq.StringArray   `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
 	RequiresApproval        bool             `json:"requires_approval" db:"requires_approval"`
 	MaxExecutionsPerHour    int              `json:"max_executions_per_hour" db:"max_executions_per_hour"`
 	Status                  string           `json:"status" db:"status"`
@@ -389,8 +391,8 @@ type Agent struct {
 	MessageCount            int64            `json:"message_count" db:"message_count"`
 	ExecutionCount          int64            `json:"execution_count" db:"execution_count"`
 	LastActiveAt            *time.Time       `json:"last_active_at,omitempty"`
-	OrchestratorFlowName    *string          `json:"orchestrator_flow_name,omitempty"`
-	EnvironmentName         *string          `json:"environment_name,omitempty"`
+	OrchestratorFlowName    *string          `json:"orchestrator_flow_name,omitempty" db:"orchestrator_flow_name"`
+	EnvironmentName         *string          `json:"environment_name,omitempty" db:"environment_name"`
 }
 
 type AgentSession struct {
