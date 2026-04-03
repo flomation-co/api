@@ -6,11 +6,15 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
 
 func (s *Service) getAgents(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentView) {
+		return
+	}
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -77,6 +81,9 @@ func (s *Service) getAgentByID(c *gin.Context) {
 }
 
 func (s *Service) createAgent(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentCreate) {
+		return
+	}
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -123,6 +130,9 @@ func (s *Service) createAgent(c *gin.Context) {
 }
 
 func (s *Service) updateAgent(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentEdit) {
+		return
+	}
 	id := c.Param("id")
 	user := s.getUserFromContext(c)
 	if user == nil {
@@ -157,6 +167,9 @@ func (s *Service) updateAgent(c *gin.Context) {
 }
 
 func (s *Service) archiveAgent(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentDelete) {
+		return
+	}
 	id := c.Param("id")
 	user := s.getUserFromContext(c)
 	if user == nil {
@@ -189,6 +202,9 @@ func (s *Service) archiveAgent(c *gin.Context) {
 }
 
 func (s *Service) startAgent(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentStartStop) {
+		return
+	}
 	id := c.Param("id")
 	user := s.getUserFromContext(c)
 	if user == nil {
@@ -249,6 +265,9 @@ func (s *Service) startAgent(c *gin.Context) {
 }
 
 func (s *Service) stopAgent(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentStartStop) {
+		return
+	}
 	id := c.Param("id")
 	user := s.getUserFromContext(c)
 	if user == nil {
@@ -277,6 +296,9 @@ func (s *Service) stopAgent(c *gin.Context) {
 }
 
 func (s *Service) pauseAgent(c *gin.Context) {
+	if !s.checkPermission(c, rbac.AgentStartStop) {
+		return
+	}
 	id := c.Param("id")
 	user := s.getUserFromContext(c)
 	if user == nil {
