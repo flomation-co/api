@@ -454,13 +454,14 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.POST("/:id/message", s.createAgentMessage)
 	agents.GET("/:id/execution", s.getAgentExecutions)
 
-	// Internal agent endpoints — no JWT, used by Launch service and executor actions.
-	// These use flexAuthMiddleware (accepts JWT or runner sig) or no auth for
-	// service-to-service calls on the internal network.
-	internalAgent := v1.Group("internal/agent")
-	internalAgent.POST("/:id/message", s.createAgentMessageInternal)
-	internalAgent.GET("/:id/state/:key", s.getAgentStateInternal)
-	internalAgent.POST("/:id/state/:key", s.setAgentStateInternal)
+	// Internal endpoints — no JWT, used by Launch service and executor actions.
+	// These are service-to-service calls on the internal network.
+	internal := v1.Group("internal")
+	internal.POST("/agent/:id/message", s.createAgentMessageInternal)
+	internal.GET("/agent/:id/state/:key", s.getAgentStateInternal)
+	internal.POST("/agent/:id/state/:key", s.setAgentStateInternal)
+	internal.POST("/flo/:FloID/execute", s.executeFlo)
+	internal.POST("/flo/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
 
 	return s
 }
