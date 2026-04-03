@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -122,10 +123,13 @@ type Execution struct {
 	Result           interface{} `json:"result" db:"result"`
 	Duration         *int64      `json:"duration" db:"duration"`
 	BillingDuration  *int64      `json:"billing_duration" db:"billing_duration"`
-	TriggerType      *string     `json:"trigger_type,omitempty" db:"trigger_type"`
-	AuthorEmail      *string     `json:"author_email,omitempty"`
-	TriggererEmail   *string     `json:"triggerer_email,omitempty"`
-	EntryNodeID      *string     `json:"entry_node_id,omitempty"`
+	TriggerType        *string     `json:"trigger_type,omitempty" db:"trigger_type"`
+	AuthorEmail        *string     `json:"author_email,omitempty"`
+	TriggererEmail     *string     `json:"triggerer_email,omitempty"`
+	EntryNodeID        *string     `json:"entry_node_id,omitempty"`
+	ParentExecutionID  *string     `json:"parent_execution_id,omitempty" db:"parent_execution_id"`
+	AgentID            *string     `json:"agent_id,omitempty" db:"agent_id"`
+	AgentSessionID     *string     `json:"agent_session_id,omitempty" db:"agent_session_id"`
 }
 
 type Revision struct {
@@ -339,4 +343,126 @@ type UserPermissions struct {
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
 	IsAdmin     bool     `json:"is_admin"`
+}
+
+// Agent types
+
+const (
+	AgentStatusStopped = "stopped"
+	AgentStatusRunning = "running"
+	AgentStatusPaused  = "paused"
+	AgentStatusError   = "error"
+
+	AgentSessionActive  = "active"
+	AgentSessionEnded   = "ended"
+	AgentSessionCrashed = "crashed"
+
+	AgentMessageInbound  = "inbound"
+	AgentMessageOutbound = "outbound"
+	AgentMessageSystem   = "system"
+)
+
+type Agent struct {
+	ID                      string           `json:"id" db:"id"`
+	Name                    string           `json:"name" db:"name"`
+	Description             *string          `json:"description,omitempty" db:"description"`
+	OwnerID                 string           `json:"owner_id" db:"owner_id"`
+	OrganisationID          *string          `json:"organisation_id,omitempty" db:"organisation_id"`
+	EnvironmentID           *string          `json:"environment_id,omitempty" db:"environment_id"`
+	QueueID                 *string          `json:"queue_id,omitempty" db:"queue_id"`
+	SystemPrompt            *string          `json:"system_prompt,omitempty" db:"system_prompt"`
+	OrchestratorFlowID      *string          `json:"orchestrator_flow_id,omitempty" db:"orchestrator_flow_id"`
+	MaxConcurrentExecutions int              `json:"max_concurrent_executions" db:"max_concurrent_executions"`
+	IdleTimeoutSeconds      int              `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
+	Channels                json.RawMessage  `json:"channels" db:"channels"`
+	AllowedFlowIDs          []string         `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
+	RequiresApproval        bool             `json:"requires_approval" db:"requires_approval"`
+	MaxExecutionsPerHour    int              `json:"max_executions_per_hour" db:"max_executions_per_hour"`
+	Status                  string           `json:"status" db:"status"`
+	StartedAt               *time.Time       `json:"started_at,omitempty" db:"started_at"`
+	StoppedAt               *time.Time       `json:"stopped_at,omitempty" db:"stopped_at"`
+	CreatedAt               time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt               time.Time        `json:"updated_at" db:"updated_at"`
+	ArchivedAt              *time.Time       `json:"archived_at,omitempty" db:"archived_at"`
+	// Computed fields (populated at read time)
+	ActiveSessionID         *string          `json:"active_session_id,omitempty"`
+	MessageCount            int64            `json:"message_count" db:"message_count"`
+	ExecutionCount          int64            `json:"execution_count" db:"execution_count"`
+	LastActiveAt            *time.Time       `json:"last_active_at,omitempty"`
+	OrchestratorFlowName    *string          `json:"orchestrator_flow_name,omitempty"`
+	EnvironmentName         *string          `json:"environment_name,omitempty"`
+}
+
+type AgentSession struct {
+	ID           string     `json:"id" db:"id"`
+	AgentID      string     `json:"agent_id" db:"agent_id"`
+	StartedAt    time.Time  `json:"started_at" db:"started_at"`
+	EndedAt      *time.Time `json:"ended_at,omitempty" db:"ended_at"`
+	Status       string     `json:"status" db:"status"`
+	HeartbeatAt  time.Time  `json:"heartbeat_at" db:"heartbeat_at"`
+	Summary      interface{} `json:"summary" db:"summary"`
+	ErrorMessage *string    `json:"error_message,omitempty" db:"error_message"`
+	// Computed
+	MessageCount   int64 `json:"message_count" db:"message_count"`
+	ExecutionCount int64 `json:"execution_count" db:"execution_count"`
+}
+
+type AgentState struct {
+	AgentID    string      `json:"agent_id" db:"agent_id"`
+	StateKey   string      `json:"state_key" db:"state_key"`
+	StateValue interface{} `json:"state_value" db:"state_value"`
+	UpdatedAt  time.Time   `json:"updated_at" db:"updated_at"`
+}
+
+type AgentMessage struct {
+	ID          string      `json:"id" db:"id"`
+	AgentID     string      `json:"agent_id" db:"agent_id"`
+	SessionID   *string     `json:"session_id,omitempty" db:"session_id"`
+	Direction   string      `json:"direction" db:"direction"`
+	ChannelType string      `json:"channel_type" db:"channel_type"`
+	Sender      *string     `json:"sender,omitempty" db:"sender"`
+	Content     string      `json:"content" db:"content"`
+	Metadata    interface{} `json:"metadata,omitempty" db:"metadata"`
+	ExecutionID *string     `json:"execution_id,omitempty" db:"execution_id"`
+	CreatedAt   time.Time   `json:"created_at" db:"created_at"`
+}
+
+type AgentExecution struct {
+	ID               string     `json:"id" db:"id"`
+	AgentID          string     `json:"agent_id" db:"agent_id"`
+	SessionID        *string    `json:"session_id,omitempty" db:"session_id"`
+	MessageID        *string    `json:"message_id,omitempty" db:"message_id"`
+	ExecutionID      string     `json:"execution_id" db:"execution_id"`
+	FlowID           string     `json:"flow_id" db:"flow_id"`
+	Status           string     `json:"status" db:"status"`
+	RequiresApproval bool       `json:"requires_approval" db:"requires_approval"`
+	ApprovedBy       *string    `json:"approved_by,omitempty" db:"approved_by"`
+	ApprovedAt       *time.Time `json:"approved_at,omitempty" db:"approved_at"`
+	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	// Computed
+	FlowName        *string `json:"flow_name,omitempty"`
+	ExecutionStatus *string `json:"execution_status,omitempty"`
+}
+
+type AgentChannel struct {
+	Type   string          `json:"type"`
+	Config json.RawMessage `json:"config"`
+}
+
+type AgentChannelTelegram struct {
+	BotToken      string   `json:"bot_token"`
+	AllowedChatIDs []string `json:"allowed_chat_ids,omitempty"`
+}
+
+type AgentChannelEmail struct {
+	IMAPHost     string `json:"imap_host"`
+	IMAPPort     int    `json:"imap_port"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	TLS          bool   `json:"tls"`
+	WatchFolders []string `json:"watch_folders,omitempty"`
+	SMTPHost     string `json:"smtp_host,omitempty"`
+	SMTPPort     int    `json:"smtp_port,omitempty"`
+	FromAddress  string `json:"from_address,omitempty"`
 }
