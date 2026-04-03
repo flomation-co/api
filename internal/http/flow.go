@@ -534,8 +534,13 @@ func (s *Service) executeFlo(c *gin.Context) {
 		}
 	}
 
+	// Fall back to any trigger if no manual trigger exists (e.g. agent-dispatched flows)
+	if triggerID == "" && len(triggers) > 0 {
+		triggerID = triggers[0].ID
+	}
+
 	if triggerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "flow has no manual trigger"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "flow has no trigger"})
 		return
 	}
 
