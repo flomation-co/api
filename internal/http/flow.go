@@ -501,6 +501,13 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		}).Error("unable to bind payload")
 	}
 
+	log.WithFields(log.Fields{
+		"flo_id":     floID,
+		"trigger_id": triggerID,
+		"data_nil":   data == nil,
+		"bind_err":   err,
+	}).Info("triggerFlo: triggering execution")
+
 	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -545,7 +552,14 @@ func (s *Service) executeFlo(c *gin.Context) {
 	}
 
 	var data interface{}
-	_ = c.ShouldBindJSON(&data)
+	bindErr := c.ShouldBindJSON(&data)
+
+	log.WithFields(log.Fields{
+		"flo_id":     floID,
+		"trigger_id": triggerID,
+		"data_nil":   data == nil,
+		"bind_err":   bindErr,
+	}).Info("executeFlo: triggering execution")
 
 	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
 	if err != nil {

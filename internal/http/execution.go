@@ -247,30 +247,7 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 		return
 	}
 
-	if exec.Data != nil {
-		var input interface{}
-		if err := json.Unmarshal(exec.Data.([]byte), &input); err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-			}).Error("unable to unmarshal input data")
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-		exec.Data = input
-	}
-
-	if exec.Result != nil {
-		var result interface{}
-		if err := json.Unmarshal(exec.Result.([]byte), &result); err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-			}).Error("unable to unmarshal result data")
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-		exec.Result = result
-	}
-
+	// Data and Result are json.RawMessage — they serialise as raw JSON directly
 	c.JSON(http.StatusOK, exec)
 }
 
