@@ -164,6 +164,36 @@ type Service struct {
 	stmtGetFloFavourites    *sqlx.NamedStmt
 	stmtAddFloFavourite     *sqlx.NamedStmt
 	stmtRemoveFloFavourite  *sqlx.NamedStmt
+
+	// Agent statements
+	stmtGetAgents              *sqlx.NamedStmt
+	stmtGetAgentsByOrgID       *sqlx.NamedStmt
+	stmtGetAgentByID           *sqlx.NamedStmt
+	stmtCreateAgent            *sqlx.NamedStmt
+	stmtUpdateAgent            *sqlx.NamedStmt
+	stmtArchiveAgent           *sqlx.NamedStmt
+	stmtUpdateAgentStatus      *sqlx.NamedStmt
+
+	stmtCreateAgentSession         *sqlx.NamedStmt
+	stmtEndAgentSession            *sqlx.NamedStmt
+	stmtUpdateAgentSessionHeartbeat *sqlx.NamedStmt
+	stmtGetAgentSessions           *sqlx.NamedStmt
+	stmtGetAgentSessionByID        *sqlx.NamedStmt
+	stmtGetActiveAgentSession      *sqlx.NamedStmt
+
+	stmtGetAgentState       *sqlx.NamedStmt
+	stmtGetAgentStateKey    *sqlx.NamedStmt
+	stmtUpsertAgentState    *sqlx.NamedStmt
+	stmtDeleteAgentStateKey *sqlx.NamedStmt
+
+	stmtGetAgentMessages       *sqlx.NamedStmt
+	stmtGetAgentSessionMessages *sqlx.NamedStmt
+	stmtCreateAgentMessage     *sqlx.NamedStmt
+
+	stmtGetAgentExecutions         *sqlx.NamedStmt
+	stmtCreateAgentExecution       *sqlx.NamedStmt
+	stmtUpdateAgentExecutionStatus *sqlx.NamedStmt
+	stmtCountAgentExecutionsInHour *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2151,6 +2181,240 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtRemoveFloFavourite, err = s.conn.PrepareNamed(`
 		DELETE FROM flo_favourite WHERE user_id = :user_id AND flo_id = :flo_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// --- Agent statements ---
+
+	s.stmtGetAgents, err = s.conn.PrepareNamed(`
+		SELECT a.*, COALESCE(mc.cnt, 0) AS message_count, COALESCE(ec.cnt, 0) AS execution_count
+		FROM agent a
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
+		WHERE a.owner_id = :owner_id AND a.archived_at IS NULL
+		ORDER BY a.updated_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentsByOrgID, err = s.conn.PrepareNamed(`
+		SELECT a.*, COALESCE(mc.cnt, 0) AS message_count, COALESCE(ec.cnt, 0) AS execution_count
+		FROM agent a
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
+		WHERE a.organisation_id = :organisation_id AND a.archived_at IS NULL
+		ORDER BY a.updated_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentByID, err = s.conn.PrepareNamed(`
+		SELECT a.*,
+			COALESCE(mc.cnt, 0) AS message_count,
+			COALESCE(ec.cnt, 0) AS execution_count,
+			f.name AS orchestrator_flow_name,
+			e.name AS environment_name
+		FROM agent a
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
+		LEFT JOIN flo f ON f.id = a.orchestrator_flow_id
+		LEFT JOIN environment e ON e.id = a.environment_id
+		WHERE a.id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgent, err = s.conn.PrepareNamed(`
+		INSERT INTO agent (name, description, owner_id, organisation_id, environment_id, queue_id,
+			system_prompt, orchestrator_flow_id, max_concurrent_executions, idle_timeout_seconds,
+			channels, requires_approval, max_executions_per_hour)
+		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
+			:system_prompt, :orchestrator_flow_id, :max_concurrent_executions, :idle_timeout_seconds,
+			:channels, :requires_approval, :max_executions_per_hour)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateAgent, err = s.conn.PrepareNamed(`
+		UPDATE agent SET
+			name = :name, description = :description, environment_id = :environment_id,
+			queue_id = :queue_id, system_prompt = :system_prompt,
+			orchestrator_flow_id = :orchestrator_flow_id,
+			max_concurrent_executions = :max_concurrent_executions,
+			idle_timeout_seconds = :idle_timeout_seconds, channels = :channels,
+			requires_approval = :requires_approval,
+			max_executions_per_hour = :max_executions_per_hour,
+			updated_at = NOW()
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtArchiveAgent, err = s.conn.PrepareNamed(`
+		UPDATE agent SET archived_at = NOW(), status = 'stopped', updated_at = NOW()
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateAgentStatus, err = s.conn.PrepareNamed(`
+		UPDATE agent SET status = :status, started_at = :started_at, stopped_at = :stopped_at, updated_at = NOW()
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentSession, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_session (agent_id) VALUES (:agent_id) RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtEndAgentSession, err = s.conn.PrepareNamed(`
+		UPDATE agent_session SET status = :status, ended_at = NOW(), error_message = :error_message
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateAgentSessionHeartbeat, err = s.conn.PrepareNamed(`
+		UPDATE agent_session SET heartbeat_at = NOW(), summary = :summary WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentSessions, err = s.conn.PrepareNamed(`
+		SELECT s.*,
+			COALESCE(mc.cnt, 0) AS message_count,
+			COALESCE(ec.cnt, 0) AS execution_count
+		FROM agent_session s
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE session_id = s.id) mc ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE session_id = s.id) ec ON true
+		WHERE s.agent_id = :agent_id
+		ORDER BY s.started_at DESC
+		LIMIT :limit OFFSET :offset
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentSessionByID, err = s.conn.PrepareNamed(`
+		SELECT s.*,
+			COALESCE(mc.cnt, 0) AS message_count,
+			COALESCE(ec.cnt, 0) AS execution_count
+		FROM agent_session s
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE session_id = s.id) mc ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE session_id = s.id) ec ON true
+		WHERE s.id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetActiveAgentSession, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_session WHERE agent_id = :agent_id AND status = 'active' ORDER BY started_at DESC LIMIT 1
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentState, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_state WHERE agent_id = :agent_id ORDER BY state_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentStateKey, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_state WHERE agent_id = :agent_id AND state_key = :state_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpsertAgentState, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_state (agent_id, state_key, state_value)
+		VALUES (:agent_id, :state_key, :state_value)
+		ON CONFLICT (agent_id, state_key) DO UPDATE SET state_value = :state_value, updated_at = NOW()
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteAgentStateKey, err = s.conn.PrepareNamed(`
+		DELETE FROM agent_state WHERE agent_id = :agent_id AND state_key = :state_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentMessages, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_message WHERE agent_id = :agent_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentSessionMessages, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_message WHERE session_id = :session_id ORDER BY created_at ASC LIMIT :limit OFFSET :offset
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentMessage, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_message (agent_id, session_id, direction, channel_type, sender, content, metadata, execution_id)
+		VALUES (:agent_id, :session_id, :direction, :channel_type, :sender, :content, :metadata, :execution_id)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentExecutions, err = s.conn.PrepareNamed(`
+		SELECT ae.*, f.name AS flow_name
+		FROM agent_execution ae
+		LEFT JOIN flo f ON f.id = ae.flow_id
+		WHERE ae.agent_id = :agent_id
+		ORDER BY ae.created_at DESC
+		LIMIT :limit OFFSET :offset
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentExecution, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_execution (agent_id, session_id, message_id, execution_id, flow_id, status, requires_approval)
+		VALUES (:agent_id, :session_id, :message_id, :execution_id, :flow_id, :status, :requires_approval)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateAgentExecutionStatus, err = s.conn.PrepareNamed(`
+		UPDATE agent_execution SET status = :status, approved_by = :approved_by, approved_at = :approved_at, completed_at = :completed_at
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountAgentExecutionsInHour, err = s.conn.PrepareNamed(`
+		SELECT COUNT(1) FROM agent_execution WHERE agent_id = :agent_id AND created_at > NOW() - INTERVAL '1 hour'
 	`)
 	if err != nil {
 		return nil, err
