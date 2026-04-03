@@ -640,6 +640,77 @@ func (s *Service) stopAgentRuntime(agent *api.Agent) {
 	}
 }
 
+// --- Internal endpoints (no JWT, for Launch service-to-service calls) ---
+
+func (s *Service) createAgentMessageInternal(c *gin.Context) {
+	id := c.Param("id")
+
+	agent, err := s.persistence.GetAgentByID(id)
+	if err != nil || agent == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	var msg api.AgentMessage
+	if err := c.BindJSON(&msg); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	msg.AgentID = id
+
+	// Attach active session if present
+	if session, _ := s.persistence.GetActiveAgentSession(id); session != nil {
+		msg.SessionID = &session.ID
+	}
+
+	msgID, err := s.persistence.CreateAgentMessage(msg)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to create agent message (internal)")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": *msgID})
+}
+
+func (s *Service) getAgentStateInternal(c *gin.Context) {
+	id := c.Param("id")
+	key := c.Param("key")
+
+	state, err := s.persistence.GetAgentStateKey(id, key)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if state == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, state)
+}
+
+func (s *Service) setAgentStateInternal(c *gin.Context) {
+	id := c.Param("id")
+	key := c.Param("key")
+
+	var body struct {
+		Value interface{} `json:"value"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if err := s.persistence.UpsertAgentState(id, key, body.Value); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 // parsePagination extracts limit/offset from query parameters with sensible defaults.
 func parsePagination(c *gin.Context) (int, int) {
 	limitStr := c.DefaultQuery("limit", "50")
