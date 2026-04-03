@@ -526,15 +526,35 @@ func (s *Service) executeFlo(c *gin.Context) {
 		return
 	}
 
+	var data map[string]interface{}
+	_ = c.ShouldBindJSON(&data)
+
+	// Determine channel type from trigger data (if agent-dispatched)
+	channelType, _ := data["channel_type"].(string)
+
 	var triggerID string
-	for _, t := range triggers {
-		if t.TypeName == "manual" {
-			triggerID = t.ID
-			break
+
+	// First: try to match by channel type → trigger type (e.g. "slack" → trigger type "slack")
+	if channelType != "" {
+		for _, t := range triggers {
+			if t.TypeName == channelType {
+				triggerID = t.ID
+				break
+			}
 		}
 	}
 
-	// Fall back to any trigger if no manual trigger exists (e.g. agent-dispatched flows)
+	// Second: try manual trigger
+	if triggerID == "" {
+		for _, t := range triggers {
+			if t.TypeName == "manual" {
+				triggerID = t.ID
+				break
+			}
+		}
+	}
+
+	// Fall back to any trigger
 	if triggerID == "" && len(triggers) > 0 {
 		triggerID = triggers[0].ID
 	}
@@ -543,9 +563,6 @@ func (s *Service) executeFlo(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "flow has no trigger"})
 		return
 	}
-
-	var data interface{}
-	_ = c.ShouldBindJSON(&data)
 
 	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
 	if err != nil {
