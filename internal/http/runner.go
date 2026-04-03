@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
@@ -447,9 +448,24 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		return
 	}
 
+	// Long-poll: if no execution found, wait for a notification or timeout
 	if execution == nil {
-		c.Status(http.StatusNoContent)
-		return
+		waitCh := s.executionNotifier.Wait("")
+		select {
+		case <-waitCh:
+			// New execution available — re-query
+			execution, err = s.persistence.GetExecutionForRunnerID(id)
+			if err != nil || execution == nil {
+				c.Status(http.StatusNoContent)
+				return
+			}
+		case <-time.After(25 * time.Second):
+			c.Status(http.StatusNoContent)
+			return
+		case <-c.Request.Context().Done():
+			// Client disconnected
+			return
+		}
 	}
 
 	flow, err := s.persistence.GetFloByID(execution.FloID)

@@ -23,15 +23,16 @@ import (
 )
 
 type Service struct {
-	config         *config.Config
-	engine         *gin.Engine
-	persistence    Persistence
-	identity       *identity.Connector
-	launch         *launchconnector.Connector
-	migrator       *actions.Migrator
-	logHub         *LogHub
-	allowedOrigins []string
-	streamTokens   *StreamTokenStore
+	config            *config.Config
+	engine            *gin.Engine
+	persistence       Persistence
+	identity          *identity.Connector
+	launch            *launchconnector.Connector
+	migrator          *actions.Migrator
+	logHub            *LogHub
+	allowedOrigins    []string
+	streamTokens      *StreamTokenStore
+	executionNotifier *ExecutionNotifier
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -277,15 +278,16 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	}
 
 	s := &Service{
-		config:         config,
-		engine:         gin.New(),
-		persistence:    persistence,
-		identity:       identity.NewConnector(config),
-		launch:         launchconnector.NewConnector(config),
-		migrator:       m,
-		logHub:         NewLogHub(),
-		allowedOrigins: allowedOrigins,
-		streamTokens:   NewStreamTokenStore(),
+		config:            config,
+		engine:            gin.New(),
+		persistence:       persistence,
+		identity:          identity.NewConnector(config),
+		launch:            launchconnector.NewConnector(config),
+		migrator:          m,
+		logHub:            NewLogHub(),
+		allowedOrigins:    allowedOrigins,
+		streamTokens:      NewStreamTokenStore(),
+		executionNotifier: NewExecutionNotifier(),
 	}
 
 	// API Group

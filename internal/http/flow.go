@@ -510,6 +510,9 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		return
 	}
 
+	// Wake any long-polling runners
+	s.executionNotifier.Notify()
+
 	c.JSON(http.StatusCreated, gin.H{
 		"id": i,
 	})
@@ -570,6 +573,9 @@ func (s *Service) executeFlo(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+
+	// Wake any long-polling runners
+	s.executionNotifier.Notify()
 
 	c.JSON(http.StatusCreated, gin.H{
 		"id": i,
