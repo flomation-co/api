@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
@@ -143,7 +144,7 @@ func (m *mockPersistence) GetEnvironments(string, *string) ([]*api.Environment, 
 func (m *mockPersistence) GetExecutionForRunnerID(string) (*api.Execution, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetExecutions(int64, int64, string, string, *string) ([]*api.Execution, int64, error) {
+func (m *mockPersistence) GetExecutions(int64, int64, string, string, *string, ...bool) ([]*api.Execution, int64, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) GetLatestRevisionByFloID(string) (*api.Revision, error) {
@@ -200,6 +201,9 @@ func (m *mockPersistence) UpdateEnvironmentProperty(string, string, api.Environm
 func (m *mockPersistence) UpdateExecutionResult(string, interface{}) error { panic("not implemented") }
 func (m *mockPersistence) UpdateExecutionRunnerID(string, string) error    { panic("not implemented") }
 func (m *mockPersistence) UpdateExecutionStatus(string, string) error      { panic("not implemented") }
+func (m *mockPersistence) GetExecutionsBySessionID(string) ([]*api.Execution, error) { return nil, nil }
+func (m *mockPersistence) SetExecutionAgentID(string, string) error        { return nil }
+func (m *mockPersistence) SetExecutionAgentSessionID(string, string) error { return nil }
 func (m *mockPersistence) UpdateFlo(api.Flo) error                        { panic("not implemented") }
 func (m *mockPersistence) UpdateOrganisation(api.Organisation) error       { panic("not implemented") }
 func (m *mockPersistence) UpdateRunnerLastContact(string, string) error    { panic("not implemented") }
@@ -232,7 +236,32 @@ func (m *mockPersistence) GetUserPermissionsInOrganisation(string, string) ([]st
 }
 func (m *mockPersistence) GetDefaultGroupsForOrganisation(string) ([]string, error) { return nil, nil }
 func (m *mockPersistence) CountUserGroupsInOrganisation(string, string) (int, error) { return 0, nil }
-func (m *mockPersistence) CreateFeedback(api.Feedback) error                        { return nil }
+func (m *mockPersistence) CreateFeedback(api.Feedback) error { return nil }
+
+// Agent stubs
+func (m *mockPersistence) GetAgents(string) ([]*api.Agent, error)              { return nil, nil }
+func (m *mockPersistence) GetAgentsByOrgID(string) ([]*api.Agent, error)       { return nil, nil }
+func (m *mockPersistence) GetAgentByID(string) (*api.Agent, error)             { return nil, nil }
+func (m *mockPersistence) CreateAgent(api.Agent) (*string, error)              { return nil, nil }
+func (m *mockPersistence) UpdateAgent(api.Agent) error                         { return nil }
+func (m *mockPersistence) ArchiveAgent(string) error                           { return nil }
+func (m *mockPersistence) UpdateAgentStatus(string, string, *time.Time, *time.Time) error { return nil }
+func (m *mockPersistence) CreateAgentSession(string) (*string, error)          { return nil, nil }
+func (m *mockPersistence) EndAgentSession(string, string, *string) error       { return nil }
+func (m *mockPersistence) GetAgentSessions(string, int, int) ([]*api.AgentSession, error) { return nil, nil }
+func (m *mockPersistence) GetAgentSessionByID(string) (*api.AgentSession, error) { return nil, nil }
+func (m *mockPersistence) GetActiveAgentSession(string) (*api.AgentSession, error) { return nil, nil }
+func (m *mockPersistence) GetAgentState(string) ([]*api.AgentState, error)     { return nil, nil }
+func (m *mockPersistence) GetAgentStateKey(string, string) (*api.AgentState, error) { return nil, nil }
+func (m *mockPersistence) UpsertAgentState(string, string, interface{}) error  { return nil }
+func (m *mockPersistence) DeleteAgentStateKey(string, string) error            { return nil }
+func (m *mockPersistence) GetAgentMessages(string, int, int) ([]*api.AgentMessage, error) { return nil, nil }
+func (m *mockPersistence) GetAgentSessionMessages(string, int, int) ([]*api.AgentMessage, error) { return nil, nil }
+func (m *mockPersistence) CreateAgentMessage(api.AgentMessage) (*string, error) { return nil, nil }
+func (m *mockPersistence) GetAgentExecutions(string, int, int) ([]*api.AgentExecution, error) { return nil, nil }
+func (m *mockPersistence) CreateAgentExecution(api.AgentExecution) (*string, error) { return nil, nil }
+func (m *mockPersistence) UpdateAgentExecutionStatus(string, string, *string, *time.Time) error { return nil }
+func (m *mockPersistence) CountAgentExecutionsInHour(string) (int64, error)    { return 0, nil }
 
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)

@@ -23,15 +23,17 @@ import (
 )
 
 type Service struct {
-	config         *config.Config
-	engine         *gin.Engine
-	persistence    Persistence
-	identity       *identity.Connector
-	launch         *launchconnector.Connector
-	migrator       *actions.Migrator
-	logHub         *LogHub
-	allowedOrigins []string
-	streamTokens   *StreamTokenStore
+	config            *config.Config
+	engine            *gin.Engine
+	persistence       Persistence
+	identity          *identity.Connector
+	launch            *launchconnector.Connector
+	migrator          *actions.Migrator
+	logHub            *LogHub
+	allowedOrigins    []string
+	streamTokens      *StreamTokenStore
+	executionNotifier *ExecutionNotifier
+	agentSessionHub   *AgentSessionHub
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -277,15 +279,17 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	}
 
 	s := &Service{
-		config:         config,
-		engine:         gin.New(),
-		persistence:    persistence,
-		identity:       identity.NewConnector(config),
-		launch:         launchconnector.NewConnector(config),
-		migrator:       m,
-		logHub:         NewLogHub(),
-		allowedOrigins: allowedOrigins,
-		streamTokens:   NewStreamTokenStore(),
+		config:            config,
+		engine:            gin.New(),
+		persistence:       persistence,
+		identity:          identity.NewConnector(config),
+		launch:            launchconnector.NewConnector(config),
+		migrator:          m,
+		logHub:            NewLogHub(),
+		allowedOrigins:    allowedOrigins,
+		streamTokens:      NewStreamTokenStore(),
+		executionNotifier: NewExecutionNotifier(),
+		agentSessionHub:   NewAgentSessionHub(),
 	}
 
 	// API Group
@@ -408,7 +412,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	triggers.POST("", s.jwtMiddleware, s.createTrigger)
 	triggers.POST("/:id", s.jwtMiddleware, s.updateTrigger)
 	triggers.DELETE("/:id", s.jwtMiddleware, s.deleteTrigger)
-	triggers.POST("/:id/resolve", s.executionMiddleware, s.resolveTriggerVariables)
+	triggers.POST("/:id/resolve", s.resolveTriggerVariables)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
@@ -432,6 +436,38 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	v1.POST("auth/stream-token", s.jwtMiddleware, s.issueStreamToken)
 
 	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
+
+	// Agents
+	agents := v1.Group("agent")
+	agents.Use(s.jwtMiddleware)
+	agents.GET("", s.getAgents)
+	agents.GET("/:id", s.getAgentByID)
+	agents.POST("", s.createAgent)
+	agents.POST("/:id", s.updateAgent)
+	agents.DELETE("/:id", s.archiveAgent)
+	agents.POST("/:id/start", s.startAgent)
+	agents.POST("/:id/stop", s.stopAgent)
+	agents.POST("/:id/pause", s.pauseAgent)
+	agents.GET("/:id/session", s.getAgentSessions)
+	agents.GET("/:id/session/:sessionId", s.getAgentSessionByID)
+	agents.GET("/:id/state", s.getAgentState)
+	agents.GET("/:id/state/:key", s.getAgentStateKey)
+	agents.POST("/:id/state/:key", s.setAgentStateKey)
+	agents.DELETE("/:id/state/:key", s.deleteAgentStateKey)
+	agents.GET("/:id/message", s.getAgentMessages)
+	agents.POST("/:id/message", s.createAgentMessage)
+	agents.GET("/:id/execution", s.getAgentExecutions)
+
+	// Internal endpoints — no JWT, used by Launch service and executor actions.
+	// These are service-to-service calls on the internal network.
+	internal := v1.Group("internal")
+	internal.POST("/agent/:id/message", s.createAgentMessageInternal)
+	internal.GET("/agent/:id/state/:key", s.getAgentStateInternal)
+	internal.POST("/agent/:id/state/:key", s.setAgentStateInternal)
+	internal.POST("/flo/:FloID/execute", s.executeFlo)
+	internal.POST("/flo/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
+	internal.GET("/execution/:id", s.getExecutionByID)
+	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
 
 	return s
 }

@@ -510,6 +510,9 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		return
 	}
 
+	// Wake any long-polling runners
+	s.executionNotifier.Notify()
+
 	c.JSON(http.StatusCreated, gin.H{
 		"id": i,
 	})
@@ -526,21 +529,43 @@ func (s *Service) executeFlo(c *gin.Context) {
 		return
 	}
 
+	var data map[string]interface{}
+	_ = c.ShouldBindJSON(&data)
+
+	// Determine channel type from trigger data (if agent-dispatched)
+	channelType, _ := data["channel_type"].(string)
+
 	var triggerID string
-	for _, t := range triggers {
-		if t.TypeName == "manual" {
-			triggerID = t.ID
-			break
+
+	// First: try to match by channel type → trigger type (e.g. "slack" → trigger type "slack")
+	if channelType != "" {
+		for _, t := range triggers {
+			if t.TypeName == channelType {
+				triggerID = t.ID
+				break
+			}
 		}
 	}
 
+	// Second: try manual trigger
 	if triggerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "flow has no manual trigger"})
-		return
+		for _, t := range triggers {
+			if t.TypeName == "manual" {
+				triggerID = t.ID
+				break
+			}
+		}
 	}
 
-	var data interface{}
-	_ = c.ShouldBindJSON(&data)
+	// Fall back to any trigger
+	if triggerID == "" && len(triggers) > 0 {
+		triggerID = triggers[0].ID
+	}
+
+	if triggerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "flow has no trigger"})
+		return
+	}
 
 	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
 	if err != nil {
@@ -548,6 +573,20 @@ func (s *Service) executeFlo(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+
+	// If this execution was agent-dispatched, tag it with the agent and session IDs
+	if i != nil && data != nil {
+		if agentID, ok := data["agent_id"].(string); ok && agentID != "" {
+			s.persistence.SetExecutionAgentID(*i, agentID)
+			// Link to the active session
+			if session, _ := s.persistence.GetActiveAgentSession(agentID); session != nil {
+				s.persistence.SetExecutionAgentSessionID(*i, session.ID)
+			}
+		}
+	}
+
+	// Wake any long-polling runners
+	s.executionNotifier.Notify()
 
 	c.JSON(http.StatusCreated, gin.H{
 		"id": i,

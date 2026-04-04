@@ -16,6 +16,11 @@ const (
 	EnvironmentView    Permission = "environment.view"
 	BillingManage      Permission = "billing.manage"
 	BillingView        Permission = "billing.view"
+	AgentView          Permission = "agent.view"
+	AgentCreate        Permission = "agent.create"
+	AgentEdit          Permission = "agent.edit"
+	AgentDelete        Permission = "agent.delete"
+	AgentStartStop     Permission = "agent.start_stop"
 )
 
 // ValidPermissions is the canonical list of all supported permissions.
@@ -32,6 +37,11 @@ var ValidPermissions = []Permission{
 	EnvironmentView,
 	BillingManage,
 	BillingView,
+	AgentView,
+	AgentCreate,
+	AgentEdit,
+	AgentDelete,
+	AgentStartStop,
 }
 
 // DefaultMemberPermissions are granted when an org has no groups configured.
@@ -42,6 +52,7 @@ var DefaultMemberPermissions = []string{
 	string(RunnerView),
 	string(OrganisationView),
 	string(EnvironmentView),
+	string(AgentView),
 }
 
 // AllPermissions returns all permission strings (used for admin users).

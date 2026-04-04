@@ -218,6 +218,14 @@ func (s *Service) updateExecution(c *gin.Context) {
 		s.logHub.Cleanup(id)
 	}()
 
+	// Notify agent session SSE subscribers if this was an agent execution
+	if execution.AgentSessionID != nil && *execution.AgentSessionID != "" {
+		// Re-fetch execution with full result for the SSE event
+		if updated, _ := s.persistence.GetExecutionByID(id); updated != nil {
+			s.agentSessionHub.PublishJSON(*execution.AgentSessionID, "execution", updated)
+		}
+	}
+
 	// Send notification emails if configured
 	go s.sendExecutionNotification(execution.FloID, completion, execution)
 
@@ -247,30 +255,7 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 		return
 	}
 
-	if exec.Data != nil {
-		var input interface{}
-		if err := json.Unmarshal(exec.Data.([]byte), &input); err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-			}).Error("unable to unmarshal input data")
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-		exec.Data = input
-	}
-
-	if exec.Result != nil {
-		var result interface{}
-		if err := json.Unmarshal(exec.Result.([]byte), &result); err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-			}).Error("unable to unmarshal result data")
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-		exec.Result = result
-	}
-
+	// Data and Result are json.RawMessage — they serialise as raw JSON directly
 	c.JSON(http.StatusOK, exec)
 }
 
@@ -305,7 +290,9 @@ func (s *Service) getExecutions(c *gin.Context) {
 		orgID = &user.Organisations[0].ID
 	}
 
-	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, orgID)
+	rootOnly := c.DefaultQuery("root_only", "false") == "true"
+
+	executions, count, err := s.persistence.GetExecutions(offsetStr, limitStr, search, user.ID, orgID, rootOnly)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -344,6 +331,26 @@ func (s *Service) appendExecutionLogs(c *gin.Context) {
 
 	if len(payload.Lines) > 0 {
 		s.logHub.Publish(id, payload.Lines)
+
+		// Forward __NODE__ events to agent session SSE if applicable
+		var sessionID *string
+		for _, line := range payload.Lines {
+			if strings.HasPrefix(line, "__NODE__:") {
+				// Lazy lookup — only hit DB once per batch
+				if sessionID == nil {
+					if exec, _ := s.persistence.GetExecutionByID(id); exec != nil && exec.AgentSessionID != nil {
+						sessionID = exec.AgentSessionID
+					} else {
+						empty := ""
+						sessionID = &empty
+					}
+				}
+				if *sessionID != "" {
+					nodeData := strings.TrimPrefix(line, "__NODE__:")
+					s.agentSessionHub.PublishJSON(*sessionID, "node", json.RawMessage(nodeData))
+				}
+			}
+		}
 	}
 
 	c.Status(http.StatusOK)
