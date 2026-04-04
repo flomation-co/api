@@ -1221,7 +1221,9 @@ func NewService(config *config.Config) (*Service, error) {
 			result,
 			result->'duration' AS duration,
 			result->'billingDuration' AS billing_duration,
-			(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence
+			(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
+			agent_id,
+			agent_session_id
 		FROM
 		    execution e
 		WHERE
