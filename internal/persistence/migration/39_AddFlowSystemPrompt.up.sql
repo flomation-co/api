@@ -1,0 +1,1 @@
+ALTER TABLE flo ADD COLUMN IF NOT EXISTS system_prompt TEXT;

@@ -100,6 +100,7 @@ type Flo struct {
 	NotifyOnSuccess      bool              `json:"notify_on_success" db:"notify_on_success"`
 	NotifyOnFailure      bool              `json:"notify_on_failure" db:"notify_on_failure"`
 	NotificationEmails   *string           `json:"notification_emails,omitempty" db:"notification_emails"`
+	SystemPrompt         *string           `json:"system_prompt,omitempty" db:"system_prompt"`
 }
 
 type ExecutionStatus struct {
