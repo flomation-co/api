@@ -3241,6 +3241,20 @@ func (s *Service) SetExecutionAgentID(executionID string, agentID string) error 
 	return err
 }
 
+func (s *Service) GetExecutionsBySessionID(sessionID string) ([]*api.Execution, error) {
+	var results []*api.Execution
+	err := s.conn.Select(&results, `
+		SELECT e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+			e.created_at, e.completed_at, e.execution_status, e.completion_status,
+			e.result, e.agent_id, e.agent_session_id,
+			e.result->'duration' AS duration
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE e.agent_session_id = $1
+		ORDER BY e.created_at ASC`, sessionID)
+	return results, err
+}
+
 func (s *Service) SetExecutionAgentSessionID(executionID string, sessionID string) error {
 	_, err := s.conn.Exec("UPDATE execution SET agent_session_id = $1 WHERE id = $2", sessionID, executionID)
 	return err

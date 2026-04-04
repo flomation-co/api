@@ -107,6 +107,7 @@ type Persistence interface {
 	// Feedback
 	CreateFeedback(feedback api.Feedback) error
 
+	GetExecutionsBySessionID(sessionID string) ([]*api.Execution, error)
 	SetExecutionAgentID(executionID string, agentID string) error
 	SetExecutionAgentSessionID(executionID string, sessionID string) error
 

@@ -380,13 +380,15 @@ func (s *Service) getAgentSessionByID(c *gin.Context) {
 		return
 	}
 
-	// Return session with recent messages
+	// Return session with messages and executions
 	limit, offset := parsePagination(c)
 	messages, _ := s.persistence.GetAgentSessionMessages(sessionID, limit, offset)
+	executions, _ := s.persistence.GetExecutionsBySessionID(sessionID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"session":  session,
-		"messages": messages,
+		"session":    session,
+		"messages":   messages,
+		"executions": executions,
 	})
 }
 

@@ -201,6 +201,7 @@ func (m *mockPersistence) UpdateEnvironmentProperty(string, string, api.Environm
 func (m *mockPersistence) UpdateExecutionResult(string, interface{}) error { panic("not implemented") }
 func (m *mockPersistence) UpdateExecutionRunnerID(string, string) error    { panic("not implemented") }
 func (m *mockPersistence) UpdateExecutionStatus(string, string) error      { panic("not implemented") }
+func (m *mockPersistence) GetExecutionsBySessionID(string) ([]*api.Execution, error) { return nil, nil }
 func (m *mockPersistence) SetExecutionAgentID(string, string) error        { return nil }
 func (m *mockPersistence) SetExecutionAgentSessionID(string, string) error { return nil }
 func (m *mockPersistence) UpdateFlo(api.Flo) error                        { panic("not implemented") }
