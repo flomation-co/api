@@ -331,6 +331,26 @@ func (s *Service) appendExecutionLogs(c *gin.Context) {
 
 	if len(payload.Lines) > 0 {
 		s.logHub.Publish(id, payload.Lines)
+
+		// Forward __NODE__ events to agent session SSE if applicable
+		var sessionID *string
+		for _, line := range payload.Lines {
+			if strings.HasPrefix(line, "__NODE__:") {
+				// Lazy lookup — only hit DB once per batch
+				if sessionID == nil {
+					if exec, _ := s.persistence.GetExecutionByID(id); exec != nil && exec.AgentSessionID != nil {
+						sessionID = exec.AgentSessionID
+					} else {
+						empty := ""
+						sessionID = &empty
+					}
+				}
+				if *sessionID != "" {
+					nodeData := strings.TrimPrefix(line, "__NODE__:")
+					s.agentSessionHub.PublishJSON(*sessionID, "node", json.RawMessage(nodeData))
+				}
+			}
+		}
 	}
 
 	c.Status(http.StatusOK)
