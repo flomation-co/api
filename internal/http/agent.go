@@ -251,7 +251,7 @@ func (s *Service) startAgent(c *gin.Context) {
 	// trigger types (e.g. Telegram + Slack in the same flow).
 	if s.launch != nil {
 		if err := s.launch.RegisterAgent(id, agent.OrchestratorFlowID, nil,
-			agent.Channels, agent.EnvironmentID, agent.MaxExecutionsPerHour, agent.RequiresApproval); err != nil {
+			agent.Channels, agent.EnvironmentID, agent.MaxExecutionsPerHour, agent.RequiresApproval, agent.SystemPrompt); err != nil {
 			log.WithFields(log.Fields{"error": err, "id": id}).Warn("unable to register agent with launch service")
 			// Non-fatal — agent is started locally even if Launch registration fails
 		}
