@@ -218,6 +218,14 @@ func (s *Service) updateExecution(c *gin.Context) {
 		s.logHub.Cleanup(id)
 	}()
 
+	// Notify agent session SSE subscribers if this was an agent execution
+	if execution.AgentSessionID != nil && *execution.AgentSessionID != "" {
+		// Re-fetch execution with full result for the SSE event
+		if updated, _ := s.persistence.GetExecutionByID(id); updated != nil {
+			s.agentSessionHub.PublishJSON(*execution.AgentSessionID, "execution", updated)
+		}
+	}
+
 	// Send notification emails if configured
 	go s.sendExecutionNotification(execution.FloID, completion, execution)
 

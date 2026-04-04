@@ -1,6 +1,8 @@
 package http
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -392,6 +394,51 @@ func (s *Service) getAgentSessionByID(c *gin.Context) {
 	})
 }
 
+// --- Session SSE Stream ---
+
+func (s *Service) streamAgentSession(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+
+	session, err := s.persistence.GetAgentSessionByID(sessionID)
+	if err != nil || session == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+
+	ch := s.agentSessionHub.Subscribe(sessionID)
+	defer s.agentSessionHub.Unsubscribe(sessionID, ch)
+
+	// Send initial connected event
+	fmt.Fprintf(c.Writer, "event: connected\ndata: {\"session_id\":\"%s\"}\n\n", sessionID)
+	c.Writer.Flush()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(event.Data)
+			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Type, string(data))
+			c.Writer.Flush()
+
+		case <-ticker.C:
+			fmt.Fprintf(c.Writer, ": keepalive\n\n")
+			c.Writer.Flush()
+
+		case <-c.Request.Context().Done():
+			return
+		}
+	}
+}
+
 // --- State ---
 
 func (s *Service) getAgentState(c *gin.Context) {
@@ -687,6 +734,12 @@ func (s *Service) createAgentMessageInternal(c *gin.Context) {
 		log.WithFields(log.Fields{"error": err}).Error("unable to create agent message (internal)")
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
+	}
+
+	// Publish to SSE subscribers
+	if msg.SessionID != nil {
+		msg.ID = *msgID
+		s.agentSessionHub.PublishJSON(*msg.SessionID, "message", msg)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": *msgID})

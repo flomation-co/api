@@ -33,6 +33,7 @@ type Service struct {
 	allowedOrigins    []string
 	streamTokens      *StreamTokenStore
 	executionNotifier *ExecutionNotifier
+	agentSessionHub   *AgentSessionHub
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -288,6 +289,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		allowedOrigins:    allowedOrigins,
 		streamTokens:      NewStreamTokenStore(),
 		executionNotifier: NewExecutionNotifier(),
+		agentSessionHub:   NewAgentSessionHub(),
 	}
 
 	// API Group
@@ -465,6 +467,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.POST("/flo/:FloID/execute", s.executeFlo)
 	internal.POST("/flo/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
 	internal.GET("/execution/:id", s.getExecutionByID)
+	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
 
 	return s
 }
