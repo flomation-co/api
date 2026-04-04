@@ -13,6 +13,7 @@ const (
 	ActionTypeOutput      = 3
 	ActionTypeConditional = 4
 	ActionTypeLoop        = 5
+	ActionTypeSwitch      = 6
 )
 
 type Organisation struct {
