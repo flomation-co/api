@@ -574,10 +574,14 @@ func (s *Service) executeFlo(c *gin.Context) {
 		return
 	}
 
-	// If this execution was agent-dispatched, tag it with the agent ID
+	// If this execution was agent-dispatched, tag it with the agent and session IDs
 	if i != nil && data != nil {
 		if agentID, ok := data["agent_id"].(string); ok && agentID != "" {
 			s.persistence.SetExecutionAgentID(*i, agentID)
+			// Link to the active session
+			if session, _ := s.persistence.GetActiveAgentSession(agentID); session != nil {
+				s.persistence.SetExecutionAgentSessionID(*i, session.ID)
+			}
 		}
 	}
 

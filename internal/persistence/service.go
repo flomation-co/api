@@ -2306,7 +2306,7 @@ func NewService(config *config.Config) (*Service, error) {
 			COALESCE(ec.cnt, 0) AS execution_count
 		FROM agent_session s
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE session_id = s.id) mc ON true
-		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE session_id = s.id) ec ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM execution WHERE agent_session_id = s.id) ec ON true
 		WHERE s.agent_id = :agent_id
 		ORDER BY s.started_at DESC
 		LIMIT :limit OFFSET :offset
@@ -2321,7 +2321,7 @@ func NewService(config *config.Config) (*Service, error) {
 			COALESCE(ec.cnt, 0) AS execution_count
 		FROM agent_session s
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE session_id = s.id) mc ON true
-		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE session_id = s.id) ec ON true
+		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM execution WHERE agent_session_id = s.id) ec ON true
 		WHERE s.id = :id
 	`)
 	if err != nil {
@@ -3238,6 +3238,11 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 
 func (s *Service) SetExecutionAgentID(executionID string, agentID string) error {
 	_, err := s.conn.Exec("UPDATE execution SET agent_id = $1 WHERE id = $2", agentID, executionID)
+	return err
+}
+
+func (s *Service) SetExecutionAgentSessionID(executionID string, sessionID string) error {
+	_, err := s.conn.Exec("UPDATE execution SET agent_session_id = $1 WHERE id = $2", sessionID, executionID)
 	return err
 }
 

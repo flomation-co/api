@@ -202,6 +202,7 @@ func (m *mockPersistence) UpdateExecutionResult(string, interface{}) error { pan
 func (m *mockPersistence) UpdateExecutionRunnerID(string, string) error    { panic("not implemented") }
 func (m *mockPersistence) UpdateExecutionStatus(string, string) error      { panic("not implemented") }
 func (m *mockPersistence) SetExecutionAgentID(string, string) error        { return nil }
+func (m *mockPersistence) SetExecutionAgentSessionID(string, string) error { return nil }
 func (m *mockPersistence) UpdateFlo(api.Flo) error                        { panic("not implemented") }
 func (m *mockPersistence) UpdateOrganisation(api.Organisation) error       { panic("not implemented") }
 func (m *mockPersistence) UpdateRunnerLastContact(string, string) error    { panic("not implemented") }
