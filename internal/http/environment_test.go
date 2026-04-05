@@ -263,6 +263,20 @@ func (m *mockPersistence) CreateAgentExecution(api.AgentExecution) (*string, err
 func (m *mockPersistence) UpdateAgentExecutionStatus(string, string, *string, *time.Time) error { return nil }
 func (m *mockPersistence) CountAgentExecutionsInHour(string) (int64, error)    { return 0, nil }
 
+// Agent Memory Phase 1 stubs.
+func (m *mockPersistence) ResolveOrCreateAgentIdentity(string, *string, string, string, *string, *string) (*api.AgentIdentity, *api.AgentUser, error) {
+	return nil, nil, nil
+}
+func (m *mockPersistence) ResolveOrCreateAgentConversation(string, *string, string, string, *string) (*api.AgentConversation, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAgentConversationMessages(string, int) ([]*api.AgentMessage, error) {
+	return nil, nil
+}
+func (m *mockPersistence) CreateAgentMessageInConversation(api.AgentMessage) (*string, error) {
+	return nil, nil
+}
+
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)
 	return &Service{
