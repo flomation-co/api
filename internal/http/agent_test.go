@@ -194,6 +194,51 @@ func (m *agentMock) CreateAgentMessageInConversation(msg api.AgentMessage) (*str
 	return nil, nil
 }
 
+// Phase 2 agent memory stubs. These satisfy the Persistence interface for
+// the existing agent HTTP handler tests and for the Phase 2 focused test
+// file (agent_memory_phase2_test.go) which embeds agentMock and overrides
+// the methods it cares about.
+func (m *agentMock) CreateAgentMemory(mem api.AgentMemory) (*string, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentMemoryByID(id string) (*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentMemoriesForUser(agentUserID string, pinnedOnly bool, limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *agentMock) DeleteAgentMemory(id string) error { return nil }
+func (m *agentMock) TouchAgentMemoryLastUsed(id string) error {
+	return nil
+}
+func (m *agentMock) CreateAgentPendingAction(pa api.AgentPendingAction) (*string, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentPendingActionByID(id string) (*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *agentMock) GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *agentMock) UpdatePendingActionStatus(id, status string) error {
+	return nil
+}
+func (m *agentMock) CreateAgentCommitment(c api.AgentCommitment) (*string, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentCommitmentByID(id string) (*api.AgentCommitment, error) {
+	return nil, nil
+}
+func (m *agentMock) GetDueCommitments(limit int) ([]*api.AgentCommitment, error) {
+	return nil, nil
+}
+func (m *agentMock) GetCommitmentsForUser(agentUserID string, limit int) ([]*api.AgentCommitment, error) {
+	return nil, nil
+}
+func (m *agentMock) UpdateCommitmentStatus(id, status string) error {
+	return nil
+}
+
 func setupAgentRouter(svc *Service) *gin.Engine {
 	router := gin.New()
 	agents := router.Group("/agent")
