@@ -505,7 +505,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -553,7 +553,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -577,7 +577,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 	`)
 	if err != nil {
 		return nil, err
@@ -591,7 +591,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -623,7 +623,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    organisation_id = :organisation_id
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -653,7 +653,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    organisation_id = :organisation_id
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND
 		    (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 		ORDER BY
@@ -666,7 +666,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCountOrgFlos, err = s.conn.PrepareNamed(`
-		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id AND f.archived_at IS NULL
+		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	`)
 	if err != nil {
 		return nil, err
@@ -674,7 +674,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgFlosWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM flo f
-		WHERE organisation_id = :organisation_id AND f.archived_at IS NULL
+		WHERE organisation_id = :organisation_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 	`)
 	if err != nil {
@@ -957,7 +957,7 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 		    execution e
 		INNER JOIN
-			flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+			flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE
 		    e.owner_id = :user_id
 		    AND e.organisation_id IS NULL
@@ -980,7 +980,7 @@ func NewService(config *config.Config) (*Service, error) {
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -992,7 +992,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountExecutions, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
 	if err != nil {
@@ -1001,7 +1001,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
@@ -1019,7 +1019,7 @@ func NewService(config *config.Config) (*Service, error) {
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1038,7 +1038,7 @@ func NewService(config *config.Config) (*Service, error) {
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -1050,7 +1050,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgExecutions, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE e.organisation_id = :organisation_id
 	`)
 	if err != nil {
@@ -1059,7 +1059,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 	`)
@@ -3243,11 +3243,11 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 		(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 		e.agent_id
 	FROM execution e
-	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	baseCount := `SELECT COUNT(1) FROM execution e
-	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	var args []interface{}
