@@ -478,6 +478,22 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
 
+	// Agent Memory Phase 2: memories, pending actions, commitments.
+	// Called by Launch's system prompt assembler, by the extraction
+	// System Flow, and by the executor actions agent/remember,
+	// agent/recall, agent/forget. See internal/http/agent_memory_phase2.go.
+	internal.POST("/agent/:id/memory", s.createAgentMemoryInternal)
+	internal.GET("/agent/:id/memory", s.listAgentMemoriesInternal)
+	internal.GET("/memory/:id", s.getAgentMemoryInternal)
+	internal.DELETE("/memory/:id", s.deleteAgentMemoryInternal)
+	internal.POST("/agent/:id/pending-action", s.createAgentPendingActionInternal)
+	internal.GET("/agent/:id/pending-action", s.listOpenPendingActionsInternal)
+	internal.PATCH("/pending-action/:id", s.updatePendingActionStatusInternal)
+	internal.POST("/agent/:id/commitment", s.createAgentCommitmentInternal)
+	internal.GET("/commitment/due", s.listDueCommitmentsInternal)
+	internal.GET("/agent/:id/commitment", s.listCommitmentsForUserInternal)
+	internal.PATCH("/commitment/:id", s.updateCommitmentStatusInternal)
+
 	return s
 }
 

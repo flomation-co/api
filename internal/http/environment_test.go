@@ -289,6 +289,38 @@ func (m *mockPersistence) CreateAgentMessageInConversation(api.AgentMessage) (*s
 	return nil, nil
 }
 
+// Agent Memory Phase 2 stubs.
+func (m *mockPersistence) CreateAgentMemory(api.AgentMemory) (*string, error)  { return nil, nil }
+func (m *mockPersistence) GetAgentMemoryByID(string) (*api.AgentMemory, error) { return nil, nil }
+func (m *mockPersistence) GetAgentMemoriesForUser(string, bool, int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *mockPersistence) DeleteAgentMemory(string) error        { return nil }
+func (m *mockPersistence) TouchAgentMemoryLastUsed(string) error { return nil }
+func (m *mockPersistence) CreateAgentPendingAction(api.AgentPendingAction) (*string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAgentPendingActionByID(string) (*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetOpenPendingActionsForUser(string) ([]*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *mockPersistence) UpdatePendingActionStatus(string, string) error { return nil }
+func (m *mockPersistence) CreateAgentCommitment(api.AgentCommitment) (*string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAgentCommitmentByID(string) (*api.AgentCommitment, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetDueCommitments(int) ([]*api.AgentCommitment, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetCommitmentsForUser(string, int) ([]*api.AgentCommitment, error) {
+	return nil, nil
+}
+func (m *mockPersistence) UpdateCommitmentStatus(string, string) error { return nil }
+
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)
 	return &Service{

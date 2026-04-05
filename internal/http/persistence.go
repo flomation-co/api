@@ -150,4 +150,21 @@ type Persistence interface {
 	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error)
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
+
+	// Agent Memory Phase 2: memories, pending actions, commitments. See
+	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
+	CreateAgentMemory(mem api.AgentMemory) (*string, error)
+	GetAgentMemoryByID(id string) (*api.AgentMemory, error)
+	GetAgentMemoriesForUser(agentUserID string, pinnedOnly bool, limit int) ([]*api.AgentMemory, error)
+	DeleteAgentMemory(id string) error
+	TouchAgentMemoryLastUsed(id string) error
+	CreateAgentPendingAction(pa api.AgentPendingAction) (*string, error)
+	GetAgentPendingActionByID(id string) (*api.AgentPendingAction, error)
+	GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error)
+	UpdatePendingActionStatus(id, status string) error
+	CreateAgentCommitment(c api.AgentCommitment) (*string, error)
+	GetAgentCommitmentByID(id string) (*api.AgentCommitment, error)
+	GetDueCommitments(limit int) ([]*api.AgentCommitment, error)
+	GetCommitmentsForUser(agentUserID string, limit int) ([]*api.AgentCommitment, error)
+	UpdateCommitmentStatus(id, status string) error
 }
