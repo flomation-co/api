@@ -178,6 +178,22 @@ func (m *agentMock) CreateAgentMessage(msg api.AgentMessage) (*string, error) {
 	return &id, nil
 }
 
+// Phase 1 agent memory stubs. These satisfy the Persistence interface for
+// the existing agent HTTP handler tests. The new Phase 1 endpoints will
+// get their own dedicated test file with focused mocks in Task 1.7.
+func (m *agentMock) ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error) {
+	return nil, nil, nil
+}
+func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error) {
+	return nil, nil
+}
+func (m *agentMock) CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error) {
+	return nil, nil
+}
+
 func setupAgentRouter(svc *Service) *gin.Engine {
 	router := gin.New()
 	agents := router.Group("/agent")

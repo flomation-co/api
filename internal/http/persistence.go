@@ -143,4 +143,11 @@ type Persistence interface {
 	CreateAgentExecution(exec api.AgentExecution) (*string, error)
 	UpdateAgentExecutionStatus(id string, status string, approvedBy *string, completedAt *time.Time) error
 	CountAgentExecutionsInHour(agentID string) (int64, error)
+
+	// Agent Memory Phase 1: identity + conversation scoping. See
+	// plans/agent_memory.md and internal/persistence/agent_memory.go.
+	ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error)
+	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error)
+	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
+	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 }

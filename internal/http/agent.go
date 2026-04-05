@@ -413,7 +413,7 @@ func (s *Service) streamAgentSession(c *gin.Context) {
 	defer s.agentSessionHub.Unsubscribe(sessionID, ch)
 
 	// Send initial connected event
-	fmt.Fprintf(c.Writer, "event: connected\ndata: {\"session_id\":\"%s\"}\n\n", sessionID)
+	_, _ = fmt.Fprintf(c.Writer, "event: connected\ndata: {\"session_id\":\"%s\"}\n\n", sessionID)
 	c.Writer.Flush()
 
 	ticker := time.NewTicker(15 * time.Second)
@@ -426,11 +426,11 @@ func (s *Service) streamAgentSession(c *gin.Context) {
 				return
 			}
 			data, _ := json.Marshal(event.Data)
-			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Type, string(data))
+			_, _ = fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Type, string(data))
 			c.Writer.Flush()
 
 		case <-ticker.C:
-			fmt.Fprintf(c.Writer, ": keepalive\n\n")
+			_, _ = fmt.Fprintf(c.Writer, ": keepalive\n\n")
 			c.Writer.Flush()
 
 		case <-c.Request.Context().Done():

@@ -469,6 +469,15 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/execution/:id", s.getExecutionByID)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
 
+	// Agent Memory Phase 1: identity + conversation resolution endpoints.
+	// Called by Launch on every incoming webhook to resolve the identity
+	// and open conversation before dispatching the orchestrator flow.
+	// See plans/agent_memory.md.
+	internal.POST("/agent/:id/resolve-identity", s.resolveAgentIdentityInternal)
+	internal.POST("/agent/:id/conversation", s.resolveAgentConversationInternal)
+	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
+	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
+
 	return s
 }
 

@@ -22,37 +22,37 @@ type Service struct {
 	config *config.Config
 	conn   *sqlx.DB
 
-	stmtGetOrganisations      *sqlx.NamedStmt
-	stmtGetOrganisationByID   *sqlx.NamedStmt
-	stmtCreateOrganisation    *sqlx.NamedStmt
-	stmtUpdateOrganisation    *sqlx.NamedStmt
-	stmtAddUserToOrganisation        *sqlx.NamedStmt
-	stmtGetOrganisationMembers       *sqlx.NamedStmt
-	stmtRemoveUserFromOrganisation   *sqlx.NamedStmt
-	stmtGetUserRoleInOrganisation    *sqlx.NamedStmt
-	stmtCreateOrganisationInvite     *sqlx.NamedStmt
-	stmtGetOrganisationInvites       *sqlx.NamedStmt
-	stmtGetInviteByCode              *sqlx.NamedStmt
-	stmtGetInvitePreview             *sqlx.NamedStmt
-	stmtAcceptInvite                 *sqlx.NamedStmt
-	stmtRevokeInvite                 *sqlx.NamedStmt
+	stmtGetOrganisations           *sqlx.NamedStmt
+	stmtGetOrganisationByID        *sqlx.NamedStmt
+	stmtCreateOrganisation         *sqlx.NamedStmt
+	stmtUpdateOrganisation         *sqlx.NamedStmt
+	stmtAddUserToOrganisation      *sqlx.NamedStmt
+	stmtGetOrganisationMembers     *sqlx.NamedStmt
+	stmtRemoveUserFromOrganisation *sqlx.NamedStmt
+	stmtGetUserRoleInOrganisation  *sqlx.NamedStmt
+	stmtCreateOrganisationInvite   *sqlx.NamedStmt
+	stmtGetOrganisationInvites     *sqlx.NamedStmt
+	stmtGetInviteByCode            *sqlx.NamedStmt
+	stmtGetInvitePreview           *sqlx.NamedStmt
+	stmtAcceptInvite               *sqlx.NamedStmt
+	stmtRevokeInvite               *sqlx.NamedStmt
 
 	stmtGetUserByID *sqlx.NamedStmt
 	stmtCreateUser  *sqlx.NamedStmt
 	stmtUpdateUser  *sqlx.NamedStmt
 
-	stmtGetMyFlos                *sqlx.NamedStmt
-	stmtGetMyFlosWithFilter      *sqlx.NamedStmt
-	stmtCountMyFlos              *sqlx.NamedStmt
-	stmtCountMyFlosWithFilter    *sqlx.NamedStmt
-	stmtGetOrgFlos               *sqlx.NamedStmt
-	stmtGetOrgFlosWithFilter     *sqlx.NamedStmt
-	stmtCountOrgFlos             *sqlx.NamedStmt
-	stmtCountOrgFlosWithFilter   *sqlx.NamedStmt
-	stmtGetFloByID            *sqlx.NamedStmt
-	stmtCreateFlo             *sqlx.NamedStmt
-	stmtUpdateFlo             *sqlx.NamedStmt
-	stmtDeleteFlo             *sqlx.NamedStmt
+	stmtGetMyFlos              *sqlx.NamedStmt
+	stmtGetMyFlosWithFilter    *sqlx.NamedStmt
+	stmtCountMyFlos            *sqlx.NamedStmt
+	stmtCountMyFlosWithFilter  *sqlx.NamedStmt
+	stmtGetOrgFlos             *sqlx.NamedStmt
+	stmtGetOrgFlosWithFilter   *sqlx.NamedStmt
+	stmtCountOrgFlos           *sqlx.NamedStmt
+	stmtCountOrgFlosWithFilter *sqlx.NamedStmt
+	stmtGetFloByID             *sqlx.NamedStmt
+	stmtCreateFlo              *sqlx.NamedStmt
+	stmtUpdateFlo              *sqlx.NamedStmt
+	stmtDeleteFlo              *sqlx.NamedStmt
 
 	stmtCreateFloRevision           *sqlx.NamedStmt
 	stmtGetLatestFloRevisionByFloID *sqlx.NamedStmt
@@ -65,15 +65,15 @@ type Service struct {
 
 	stmtGetFloTriggers *sqlx.NamedStmt
 
-	stmtGetLatestExecutionForFlo   *sqlx.NamedStmt
-	stmtGetRecentExecutionsForFlo  *sqlx.NamedStmt
-	stmtGetExecutions               *sqlx.NamedStmt
-	stmtGetExecutionsWithFilter     *sqlx.NamedStmt
-	stmtCountExecutions             *sqlx.NamedStmt
-	stmtCountExecutionsWithFilter   *sqlx.NamedStmt
-	stmtGetOrgExecutions            *sqlx.NamedStmt
-	stmtGetOrgExecutionsWithFilter  *sqlx.NamedStmt
-	stmtCountOrgExecutions          *sqlx.NamedStmt
+	stmtGetLatestExecutionForFlo     *sqlx.NamedStmt
+	stmtGetRecentExecutionsForFlo    *sqlx.NamedStmt
+	stmtGetExecutions                *sqlx.NamedStmt
+	stmtGetExecutionsWithFilter      *sqlx.NamedStmt
+	stmtCountExecutions              *sqlx.NamedStmt
+	stmtCountExecutionsWithFilter    *sqlx.NamedStmt
+	stmtGetOrgExecutions             *sqlx.NamedStmt
+	stmtGetOrgExecutionsWithFilter   *sqlx.NamedStmt
+	stmtCountOrgExecutions           *sqlx.NamedStmt
 	stmtCountOrgExecutionsWithFilter *sqlx.NamedStmt
 
 	stmtGetDefaultTriggerForFlo *sqlx.NamedStmt
@@ -135,65 +135,80 @@ type Service struct {
 	stmtDeleteEnvironmentSecret    *sqlx.NamedStmt
 	stmtUpdateEnvironmentSecret    *sqlx.NamedStmt
 
-	stmtGetUsageThisMonthForUserID    *sqlx.NamedStmt
-	stmtGetUsageThisMonthForOrgID    *sqlx.NamedStmt
+	stmtGetUsageThisMonthForUserID *sqlx.NamedStmt
+	stmtGetUsageThisMonthForOrgID  *sqlx.NamedStmt
 
-	stmtGetTriggers        *sqlx.NamedStmt
-	stmtGetTriggerByID     *sqlx.NamedStmt
-	stmtCreateTrigger      *sqlx.NamedStmt
-	stmtUpdateTrigger      *sqlx.NamedStmt
-	stmtDeleteTrigger      *sqlx.NamedStmt
-	stmtDeleteFloTrigger   *sqlx.NamedStmt
+	stmtGetTriggers      *sqlx.NamedStmt
+	stmtGetTriggerByID   *sqlx.NamedStmt
+	stmtCreateTrigger    *sqlx.NamedStmt
+	stmtUpdateTrigger    *sqlx.NamedStmt
+	stmtDeleteTrigger    *sqlx.NamedStmt
+	stmtDeleteFloTrigger *sqlx.NamedStmt
 
-	stmtGetGroupsByOrgID         *sqlx.NamedStmt
-	stmtGetGroupByID             *sqlx.NamedStmt
-	stmtCreateGroup              *sqlx.NamedStmt
-	stmtUpdateGroup              *sqlx.NamedStmt
-	stmtDeleteGroup              *sqlx.NamedStmt
-	stmtGetGroupMembers          *sqlx.NamedStmt
-	stmtAddUserToGroup           *sqlx.NamedStmt
-	stmtRemoveUserFromGroup      *sqlx.NamedStmt
-	stmtGetGroupPermissions      *sqlx.NamedStmt
-	stmtDeleteGroupPermissions   *sqlx.NamedStmt
-	stmtInsertGroupPermission    *sqlx.NamedStmt
-	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
-	stmtGetDefaultGroups         *sqlx.NamedStmt
-	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
-	stmtCreateFeedback           *sqlx.NamedStmt
+	stmtGetGroupsByOrgID        *sqlx.NamedStmt
+	stmtGetGroupByID            *sqlx.NamedStmt
+	stmtCreateGroup             *sqlx.NamedStmt
+	stmtUpdateGroup             *sqlx.NamedStmt
+	stmtDeleteGroup             *sqlx.NamedStmt
+	stmtGetGroupMembers         *sqlx.NamedStmt
+	stmtAddUserToGroup          *sqlx.NamedStmt
+	stmtRemoveUserFromGroup     *sqlx.NamedStmt
+	stmtGetGroupPermissions     *sqlx.NamedStmt
+	stmtDeleteGroupPermissions  *sqlx.NamedStmt
+	stmtInsertGroupPermission   *sqlx.NamedStmt
+	stmtGetUserPermissionsInOrg *sqlx.NamedStmt
+	stmtGetDefaultGroups        *sqlx.NamedStmt
+	stmtCountUserGroupsInOrg    *sqlx.NamedStmt
+	stmtCreateFeedback          *sqlx.NamedStmt
 
-	stmtGetFloFavourites    *sqlx.NamedStmt
-	stmtAddFloFavourite     *sqlx.NamedStmt
-	stmtRemoveFloFavourite  *sqlx.NamedStmt
+	stmtGetFloFavourites   *sqlx.NamedStmt
+	stmtAddFloFavourite    *sqlx.NamedStmt
+	stmtRemoveFloFavourite *sqlx.NamedStmt
 
 	// Agent statements
-	stmtGetAgents              *sqlx.NamedStmt
-	stmtGetAgentsByOrgID       *sqlx.NamedStmt
-	stmtGetAgentByID           *sqlx.NamedStmt
-	stmtCreateAgent            *sqlx.NamedStmt
-	stmtUpdateAgent            *sqlx.NamedStmt
-	stmtArchiveAgent           *sqlx.NamedStmt
-	stmtUpdateAgentStatus      *sqlx.NamedStmt
+	stmtGetAgents         *sqlx.NamedStmt
+	stmtGetAgentsByOrgID  *sqlx.NamedStmt
+	stmtGetAgentByID      *sqlx.NamedStmt
+	stmtCreateAgent       *sqlx.NamedStmt
+	stmtUpdateAgent       *sqlx.NamedStmt
+	stmtArchiveAgent      *sqlx.NamedStmt
+	stmtUpdateAgentStatus *sqlx.NamedStmt
 
-	stmtCreateAgentSession         *sqlx.NamedStmt
-	stmtEndAgentSession            *sqlx.NamedStmt
+	stmtCreateAgentSession          *sqlx.NamedStmt
+	stmtEndAgentSession             *sqlx.NamedStmt
 	stmtUpdateAgentSessionHeartbeat *sqlx.NamedStmt
-	stmtGetAgentSessions           *sqlx.NamedStmt
-	stmtGetAgentSessionByID        *sqlx.NamedStmt
-	stmtGetActiveAgentSession      *sqlx.NamedStmt
+	stmtGetAgentSessions            *sqlx.NamedStmt
+	stmtGetAgentSessionByID         *sqlx.NamedStmt
+	stmtGetActiveAgentSession       *sqlx.NamedStmt
 
 	stmtGetAgentState       *sqlx.NamedStmt
 	stmtGetAgentStateKey    *sqlx.NamedStmt
 	stmtUpsertAgentState    *sqlx.NamedStmt
 	stmtDeleteAgentStateKey *sqlx.NamedStmt
 
-	stmtGetAgentMessages       *sqlx.NamedStmt
+	stmtGetAgentMessages        *sqlx.NamedStmt
 	stmtGetAgentSessionMessages *sqlx.NamedStmt
-	stmtCreateAgentMessage     *sqlx.NamedStmt
+	stmtCreateAgentMessage      *sqlx.NamedStmt
 
 	stmtGetAgentExecutions         *sqlx.NamedStmt
 	stmtCreateAgentExecution       *sqlx.NamedStmt
 	stmtUpdateAgentExecutionStatus *sqlx.NamedStmt
 	stmtCountAgentExecutionsInHour *sqlx.NamedStmt
+
+	// Agent Memory Phase 1: identity + conversation scoping.
+	// See plans/agent_memory.md for the design and
+	// internal/persistence/agent_memory.go for the corresponding methods.
+	stmtGetAgentUserByID                 *sqlx.NamedStmt
+	stmtCreateAgentUser                  *sqlx.NamedStmt
+	stmtGetAgentIdentityByExternal       *sqlx.NamedStmt
+	stmtCreateAgentIdentity              *sqlx.NamedStmt
+	stmtLinkAgentIdentityToUser          *sqlx.NamedStmt
+	stmtGetAgentConversationByKey        *sqlx.NamedStmt
+	stmtCreateAgentConversation          *sqlx.NamedStmt
+	stmtTouchAgentConversation           *sqlx.NamedStmt
+	stmtGetAgentConversationMessages     *sqlx.NamedStmt
+	stmtCreateAgentMessageInConversation *sqlx.NamedStmt
+	stmtNextAgentConversationSequence    *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -490,7 +505,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -538,7 +553,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -562,7 +577,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 	`)
 	if err != nil {
 		return nil, err
@@ -576,7 +591,7 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    author_id = :author_id
 		    AND organisation_id IS NULL
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND
 		    (
 		    	LOWER(name) LIKE LOWER(:search)
@@ -608,7 +623,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    organisation_id = :organisation_id
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		ORDER BY
 		    created_at DESC
 		OFFSET :offset
@@ -638,7 +653,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    flo f
 		WHERE
 		    organisation_id = :organisation_id
-		    AND f.archived_at IS NULL
+		    AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND
 		    (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 		ORDER BY
@@ -651,7 +666,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCountOrgFlos, err = s.conn.PrepareNamed(`
-		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id AND f.archived_at IS NULL
+		SELECT COUNT(1) FROM flo f WHERE organisation_id = :organisation_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	`)
 	if err != nil {
 		return nil, err
@@ -659,7 +674,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgFlosWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM flo f
-		WHERE organisation_id = :organisation_id AND f.archived_at IS NULL
+		WHERE organisation_id = :organisation_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		AND (LOWER(name) LIKE LOWER(:search) OR CAST(id AS TEXT) LIKE LOWER(:search))
 	`)
 	if err != nil {
@@ -942,7 +957,7 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 		    execution e
 		INNER JOIN
-			flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+			flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE
 		    e.owner_id = :user_id
 		    AND e.organisation_id IS NULL
@@ -965,7 +980,7 @@ func NewService(config *config.Config) (*Service, error) {
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -977,7 +992,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountExecutions, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
 	if err != nil {
@@ -986,7 +1001,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 	`)
@@ -1004,7 +1019,7 @@ func NewService(config *config.Config) (*Service, error) {
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1023,7 +1038,7 @@ func NewService(config *config.Config) (*Service, error) {
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -1035,7 +1050,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgExecutions, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE e.organisation_id = :organisation_id
 	`)
 	if err != nil {
@@ -1044,7 +1059,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountOrgExecutionsWithFilter, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM execution e
-		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 	`)
@@ -2426,6 +2441,137 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// Agent Memory Phase 1 statements. See internal/persistence/agent_memory.go.
+
+	s.stmtGetAgentUserByID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_user WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentUser, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_user (agent_id, organisation_id, display_name)
+		VALUES (:agent_id, :organisation_id, :display_name)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lookup by natural key (channel_type, channel_external_id, channel_scope).
+	// COALESCE mirrors the unique index definition in migration 41 so a NULL
+	// scope and an empty-string scope collapse to the same identity row.
+	s.stmtGetAgentIdentityByExternal, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_identity
+		WHERE channel_type = :channel_type
+		  AND channel_external_id = :channel_external_id
+		  AND COALESCE(channel_scope, '') = COALESCE(:channel_scope, '')
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentIdentity, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_identity (agent_user_id, channel_type, channel_external_id, channel_scope, verified)
+		VALUES (:agent_user_id, :channel_type, :channel_external_id, :channel_scope, :verified)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Re-point an existing identity at a different agent_user, used by the
+	// natural-language identity linking flow that lands in Phase 5. Included
+	// in Phase 1 so the function exists at the CRUD surface from day one.
+	s.stmtLinkAgentIdentityToUser, err = s.conn.PrepareNamed(`
+		UPDATE agent_identity
+		SET agent_user_id = :agent_user_id,
+		    verified = TRUE,
+		    linked_at = NOW()
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve an open conversation by its natural key. An open conversation
+	// has ended_at IS NULL; the partial unique index in migration 41 enforces
+	// at-most-one open conversation per (agent, channel_type, channel_id,
+	// thread_id). A closed conversation with the same key is ignored — a
+	// fresh conversation row will be created on the next turn.
+	s.stmtGetAgentConversationByKey, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_conversation
+		WHERE agent_id = :agent_id
+		  AND channel_type = :channel_type
+		  AND channel_id = :channel_id
+		  AND COALESCE(thread_id, '') = COALESCE(:thread_id, '')
+		  AND ended_at IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentConversation, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_conversation (agent_id, agent_user_id, channel_type, channel_id, thread_id)
+		VALUES (:agent_id, :agent_user_id, :channel_type, :channel_id, :thread_id)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtTouchAgentConversation, err = s.conn.PrepareNamed(`
+		UPDATE agent_conversation SET last_message_at = NOW() WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Conversation-scoped message history ordered oldest-first for AI
+	// consumers that append the current turn at the end. Sequence ordering
+	// is authoritative; created_at is only a tiebreaker for any edge cases.
+	s.stmtGetAgentConversationMessages, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_message
+		WHERE conversation_id = :conversation_id
+		ORDER BY sequence ASC, created_at ASC
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert a message with explicit conversation scoping and sequence.
+	// Callers compute the sequence via stmtNextAgentConversationSequence
+	// before inserting. Doing this in two statements (rather than a single
+	// INSERT ... SELECT MAX+1) is fine here because writes for the same
+	// conversation are serialised by the per-user extraction lease in
+	// Phase 2; Phase 1 inserts are infrequent enough that the small race
+	// window (concurrent inserts before the lease exists) is acceptable
+	// and will be resolved by the unique index retry in a later chunk.
+	s.stmtCreateAgentMessageInConversation, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_message (
+			agent_id, session_id, conversation_id, sequence,
+			direction, channel_type, sender, content, metadata, execution_id
+		) VALUES (
+			:agent_id, :session_id, :conversation_id, :sequence,
+			:direction, :channel_type, :sender, :content, :metadata, :execution_id
+		)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtNextAgentConversationSequence, err = s.conn.PrepareNamed(`
+		SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+		FROM agent_message
+		WHERE conversation_id = :conversation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &s, nil
 }
 
@@ -3055,10 +3201,10 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 	} else {
 		if search != "" {
 			if err := s.stmtGetExecutionsWithFilter.Select(&results, struct {
-				Offset int64  `db:"offset"`
+				Offset  int64  `db:"offset"`
 				Limited int64  `db:"limit"`
-				Search string `db:"search"`
-				UserID string `db:"user_id"`
+				Search  string `db:"search"`
+				UserID  string `db:"user_id"`
 			}{Offset: offset, Limited: limit, Search: "%" + search + "%", UserID: userID}); err != nil {
 				return nil, 0, err
 			}
@@ -3070,9 +3216,9 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 			}
 		} else {
 			if err := s.stmtGetExecutions.Select(&results, struct {
-				Offset int64  `db:"offset"`
+				Offset  int64  `db:"offset"`
 				Limited int64  `db:"limit"`
-				UserID string `db:"user_id"`
+				UserID  string `db:"user_id"`
 			}{Offset: offset, Limited: limit, UserID: userID}); err != nil {
 				return nil, 0, err
 			}
@@ -3097,11 +3243,11 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 		(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 		e.agent_id
 	FROM execution e
-	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	baseCount := `SELECT COUNT(1) FROM execution e
-	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL
+	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	var args []interface{}
