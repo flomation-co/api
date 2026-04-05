@@ -494,6 +494,14 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/agent/:id/commitment", s.listCommitmentsForUserInternal)
 	internal.PATCH("/commitment/:id", s.updateCommitmentStatusInternal)
 
+	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
+	// Called by Launch after storing an inbound message and by the
+	// executor's assistant-reply hook after storing an outbound reply.
+	// Returns 204 as a no-op if the agent has no extraction flow
+	// configured, so callers can invoke it unconditionally.
+	// See internal/http/agent_memory_phase2d.go.
+	internal.POST("/agent/:id/extract", s.extractAgentInternal)
+
 	return s
 }
 
