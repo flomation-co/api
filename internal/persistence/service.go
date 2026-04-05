@@ -194,6 +194,21 @@ type Service struct {
 	stmtCreateAgentExecution       *sqlx.NamedStmt
 	stmtUpdateAgentExecutionStatus *sqlx.NamedStmt
 	stmtCountAgentExecutionsInHour *sqlx.NamedStmt
+
+	// Agent Memory Phase 1: identity + conversation scoping.
+	// See plans/agent_memory.md for the design and
+	// internal/persistence/agent_memory.go for the corresponding methods.
+	stmtGetAgentUserByID                  *sqlx.NamedStmt
+	stmtCreateAgentUser                   *sqlx.NamedStmt
+	stmtGetAgentIdentityByExternal        *sqlx.NamedStmt
+	stmtCreateAgentIdentity               *sqlx.NamedStmt
+	stmtLinkAgentIdentityToUser           *sqlx.NamedStmt
+	stmtGetAgentConversationByKey         *sqlx.NamedStmt
+	stmtCreateAgentConversation           *sqlx.NamedStmt
+	stmtTouchAgentConversation            *sqlx.NamedStmt
+	stmtGetAgentConversationMessages      *sqlx.NamedStmt
+	stmtCreateAgentMessageInConversation  *sqlx.NamedStmt
+	stmtNextAgentConversationSequence     *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2421,6 +2436,137 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountAgentExecutionsInHour, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM agent_execution WHERE agent_id = :agent_id AND created_at > NOW() - INTERVAL '1 hour'
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent Memory Phase 1 statements. See internal/persistence/agent_memory.go.
+
+	s.stmtGetAgentUserByID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_user WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentUser, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_user (agent_id, organisation_id, display_name)
+		VALUES (:agent_id, :organisation_id, :display_name)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lookup by natural key (channel_type, channel_external_id, channel_scope).
+	// COALESCE mirrors the unique index definition in migration 41 so a NULL
+	// scope and an empty-string scope collapse to the same identity row.
+	s.stmtGetAgentIdentityByExternal, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_identity
+		WHERE channel_type = :channel_type
+		  AND channel_external_id = :channel_external_id
+		  AND COALESCE(channel_scope, '') = COALESCE(:channel_scope, '')
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentIdentity, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_identity (agent_user_id, channel_type, channel_external_id, channel_scope, verified)
+		VALUES (:agent_user_id, :channel_type, :channel_external_id, :channel_scope, :verified)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Re-point an existing identity at a different agent_user, used by the
+	// natural-language identity linking flow that lands in Phase 5. Included
+	// in Phase 1 so the function exists at the CRUD surface from day one.
+	s.stmtLinkAgentIdentityToUser, err = s.conn.PrepareNamed(`
+		UPDATE agent_identity
+		SET agent_user_id = :agent_user_id,
+		    verified = TRUE,
+		    linked_at = NOW()
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve an open conversation by its natural key. An open conversation
+	// has ended_at IS NULL; the partial unique index in migration 41 enforces
+	// at-most-one open conversation per (agent, channel_type, channel_id,
+	// thread_id). A closed conversation with the same key is ignored — a
+	// fresh conversation row will be created on the next turn.
+	s.stmtGetAgentConversationByKey, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_conversation
+		WHERE agent_id = :agent_id
+		  AND channel_type = :channel_type
+		  AND channel_id = :channel_id
+		  AND COALESCE(thread_id, '') = COALESCE(:thread_id, '')
+		  AND ended_at IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentConversation, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_conversation (agent_id, agent_user_id, channel_type, channel_id, thread_id)
+		VALUES (:agent_id, :agent_user_id, :channel_type, :channel_id, :thread_id)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtTouchAgentConversation, err = s.conn.PrepareNamed(`
+		UPDATE agent_conversation SET last_message_at = NOW() WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Conversation-scoped message history ordered oldest-first for AI
+	// consumers that append the current turn at the end. Sequence ordering
+	// is authoritative; created_at is only a tiebreaker for any edge cases.
+	s.stmtGetAgentConversationMessages, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_message
+		WHERE conversation_id = :conversation_id
+		ORDER BY sequence ASC, created_at ASC
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert a message with explicit conversation scoping and sequence.
+	// Callers compute the sequence via stmtNextAgentConversationSequence
+	// before inserting. Doing this in two statements (rather than a single
+	// INSERT ... SELECT MAX+1) is fine here because writes for the same
+	// conversation are serialised by the per-user extraction lease in
+	// Phase 2; Phase 1 inserts are infrequent enough that the small race
+	// window (concurrent inserts before the lease exists) is acceptable
+	// and will be resolved by the unique index retry in a later chunk.
+	s.stmtCreateAgentMessageInConversation, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_message (
+			agent_id, session_id, conversation_id, sequence,
+			direction, channel_type, sender, content, metadata, execution_id
+		) VALUES (
+			:agent_id, :session_id, :conversation_id, :sequence,
+			:direction, :channel_type, :sender, :content, :metadata, :execution_id
+		)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtNextAgentConversationSequence, err = s.conn.PrepareNamed(`
+		SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+		FROM agent_message
+		WHERE conversation_id = :conversation_id
 	`)
 	if err != nil {
 		return nil, err

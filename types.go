@@ -419,16 +419,66 @@ type AgentState struct {
 }
 
 type AgentMessage struct {
-	ID          string      `json:"id" db:"id"`
-	AgentID     string      `json:"agent_id" db:"agent_id"`
-	SessionID   *string     `json:"session_id,omitempty" db:"session_id"`
-	Direction   string      `json:"direction" db:"direction"`
-	ChannelType string      `json:"channel_type" db:"channel_type"`
-	Sender      *string     `json:"sender,omitempty" db:"sender"`
-	Content     string      `json:"content" db:"content"`
-	Metadata    interface{} `json:"metadata,omitempty" db:"metadata"`
-	ExecutionID *string     `json:"execution_id,omitempty" db:"execution_id"`
-	CreatedAt   time.Time   `json:"created_at" db:"created_at"`
+	ID             string      `json:"id" db:"id"`
+	AgentID        string      `json:"agent_id" db:"agent_id"`
+	SessionID      *string     `json:"session_id,omitempty" db:"session_id"`
+	ConversationID *string     `json:"conversation_id,omitempty" db:"conversation_id"`
+	Sequence       *int64      `json:"sequence,omitempty" db:"sequence"`
+	Direction      string      `json:"direction" db:"direction"`
+	ChannelType    string      `json:"channel_type" db:"channel_type"`
+	Sender         *string     `json:"sender,omitempty" db:"sender"`
+	Content        string      `json:"content" db:"content"`
+	Metadata       interface{} `json:"metadata,omitempty" db:"metadata"`
+	ExecutionID    *string     `json:"execution_id,omitempty" db:"execution_id"`
+	CreatedAt      time.Time   `json:"created_at" db:"created_at"`
+}
+
+// AgentUser is the canonical "person" an agent knows about, independent of
+// which channel they reach the agent on. Memories, commitments, and linked
+// identities hang off this record. See plans/agent_memory.md for the full
+// design.
+type AgentUser struct {
+	ID             string    `json:"id" db:"id"`
+	AgentID        string    `json:"agent_id" db:"agent_id"`
+	OrganisationID *string   `json:"organisation_id,omitempty" db:"organisation_id"`
+	DisplayName    *string   `json:"display_name,omitempty" db:"display_name"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// AgentIdentity maps a per-channel external identifier (Slack user_id,
+// Telegram sender_id, email address, etc.) to an AgentUser. A single
+// AgentUser may accumulate multiple identities over time via the
+// natural-language linking flow that lands in Phase 5; until then each
+// identity corresponds to exactly one AgentUser and memories remain
+// scoped per-identity.
+type AgentIdentity struct {
+	ID                string     `json:"id" db:"id"`
+	AgentUserID       string     `json:"agent_user_id" db:"agent_user_id"`
+	ChannelType       string     `json:"channel_type" db:"channel_type"`
+	ChannelExternalID string     `json:"channel_external_id" db:"channel_external_id"`
+	ChannelScope      *string    `json:"channel_scope,omitempty" db:"channel_scope"`
+	Verified          bool       `json:"verified" db:"verified"`
+	LinkedAt          *time.Time `json:"linked_at,omitempty" db:"linked_at"`
+	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
+}
+
+// AgentConversation is a conversation thread in a specific channel, scoped
+// by (agent_id, channel_type, channel_id, thread_id). This is distinct from
+// AgentSession, which tracks runtime lifecycle (active/ended/crashed +
+// heartbeat) rather than conversation scoping. Messages get both a
+// SessionID (lifecycle) and a ConversationID (scoping).
+type AgentConversation struct {
+	ID            string          `json:"id" db:"id"`
+	AgentID       string          `json:"agent_id" db:"agent_id"`
+	AgentUserID   *string         `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	ChannelType   string          `json:"channel_type" db:"channel_type"`
+	ChannelID     string          `json:"channel_id" db:"channel_id"`
+	ThreadID      *string         `json:"thread_id,omitempty" db:"thread_id"`
+	StartedAt     time.Time       `json:"started_at" db:"started_at"`
+	LastMessageAt time.Time       `json:"last_message_at" db:"last_message_at"`
+	EndedAt       *time.Time      `json:"ended_at,omitempty" db:"ended_at"`
+	Metadata      json.RawMessage `json:"metadata" db:"metadata"`
 }
 
 type AgentExecution struct {
