@@ -2269,10 +2269,12 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCreateAgent, err = s.conn.PrepareNamed(`
 		INSERT INTO agent (name, description, owner_id, organisation_id, environment_id, queue_id,
-			system_prompt, orchestrator_flow_id, max_concurrent_executions, idle_timeout_seconds,
+			system_prompt, orchestrator_flow_id, extraction_flow_id,
+			max_concurrent_executions, idle_timeout_seconds,
 			channels, requires_approval, max_executions_per_hour)
 		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
-			:system_prompt, :orchestrator_flow_id, :max_concurrent_executions, :idle_timeout_seconds,
+			:system_prompt, :orchestrator_flow_id, :extraction_flow_id,
+			:max_concurrent_executions, :idle_timeout_seconds,
 			:channels, :requires_approval, :max_executions_per_hour)
 		RETURNING id
 	`)
@@ -2285,6 +2287,7 @@ func NewService(config *config.Config) (*Service, error) {
 			name = :name, description = :description, environment_id = :environment_id,
 			queue_id = :queue_id, system_prompt = :system_prompt,
 			orchestrator_flow_id = :orchestrator_flow_id,
+			extraction_flow_id = :extraction_flow_id,
 			max_concurrent_executions = :max_concurrent_executions,
 			idle_timeout_seconds = :idle_timeout_seconds, channels = :channels,
 			requires_approval = :requires_approval,

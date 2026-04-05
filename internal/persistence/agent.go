@@ -61,6 +61,7 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		QueueID                 *string         `db:"queue_id"`
 		SystemPrompt            *string         `db:"system_prompt"`
 		OrchestratorFlowID      *string         `db:"orchestrator_flow_id"`
+		ExtractionFlowID        *string         `db:"extraction_flow_id"`
 		MaxConcurrentExecutions int             `db:"max_concurrent_executions"`
 		IdleTimeoutSeconds      int             `db:"idle_timeout_seconds"`
 		Channels                json.RawMessage `db:"channels"`
@@ -75,6 +76,7 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		QueueID:                 agent.QueueID,
 		SystemPrompt:            agent.SystemPrompt,
 		OrchestratorFlowID:      agent.OrchestratorFlowID,
+		ExtractionFlowID:        agent.ExtractionFlowID,
 		MaxConcurrentExecutions: agent.MaxConcurrentExecutions,
 		IdleTimeoutSeconds:      agent.IdleTimeoutSeconds,
 		Channels:                channelsJSON,
@@ -101,6 +103,7 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		QueueID                 *string         `db:"queue_id"`
 		SystemPrompt            *string         `db:"system_prompt"`
 		OrchestratorFlowID      *string         `db:"orchestrator_flow_id"`
+		ExtractionFlowID        *string         `db:"extraction_flow_id"`
 		MaxConcurrentExecutions int             `db:"max_concurrent_executions"`
 		IdleTimeoutSeconds      int             `db:"idle_timeout_seconds"`
 		Channels                json.RawMessage `db:"channels"`
@@ -114,6 +117,7 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		QueueID:                 agent.QueueID,
 		SystemPrompt:            agent.SystemPrompt,
 		OrchestratorFlowID:      agent.OrchestratorFlowID,
+		ExtractionFlowID:        agent.ExtractionFlowID,
 		MaxConcurrentExecutions: agent.MaxConcurrentExecutions,
 		IdleTimeoutSeconds:      agent.IdleTimeoutSeconds,
 		Channels:                channelsJSON,

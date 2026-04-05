@@ -367,15 +367,20 @@ const (
 )
 
 type Agent struct {
-	ID                      string          `json:"id" db:"id"`
-	Name                    string          `json:"name" db:"name"`
-	Description             *string         `json:"description,omitempty" db:"description"`
-	OwnerID                 string          `json:"owner_id" db:"owner_id"`
-	OrganisationID          *string         `json:"organisation_id,omitempty" db:"organisation_id"`
-	EnvironmentID           *string         `json:"environment_id,omitempty" db:"environment_id"`
-	QueueID                 *string         `json:"queue_id,omitempty" db:"queue_id"`
-	SystemPrompt            *string         `json:"system_prompt,omitempty" db:"system_prompt"`
-	OrchestratorFlowID      *string         `json:"orchestrator_flow_id,omitempty" db:"orchestrator_flow_id"`
+	ID                 string  `json:"id" db:"id"`
+	Name               string  `json:"name" db:"name"`
+	Description        *string `json:"description,omitempty" db:"description"`
+	OwnerID            string  `json:"owner_id" db:"owner_id"`
+	OrganisationID     *string `json:"organisation_id,omitempty" db:"organisation_id"`
+	EnvironmentID      *string `json:"environment_id,omitempty" db:"environment_id"`
+	QueueID            *string `json:"queue_id,omitempty" db:"queue_id"`
+	SystemPrompt       *string `json:"system_prompt,omitempty" db:"system_prompt"`
+	OrchestratorFlowID *string `json:"orchestrator_flow_id,omitempty" db:"orchestrator_flow_id"`
+	// ExtractionFlowID is the flow Launch/the executor post-reply hook
+	// dispatch after every turn to pull memories, pending actions, and
+	// commitments out of the conversation. NULL until Phase 2d-γ seeds
+	// the canonical extraction flow and backfills existing agents.
+	ExtractionFlowID        *string         `json:"extraction_flow_id,omitempty" db:"extraction_flow_id"`
 	MaxConcurrentExecutions int             `json:"max_concurrent_executions" db:"max_concurrent_executions"`
 	IdleTimeoutSeconds      int             `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
 	Channels                json.RawMessage `json:"channels" db:"channels"`
