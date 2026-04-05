@@ -209,6 +209,23 @@ type Service struct {
 	stmtGetAgentConversationMessages     *sqlx.NamedStmt
 	stmtCreateAgentMessageInConversation *sqlx.NamedStmt
 	stmtNextAgentConversationSequence    *sqlx.NamedStmt
+
+	// Agent Memory Phase 2: memories, pending actions, commitments.
+	// See plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
+	stmtCreateAgentMemory            *sqlx.NamedStmt
+	stmtGetAgentMemoryByID           *sqlx.NamedStmt
+	stmtGetAgentMemoriesForUser      *sqlx.NamedStmt
+	stmtDeleteAgentMemory            *sqlx.NamedStmt
+	stmtTouchAgentMemoryLastUsed     *sqlx.NamedStmt
+	stmtCreateAgentPendingAction     *sqlx.NamedStmt
+	stmtGetAgentPendingActionByID    *sqlx.NamedStmt
+	stmtGetOpenPendingActionsForUser *sqlx.NamedStmt
+	stmtUpdatePendingActionStatus    *sqlx.NamedStmt
+	stmtCreateAgentCommitment        *sqlx.NamedStmt
+	stmtGetAgentCommitmentByID       *sqlx.NamedStmt
+	stmtGetDueCommitments            *sqlx.NamedStmt
+	stmtGetCommitmentsForUser        *sqlx.NamedStmt
+	stmtUpdateCommitmentStatus       *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2567,6 +2584,173 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
 		FROM agent_message
 		WHERE conversation_id = :conversation_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent Memory Phase 2 statements. See internal/persistence/agent_memory_phase2.go.
+
+	s.stmtCreateAgentMemory, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_memory (
+			agent_id, agent_user_id, scope, memory_type, title, body,
+			source_conversation, source_message, confidence, pinned, expires_at
+		) VALUES (
+			:agent_id, :agent_user_id, :scope, :memory_type, :title, :body,
+			:source_conversation, :source_message, :confidence, :pinned, :expires_at
+		)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentMemoryByID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_memory WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ordering puts pinned rows first so callers that take the head of
+	// the result get the always-include set before any recency-sorted
+	// fill. Type-filtered retrieval is deliberately NOT in Phase 2a —
+	// it will be rewritten as part of Phase 4's pgvector top-K query,
+	// and no Phase 2b/2c caller needs it (the system-prompt assembler
+	// only requests pinned memories).
+	s.stmtGetAgentMemoriesForUser, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_memory
+		WHERE agent_user_id = :agent_user_id
+		  AND (NOT :pinned_only OR pinned = TRUE)
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY pinned DESC, created_at DESC
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteAgentMemory, err = s.conn.PrepareNamed(`
+		DELETE FROM agent_memory WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtTouchAgentMemoryLastUsed, err = s.conn.PrepareNamed(`
+		UPDATE agent_memory SET last_used_at = NOW() WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentPendingAction, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_pending_action (
+			agent_id, agent_user_id, type, payload, evidence, status,
+			source_conversation, source_message, expires_at
+		) VALUES (
+			:agent_id, :agent_user_id, :type, :payload, :evidence, :status,
+			:source_conversation, :source_message, :expires_at
+		)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentPendingActionByID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_pending_action WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// "Open" = still awaiting something. Terminal states (executed, declined,
+	// expired) are excluded. The partial index idx_agent_pending_action_user_open
+	// covers exactly this filter so the query is constant-time per user.
+	s.stmtGetOpenPendingActionsForUser, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_pending_action
+		WHERE agent_user_id = :agent_user_id
+		  AND status IN ('awaiting_confirmation', 'confirmed_here_awaiting_other_side')
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Terminal transitions stamp resolved_at; non-terminal transitions leave
+	// it alone. The CASE is inline so the caller doesn't have to know which
+	// states are terminal — the schema owns that truth.
+	s.stmtUpdatePendingActionStatus, err = s.conn.PrepareNamed(`
+		UPDATE agent_pending_action
+		SET status = :status,
+		    resolved_at = CASE
+		        WHEN :status IN ('executed', 'declined', 'expired')
+		            THEN NOW()
+		        ELSE resolved_at
+		    END
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCreateAgentCommitment, err = s.conn.PrepareNamed(`
+		INSERT INTO agent_commitment (
+			agent_id, agent_user_id, conversation_id, kind, description,
+			payload, trigger_type, due_at, condition, status,
+			source_conversation, source_message, made_by, expires_at
+		) VALUES (
+			:agent_id, :agent_user_id, :conversation_id, :kind, :description,
+			:payload, :trigger_type, :due_at, :condition, :status,
+			:source_conversation, :source_message, :made_by, :expires_at
+		)
+		RETURNING id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentCommitmentByID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_commitment WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Phase 3 commitment poller hot path. The partial index
+	// idx_agent_commitment_due_pending covers this exactly.
+	s.stmtGetDueCommitments, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_commitment
+		WHERE status = 'pending' AND due_at IS NOT NULL AND due_at <= NOW()
+		ORDER BY due_at ASC
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetCommitmentsForUser, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_commitment
+		WHERE agent_user_id = :agent_user_id
+		ORDER BY created_at DESC
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lifecycle transitions stamp the corresponding timestamp column.
+	// Keeping this in the schema (not the caller) means every code path
+	// that moves a commitment through its lifecycle gets the same audit
+	// trail for free.
+	s.stmtUpdateCommitmentStatus, err = s.conn.PrepareNamed(`
+		UPDATE agent_commitment
+		SET status = :status,
+		    fired_at     = CASE WHEN :status = 'firing'    AND fired_at     IS NULL THEN NOW() ELSE fired_at     END,
+		    fulfilled_at = CASE WHEN :status = 'fulfilled' AND fulfilled_at IS NULL THEN NOW() ELSE fulfilled_at END,
+		    cancelled_at = CASE WHEN :status = 'cancelled' AND cancelled_at IS NULL THEN NOW() ELSE cancelled_at END
+		WHERE id = :id
 	`)
 	if err != nil {
 		return nil, err

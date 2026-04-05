@@ -481,6 +481,83 @@ type AgentConversation struct {
 	Metadata      json.RawMessage `json:"metadata" db:"metadata"`
 }
 
+// AgentMemory is a durable fact, preference, feedback, or summary that an
+// agent has learnt about a specific user (agent_user_id set) or about
+// itself (agent_user_id NULL, scope='global'). Written primarily by the
+// Phase 2d extraction System Flow; readable by Launch's system prompt
+// assembler and by the executor actions agent/remember, agent/recall,
+// agent/forget.
+//
+// See plans/agent_memory.md §"Memory records" and migration 42.
+type AgentMemory struct {
+	ID                 string     `json:"id" db:"id"`
+	AgentID            string     `json:"agent_id" db:"agent_id"`
+	AgentUserID        *string    `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	Scope              string     `json:"scope" db:"scope"`
+	MemoryType         string     `json:"memory_type" db:"memory_type"`
+	Title              string     `json:"title" db:"title"`
+	Body               string     `json:"body" db:"body"`
+	SourceConversation *string    `json:"source_conversation,omitempty" db:"source_conversation"`
+	SourceMessage      *string    `json:"source_message,omitempty" db:"source_message"`
+	Confidence         float64    `json:"confidence" db:"confidence"`
+	Pinned             bool       `json:"pinned" db:"pinned"`
+	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
+	LastUsedAt         *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty" db:"expires_at"`
+}
+
+// AgentPendingAction is an intent detected by the extraction pipeline
+// that needs user confirmation before the platform executes it. Used for
+// identity linking, memory forgetting, and fact correction. The
+// agent/remember, agent/forget executor actions write to this table in
+// Phase 2c; Phase 5's natural-language identity linking uses it
+// exclusively.
+//
+// See plans/agent_memory.md §"Pending actions" and migration 42.
+type AgentPendingAction struct {
+	ID                 string          `json:"id" db:"id"`
+	AgentID            string          `json:"agent_id" db:"agent_id"`
+	AgentUserID        string          `json:"agent_user_id" db:"agent_user_id"`
+	Type               string          `json:"type" db:"type"`
+	Payload            json.RawMessage `json:"payload" db:"payload"`
+	Evidence           string          `json:"evidence" db:"evidence"`
+	Status             string          `json:"status" db:"status"`
+	SourceConversation *string         `json:"source_conversation,omitempty" db:"source_conversation"`
+	SourceMessage      *string         `json:"source_message,omitempty" db:"source_message"`
+	CreatedAt          time.Time       `json:"created_at" db:"created_at"`
+	ResolvedAt         *time.Time      `json:"resolved_at,omitempty" db:"resolved_at"`
+	ExpiresAt          *time.Time      `json:"expires_at,omitempty" db:"expires_at"`
+}
+
+// AgentCommitment is a promise that the agent (made_by='assistant') or
+// the user (made_by='user') has made and that needs honouring on a
+// schedule or condition. Written by the Phase 2d extraction pipeline;
+// the Phase 3 commitment poller selects due rows and dispatches synthetic
+// triggers back into the agent's orchestrator flow.
+//
+// See plans/agent_memory.md §"Commitments" and migration 42.
+type AgentCommitment struct {
+	ID                 string          `json:"id" db:"id"`
+	AgentID            string          `json:"agent_id" db:"agent_id"`
+	AgentUserID        *string         `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	ConversationID     *string         `json:"conversation_id,omitempty" db:"conversation_id"`
+	Kind               string          `json:"kind" db:"kind"`
+	Description        string          `json:"description" db:"description"`
+	Payload            json.RawMessage `json:"payload" db:"payload"`
+	TriggerType        string          `json:"trigger_type" db:"trigger_type"`
+	DueAt              *time.Time      `json:"due_at,omitempty" db:"due_at"`
+	Condition          json.RawMessage `json:"condition,omitempty" db:"condition"`
+	Status             string          `json:"status" db:"status"`
+	SourceConversation *string         `json:"source_conversation,omitempty" db:"source_conversation"`
+	SourceMessage      *string         `json:"source_message,omitempty" db:"source_message"`
+	MadeBy             string          `json:"made_by" db:"made_by"`
+	CreatedAt          time.Time       `json:"created_at" db:"created_at"`
+	FiredAt            *time.Time      `json:"fired_at,omitempty" db:"fired_at"`
+	FulfilledAt        *time.Time      `json:"fulfilled_at,omitempty" db:"fulfilled_at"`
+	CancelledAt        *time.Time      `json:"cancelled_at,omitempty" db:"cancelled_at"`
+	ExpiresAt          *time.Time      `json:"expires_at,omitempty" db:"expires_at"`
+}
+
 type AgentExecution struct {
 	ID               string     `json:"id" db:"id"`
 	AgentID          string     `json:"agent_id" db:"agent_id"`
