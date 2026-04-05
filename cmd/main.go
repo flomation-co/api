@@ -41,6 +41,16 @@ func main() {
 		}).Error("unable to create persistence service")
 	}
 
+	// Phase 2d-γ: seed the canonical extraction System Flow if it
+	// doesn't already exist, and backfill extraction_flow_id for any
+	// agents that were created before the seed ran. Idempotent — safe
+	// to run on every startup.
+	if err := db.BootstrapExtractionFlow(); err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Warn("extraction flow bootstrap failed (non-fatal, extraction will be disabled)")
+	}
+
 	httpService := http.NewService(cfg, db)
 
 	log.Fatal(httpService.Listen())
