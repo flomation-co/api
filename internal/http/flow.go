@@ -366,7 +366,6 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			}
 		}
 
-
 		// Check if a trigger of this type already exists for this flow
 		var existingID *string
 		for _, et := range existingTriggers {
@@ -577,10 +576,22 @@ func (s *Service) executeFlo(c *gin.Context) {
 	// If this execution was agent-dispatched, tag it with the agent and session IDs
 	if i != nil && data != nil {
 		if agentID, ok := data["agent_id"].(string); ok && agentID != "" {
-			s.persistence.SetExecutionAgentID(*i, agentID)
+			if err := s.persistence.SetExecutionAgentID(*i, agentID); err != nil {
+				log.WithFields(log.Fields{
+					"error":        err,
+					"execution_id": *i,
+					"agent_id":     agentID,
+				}).Warn("unable to set execution agent id")
+			}
 			// Link to the active session
 			if session, _ := s.persistence.GetActiveAgentSession(agentID); session != nil {
-				s.persistence.SetExecutionAgentSessionID(*i, session.ID)
+				if err := s.persistence.SetExecutionAgentSessionID(*i, session.ID); err != nil {
+					log.WithFields(log.Fields{
+						"error":        err,
+						"execution_id": *i,
+						"session_id":   session.ID,
+					}).Warn("unable to set execution agent session id")
+				}
 			}
 		}
 	}
@@ -717,8 +728,8 @@ func (s *Service) importFlo(c *gin.Context) {
 
 	// Create new flow with importing user as author
 	flo := api.Flo{
-		Name:  flowData.Name,
-		Scale: flowData.Scale,
+		Name:      flowData.Name,
+		Scale:     flowData.Scale,
 		XPosition: flowData.X,
 		YPosition: flowData.Y,
 	}
@@ -775,11 +786,11 @@ func (s *Service) importFlo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":         f.ID,
-		"name":       f.Name,
-		"created_at": f.CreatedAt,
-		"imported":   true,
-		"imported_at": time.Now().UTC().Format(time.RFC3339),
+		"id":               f.ID,
+		"name":             f.Name,
+		"created_at":       f.CreatedAt,
+		"imported":         true,
+		"imported_at":      time.Now().UTC().Format(time.RFC3339),
 		"source_flow_id":   wrapper.FlomationExport.SourceFlowID,
 		"source_flow_name": wrapper.FlomationExport.SourceFlowName,
 	})

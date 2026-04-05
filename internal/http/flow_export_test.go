@@ -18,10 +18,10 @@ import (
 // exportMock extends the base mockPersistence with methods needed for export/import tests.
 type exportMock struct {
 	mockPersistence
-	revisions       map[string]*api.Revision
-	createdFlos     []api.Flo
+	revisions        map[string]*api.Revision
+	createdFlos      []api.Flo
 	createdRevisions []api.Revision
-	triggers        map[string][]*api.Trigger
+	triggers         map[string][]*api.Trigger
 }
 
 func newExportMock() *exportMock {

@@ -22,37 +22,37 @@ type Service struct {
 	config *config.Config
 	conn   *sqlx.DB
 
-	stmtGetOrganisations      *sqlx.NamedStmt
-	stmtGetOrganisationByID   *sqlx.NamedStmt
-	stmtCreateOrganisation    *sqlx.NamedStmt
-	stmtUpdateOrganisation    *sqlx.NamedStmt
-	stmtAddUserToOrganisation        *sqlx.NamedStmt
-	stmtGetOrganisationMembers       *sqlx.NamedStmt
-	stmtRemoveUserFromOrganisation   *sqlx.NamedStmt
-	stmtGetUserRoleInOrganisation    *sqlx.NamedStmt
-	stmtCreateOrganisationInvite     *sqlx.NamedStmt
-	stmtGetOrganisationInvites       *sqlx.NamedStmt
-	stmtGetInviteByCode              *sqlx.NamedStmt
-	stmtGetInvitePreview             *sqlx.NamedStmt
-	stmtAcceptInvite                 *sqlx.NamedStmt
-	stmtRevokeInvite                 *sqlx.NamedStmt
+	stmtGetOrganisations           *sqlx.NamedStmt
+	stmtGetOrganisationByID        *sqlx.NamedStmt
+	stmtCreateOrganisation         *sqlx.NamedStmt
+	stmtUpdateOrganisation         *sqlx.NamedStmt
+	stmtAddUserToOrganisation      *sqlx.NamedStmt
+	stmtGetOrganisationMembers     *sqlx.NamedStmt
+	stmtRemoveUserFromOrganisation *sqlx.NamedStmt
+	stmtGetUserRoleInOrganisation  *sqlx.NamedStmt
+	stmtCreateOrganisationInvite   *sqlx.NamedStmt
+	stmtGetOrganisationInvites     *sqlx.NamedStmt
+	stmtGetInviteByCode            *sqlx.NamedStmt
+	stmtGetInvitePreview           *sqlx.NamedStmt
+	stmtAcceptInvite               *sqlx.NamedStmt
+	stmtRevokeInvite               *sqlx.NamedStmt
 
 	stmtGetUserByID *sqlx.NamedStmt
 	stmtCreateUser  *sqlx.NamedStmt
 	stmtUpdateUser  *sqlx.NamedStmt
 
-	stmtGetMyFlos                *sqlx.NamedStmt
-	stmtGetMyFlosWithFilter      *sqlx.NamedStmt
-	stmtCountMyFlos              *sqlx.NamedStmt
-	stmtCountMyFlosWithFilter    *sqlx.NamedStmt
-	stmtGetOrgFlos               *sqlx.NamedStmt
-	stmtGetOrgFlosWithFilter     *sqlx.NamedStmt
-	stmtCountOrgFlos             *sqlx.NamedStmt
-	stmtCountOrgFlosWithFilter   *sqlx.NamedStmt
-	stmtGetFloByID            *sqlx.NamedStmt
-	stmtCreateFlo             *sqlx.NamedStmt
-	stmtUpdateFlo             *sqlx.NamedStmt
-	stmtDeleteFlo             *sqlx.NamedStmt
+	stmtGetMyFlos              *sqlx.NamedStmt
+	stmtGetMyFlosWithFilter    *sqlx.NamedStmt
+	stmtCountMyFlos            *sqlx.NamedStmt
+	stmtCountMyFlosWithFilter  *sqlx.NamedStmt
+	stmtGetOrgFlos             *sqlx.NamedStmt
+	stmtGetOrgFlosWithFilter   *sqlx.NamedStmt
+	stmtCountOrgFlos           *sqlx.NamedStmt
+	stmtCountOrgFlosWithFilter *sqlx.NamedStmt
+	stmtGetFloByID             *sqlx.NamedStmt
+	stmtCreateFlo              *sqlx.NamedStmt
+	stmtUpdateFlo              *sqlx.NamedStmt
+	stmtDeleteFlo              *sqlx.NamedStmt
 
 	stmtCreateFloRevision           *sqlx.NamedStmt
 	stmtGetLatestFloRevisionByFloID *sqlx.NamedStmt
@@ -65,15 +65,15 @@ type Service struct {
 
 	stmtGetFloTriggers *sqlx.NamedStmt
 
-	stmtGetLatestExecutionForFlo   *sqlx.NamedStmt
-	stmtGetRecentExecutionsForFlo  *sqlx.NamedStmt
-	stmtGetExecutions               *sqlx.NamedStmt
-	stmtGetExecutionsWithFilter     *sqlx.NamedStmt
-	stmtCountExecutions             *sqlx.NamedStmt
-	stmtCountExecutionsWithFilter   *sqlx.NamedStmt
-	stmtGetOrgExecutions            *sqlx.NamedStmt
-	stmtGetOrgExecutionsWithFilter  *sqlx.NamedStmt
-	stmtCountOrgExecutions          *sqlx.NamedStmt
+	stmtGetLatestExecutionForFlo     *sqlx.NamedStmt
+	stmtGetRecentExecutionsForFlo    *sqlx.NamedStmt
+	stmtGetExecutions                *sqlx.NamedStmt
+	stmtGetExecutionsWithFilter      *sqlx.NamedStmt
+	stmtCountExecutions              *sqlx.NamedStmt
+	stmtCountExecutionsWithFilter    *sqlx.NamedStmt
+	stmtGetOrgExecutions             *sqlx.NamedStmt
+	stmtGetOrgExecutionsWithFilter   *sqlx.NamedStmt
+	stmtCountOrgExecutions           *sqlx.NamedStmt
 	stmtCountOrgExecutionsWithFilter *sqlx.NamedStmt
 
 	stmtGetDefaultTriggerForFlo *sqlx.NamedStmt
@@ -135,60 +135,60 @@ type Service struct {
 	stmtDeleteEnvironmentSecret    *sqlx.NamedStmt
 	stmtUpdateEnvironmentSecret    *sqlx.NamedStmt
 
-	stmtGetUsageThisMonthForUserID    *sqlx.NamedStmt
-	stmtGetUsageThisMonthForOrgID    *sqlx.NamedStmt
+	stmtGetUsageThisMonthForUserID *sqlx.NamedStmt
+	stmtGetUsageThisMonthForOrgID  *sqlx.NamedStmt
 
-	stmtGetTriggers        *sqlx.NamedStmt
-	stmtGetTriggerByID     *sqlx.NamedStmt
-	stmtCreateTrigger      *sqlx.NamedStmt
-	stmtUpdateTrigger      *sqlx.NamedStmt
-	stmtDeleteTrigger      *sqlx.NamedStmt
-	stmtDeleteFloTrigger   *sqlx.NamedStmt
+	stmtGetTriggers      *sqlx.NamedStmt
+	stmtGetTriggerByID   *sqlx.NamedStmt
+	stmtCreateTrigger    *sqlx.NamedStmt
+	stmtUpdateTrigger    *sqlx.NamedStmt
+	stmtDeleteTrigger    *sqlx.NamedStmt
+	stmtDeleteFloTrigger *sqlx.NamedStmt
 
-	stmtGetGroupsByOrgID         *sqlx.NamedStmt
-	stmtGetGroupByID             *sqlx.NamedStmt
-	stmtCreateGroup              *sqlx.NamedStmt
-	stmtUpdateGroup              *sqlx.NamedStmt
-	stmtDeleteGroup              *sqlx.NamedStmt
-	stmtGetGroupMembers          *sqlx.NamedStmt
-	stmtAddUserToGroup           *sqlx.NamedStmt
-	stmtRemoveUserFromGroup      *sqlx.NamedStmt
-	stmtGetGroupPermissions      *sqlx.NamedStmt
-	stmtDeleteGroupPermissions   *sqlx.NamedStmt
-	stmtInsertGroupPermission    *sqlx.NamedStmt
-	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
-	stmtGetDefaultGroups         *sqlx.NamedStmt
-	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
-	stmtCreateFeedback           *sqlx.NamedStmt
+	stmtGetGroupsByOrgID        *sqlx.NamedStmt
+	stmtGetGroupByID            *sqlx.NamedStmt
+	stmtCreateGroup             *sqlx.NamedStmt
+	stmtUpdateGroup             *sqlx.NamedStmt
+	stmtDeleteGroup             *sqlx.NamedStmt
+	stmtGetGroupMembers         *sqlx.NamedStmt
+	stmtAddUserToGroup          *sqlx.NamedStmt
+	stmtRemoveUserFromGroup     *sqlx.NamedStmt
+	stmtGetGroupPermissions     *sqlx.NamedStmt
+	stmtDeleteGroupPermissions  *sqlx.NamedStmt
+	stmtInsertGroupPermission   *sqlx.NamedStmt
+	stmtGetUserPermissionsInOrg *sqlx.NamedStmt
+	stmtGetDefaultGroups        *sqlx.NamedStmt
+	stmtCountUserGroupsInOrg    *sqlx.NamedStmt
+	stmtCreateFeedback          *sqlx.NamedStmt
 
-	stmtGetFloFavourites    *sqlx.NamedStmt
-	stmtAddFloFavourite     *sqlx.NamedStmt
-	stmtRemoveFloFavourite  *sqlx.NamedStmt
+	stmtGetFloFavourites   *sqlx.NamedStmt
+	stmtAddFloFavourite    *sqlx.NamedStmt
+	stmtRemoveFloFavourite *sqlx.NamedStmt
 
 	// Agent statements
-	stmtGetAgents              *sqlx.NamedStmt
-	stmtGetAgentsByOrgID       *sqlx.NamedStmt
-	stmtGetAgentByID           *sqlx.NamedStmt
-	stmtCreateAgent            *sqlx.NamedStmt
-	stmtUpdateAgent            *sqlx.NamedStmt
-	stmtArchiveAgent           *sqlx.NamedStmt
-	stmtUpdateAgentStatus      *sqlx.NamedStmt
+	stmtGetAgents         *sqlx.NamedStmt
+	stmtGetAgentsByOrgID  *sqlx.NamedStmt
+	stmtGetAgentByID      *sqlx.NamedStmt
+	stmtCreateAgent       *sqlx.NamedStmt
+	stmtUpdateAgent       *sqlx.NamedStmt
+	stmtArchiveAgent      *sqlx.NamedStmt
+	stmtUpdateAgentStatus *sqlx.NamedStmt
 
-	stmtCreateAgentSession         *sqlx.NamedStmt
-	stmtEndAgentSession            *sqlx.NamedStmt
+	stmtCreateAgentSession          *sqlx.NamedStmt
+	stmtEndAgentSession             *sqlx.NamedStmt
 	stmtUpdateAgentSessionHeartbeat *sqlx.NamedStmt
-	stmtGetAgentSessions           *sqlx.NamedStmt
-	stmtGetAgentSessionByID        *sqlx.NamedStmt
-	stmtGetActiveAgentSession      *sqlx.NamedStmt
+	stmtGetAgentSessions            *sqlx.NamedStmt
+	stmtGetAgentSessionByID         *sqlx.NamedStmt
+	stmtGetActiveAgentSession       *sqlx.NamedStmt
 
 	stmtGetAgentState       *sqlx.NamedStmt
 	stmtGetAgentStateKey    *sqlx.NamedStmt
 	stmtUpsertAgentState    *sqlx.NamedStmt
 	stmtDeleteAgentStateKey *sqlx.NamedStmt
 
-	stmtGetAgentMessages       *sqlx.NamedStmt
+	stmtGetAgentMessages        *sqlx.NamedStmt
 	stmtGetAgentSessionMessages *sqlx.NamedStmt
-	stmtCreateAgentMessage     *sqlx.NamedStmt
+	stmtCreateAgentMessage      *sqlx.NamedStmt
 
 	stmtGetAgentExecutions         *sqlx.NamedStmt
 	stmtCreateAgentExecution       *sqlx.NamedStmt
@@ -198,17 +198,17 @@ type Service struct {
 	// Agent Memory Phase 1: identity + conversation scoping.
 	// See plans/agent_memory.md for the design and
 	// internal/persistence/agent_memory.go for the corresponding methods.
-	stmtGetAgentUserByID                  *sqlx.NamedStmt
-	stmtCreateAgentUser                   *sqlx.NamedStmt
-	stmtGetAgentIdentityByExternal        *sqlx.NamedStmt
-	stmtCreateAgentIdentity               *sqlx.NamedStmt
-	stmtLinkAgentIdentityToUser           *sqlx.NamedStmt
-	stmtGetAgentConversationByKey         *sqlx.NamedStmt
-	stmtCreateAgentConversation           *sqlx.NamedStmt
-	stmtTouchAgentConversation            *sqlx.NamedStmt
-	stmtGetAgentConversationMessages      *sqlx.NamedStmt
-	stmtCreateAgentMessageInConversation  *sqlx.NamedStmt
-	stmtNextAgentConversationSequence     *sqlx.NamedStmt
+	stmtGetAgentUserByID                 *sqlx.NamedStmt
+	stmtCreateAgentUser                  *sqlx.NamedStmt
+	stmtGetAgentIdentityByExternal       *sqlx.NamedStmt
+	stmtCreateAgentIdentity              *sqlx.NamedStmt
+	stmtLinkAgentIdentityToUser          *sqlx.NamedStmt
+	stmtGetAgentConversationByKey        *sqlx.NamedStmt
+	stmtCreateAgentConversation          *sqlx.NamedStmt
+	stmtTouchAgentConversation           *sqlx.NamedStmt
+	stmtGetAgentConversationMessages     *sqlx.NamedStmt
+	stmtCreateAgentMessageInConversation *sqlx.NamedStmt
+	stmtNextAgentConversationSequence    *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -3201,10 +3201,10 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 	} else {
 		if search != "" {
 			if err := s.stmtGetExecutionsWithFilter.Select(&results, struct {
-				Offset int64  `db:"offset"`
+				Offset  int64  `db:"offset"`
 				Limited int64  `db:"limit"`
-				Search string `db:"search"`
-				UserID string `db:"user_id"`
+				Search  string `db:"search"`
+				UserID  string `db:"user_id"`
 			}{Offset: offset, Limited: limit, Search: "%" + search + "%", UserID: userID}); err != nil {
 				return nil, 0, err
 			}
@@ -3216,9 +3216,9 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 			}
 		} else {
 			if err := s.stmtGetExecutions.Select(&results, struct {
-				Offset int64  `db:"offset"`
+				Offset  int64  `db:"offset"`
 				Limited int64  `db:"limit"`
-				UserID string `db:"user_id"`
+				UserID  string `db:"user_id"`
 			}{Offset: offset, Limited: limit, UserID: userID}); err != nil {
 				return nil, 0, err
 			}
