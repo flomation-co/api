@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	pgvector "github.com/pgvector/pgvector-go"
 )
 
 // --- Agent Memories ---
@@ -40,17 +41,18 @@ func (s *Service) CreateAgentMemory(mem api.AgentMemory) (*string, error) {
 	}
 	var id string
 	if err := s.stmtCreateAgentMemory.Get(&id, struct {
-		AgentID            string     `db:"agent_id"`
-		AgentUserID        *string    `db:"agent_user_id"`
-		Scope              string     `db:"scope"`
-		MemoryType         string     `db:"memory_type"`
-		Title              string     `db:"title"`
-		Body               string     `db:"body"`
-		SourceConversation *string    `db:"source_conversation"`
-		SourceMessage      *string    `db:"source_message"`
-		Confidence         float64    `db:"confidence"`
-		Pinned             bool       `db:"pinned"`
-		ExpiresAt          *time.Time `db:"expires_at"`
+		AgentID            string           `db:"agent_id"`
+		AgentUserID        *string          `db:"agent_user_id"`
+		Scope              string           `db:"scope"`
+		MemoryType         string           `db:"memory_type"`
+		Title              string           `db:"title"`
+		Body               string           `db:"body"`
+		SourceConversation *string          `db:"source_conversation"`
+		SourceMessage      *string          `db:"source_message"`
+		Confidence         float64          `db:"confidence"`
+		Pinned             bool             `db:"pinned"`
+		ExpiresAt          *time.Time       `db:"expires_at"`
+		Embedding          *pgvector.Vector `db:"embedding"`
 	}{
 		AgentID:            mem.AgentID,
 		AgentUserID:        mem.AgentUserID,
@@ -63,6 +65,7 @@ func (s *Service) CreateAgentMemory(mem api.AgentMemory) (*string, error) {
 		Confidence:         mem.Confidence,
 		Pinned:             mem.Pinned,
 		ExpiresAt:          mem.ExpiresAt,
+		Embedding:          mem.Embedding,
 	}); err != nil {
 		return nil, err
 	}

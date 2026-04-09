@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"flomation.app/automate/api"
+	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/gomega"
@@ -411,4 +412,16 @@ func Test_ExtractAgentInternal_TriggerExecutionFails_Returns500(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	Expect(w.Code).To(Equal(http.StatusInternalServerError))
+}
+
+
+// Phase 4 stubs
+func (m *phase2dMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *phase2dMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *phase2dMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
+	return nil
 }

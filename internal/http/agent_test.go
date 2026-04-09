@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	pgvector "github.com/pgvector/pgvector-go"
 	. "github.com/onsi/gomega"
 
 	"github.com/gin-gonic/gin"
@@ -762,4 +763,16 @@ func Test_CanAccessAgent_NoAccess(t *testing.T) {
 	}
 
 	Expect(svc.canAccessAgent(user, agent)).To(BeFalse())
+}
+
+
+// Phase 4 stubs
+func (m *agentMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *agentMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *agentMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
+	pgvector "github.com/pgvector/pgvector-go"
 )
 
 // Persistence defines the data access methods used by the HTTP handlers.
@@ -168,6 +169,11 @@ type Persistence interface {
 	GetDueCommitments(limit int) ([]*api.AgentCommitment, error)
 	GetCommitmentsForUser(agentUserID string, limit int) ([]*api.AgentCommitment, error)
 	UpdateCommitmentStatus(id, status string) error
+
+	// Agent Memory Phase 4: semantic retrieval with pgvector.
+	SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error)
+	GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error)
+	UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error
 
 	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error

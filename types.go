@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	pgvector "github.com/pgvector/pgvector-go"
 )
 
 const (
@@ -547,6 +548,7 @@ type AgentMemory struct {
 	SourceMessage      *string    `json:"source_message,omitempty" db:"source_message"`
 	Confidence         float64    `json:"confidence" db:"confidence"`
 	Pinned             bool       `json:"pinned" db:"pinned"`
+	Embedding          *pgvector.Vector `json:"embedding,omitempty" db:"embedding"`
 	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
 	LastUsedAt         *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty" db:"expires_at"`

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	pgvector "github.com/pgvector/pgvector-go"
 	"flomation.app/automate/api/internal/persistence"
 	. "github.com/onsi/gomega"
 
@@ -514,4 +515,16 @@ func Test_ExecutionEnvironmentSecret_MismatchedEnvironment_Returns403(t *testing
 	router.ServeHTTP(w, req)
 
 	Expect(w.Code).To(Equal(http.StatusForbidden))
+}
+
+
+// Phase 4 stubs
+func (m *mockPersistence) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *mockPersistence) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
+	return nil
 }
