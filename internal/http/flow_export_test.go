@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"flomation.app/automate/api"
+	pgvector "github.com/pgvector/pgvector-go"
 	. "github.com/onsi/gomega"
 
 	"github.com/gin-gonic/gin"
@@ -272,4 +273,16 @@ func Test_ImportFlo_MissingMetadata_Rejected(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	Expect(w.Code).To(Equal(http.StatusBadRequest))
+}
+
+
+// Phase 4 stubs
+func (m *exportMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *exportMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *exportMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
+	return nil
 }

@@ -40,6 +40,7 @@ import (
 	"flomation.app/automate/api"
 
 	"github.com/gin-gonic/gin"
+	pgvector "github.com/pgvector/pgvector-go"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -59,6 +60,7 @@ type createAgentMemoryInternalRequest struct {
 	Confidence         *float64   `json:"confidence,omitempty"`
 	Pinned             bool       `json:"pinned,omitempty"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+	Embedding          []float32  `json:"embedding,omitempty"`
 }
 
 // createAgentMemoryInternal handles POST /api/v1/internal/agent/:id/memory.
@@ -85,7 +87,7 @@ func (s *Service) createAgentMemoryInternal(c *gin.Context) {
 		confidence = *body.Confidence
 	}
 
-	id, err := s.persistence.CreateAgentMemory(api.AgentMemory{
+	mem := api.AgentMemory{
 		AgentID:            agentID,
 		AgentUserID:        body.AgentUserID,
 		Scope:              body.Scope,
@@ -97,7 +99,13 @@ func (s *Service) createAgentMemoryInternal(c *gin.Context) {
 		Confidence:         confidence,
 		Pinned:             body.Pinned,
 		ExpiresAt:          body.ExpiresAt,
-	})
+	}
+	if len(body.Embedding) > 0 {
+		vec := pgvector.NewVector(body.Embedding)
+		mem.Embedding = &vec
+	}
+
+	id, err := s.persistence.CreateAgentMemory(mem)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":    err,

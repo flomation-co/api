@@ -227,6 +227,12 @@ type Service struct {
 	stmtGetDueCommitments            *sqlx.NamedStmt
 	stmtGetCommitmentsForUser        *sqlx.NamedStmt
 	stmtUpdateCommitmentStatus       *sqlx.NamedStmt
+
+	// Agent Memory Phase 4: semantic retrieval with pgvector.
+	// See internal/persistence/agent_memory_phase4.go.
+	stmtSearchMemoriesByEmbedding    *sqlx.NamedStmt
+	stmtGetMemoriesWithoutEmbedding  *sqlx.NamedStmt
+	stmtUpdateMemoryEmbedding        *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2616,10 +2622,10 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtCreateAgentMemory, err = s.conn.PrepareNamed(`
 		INSERT INTO agent_memory (
 			agent_id, agent_user_id, scope, memory_type, title, body,
-			source_conversation, source_message, confidence, pinned, expires_at
+			source_conversation, source_message, confidence, pinned, expires_at, embedding
 		) VALUES (
 			:agent_id, :agent_user_id, :scope, :memory_type, :title, :body,
-			:source_conversation, :source_message, :confidence, :pinned, :expires_at
+			:source_conversation, :source_message, :confidence, :pinned, :expires_at, :embedding
 		)
 		RETURNING id
 	`)
@@ -2773,6 +2779,39 @@ func NewService(config *config.Config) (*Service, error) {
 		    fulfilled_at = CASE WHEN :status = 'fulfilled' AND fulfilled_at IS NULL THEN NOW() ELSE fulfilled_at END,
 		    cancelled_at = CASE WHEN :status = 'cancelled' AND cancelled_at IS NULL THEN NOW() ELSE cancelled_at END
 		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent Memory Phase 4 statements. See internal/persistence/agent_memory_phase4.go.
+
+	s.stmtSearchMemoriesByEmbedding, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_memory
+		WHERE agent_id = :agent_id
+		  AND agent_user_id = :agent_user_id
+		  AND embedding IS NOT NULL
+		  AND (NOT :exclude_pinned OR pinned = FALSE)
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY embedding <=> :query_embedding
+		LIMIT :top_k
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetMemoriesWithoutEmbedding, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_memory
+		WHERE embedding IS NULL
+		ORDER BY created_at DESC
+		LIMIT :limit
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateMemoryEmbedding, err = s.conn.PrepareNamed(`
+		UPDATE agent_memory SET embedding = :embedding WHERE id = :id
 	`)
 	if err != nil {
 		return nil, err
