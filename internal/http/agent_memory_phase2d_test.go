@@ -414,6 +414,11 @@ func Test_ExtractAgentInternal_TriggerExecutionFails_Returns500(t *testing.T) {
 	Expect(w.Code).To(Equal(http.StatusInternalServerError))
 }
 
+// Phase 5 stubs
+func (m *phase2dMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
+func (m *phase2dMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
+func (m *phase2dMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
+func (m *phase2dMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
 
 // Phase 4 stubs
 func (m *phase2dMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {

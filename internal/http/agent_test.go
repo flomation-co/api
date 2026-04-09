@@ -765,6 +765,11 @@ func Test_CanAccessAgent_NoAccess(t *testing.T) {
 	Expect(svc.canAccessAgent(user, agent)).To(BeFalse())
 }
 
+// Phase 5 stubs
+func (m *agentMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
+func (m *agentMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
+func (m *agentMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
+func (m *agentMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
 
 // Phase 4 stubs
 func (m *agentMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {

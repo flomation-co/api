@@ -233,6 +233,10 @@ type Service struct {
 	stmtSearchMemoriesByEmbedding    *sqlx.NamedStmt
 	stmtGetMemoriesWithoutEmbedding  *sqlx.NamedStmt
 	stmtUpdateMemoryEmbedding        *sqlx.NamedStmt
+
+	// Agent Memory Phase 5: identity linking.
+	stmtGetAgentIdentitiesByUserID    *sqlx.NamedStmt
+	stmtGetPendingActionByUserAndType *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2812,6 +2816,27 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtUpdateMemoryEmbedding, err = s.conn.PrepareNamed(`
 		UPDATE agent_memory SET embedding = :embedding WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent Memory Phase 5 statements. See internal/persistence/agent_memory_phase5.go.
+
+	s.stmtGetAgentIdentitiesByUserID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_identity WHERE agent_user_id = :agent_user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetPendingActionByUserAndType, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_pending_action
+		WHERE agent_user_id = :agent_user_id
+		  AND type = :type
+		  AND status IN ('awaiting_confirmation', 'confirmed_here_awaiting_other_side')
+		ORDER BY created_at DESC
+		LIMIT 1
 	`)
 	if err != nil {
 		return nil, err

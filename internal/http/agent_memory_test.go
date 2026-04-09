@@ -489,6 +489,11 @@ func Test_ResolveAgentIdentityInternal_PersistenceError_Returns500(t *testing.T)
 	Expect(w.Code).To(Equal(http.StatusInternalServerError))
 }
 
+// Phase 5 stubs
+func (m *agentMemoryMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
+func (m *agentMemoryMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
+func (m *agentMemoryMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
+func (m *agentMemoryMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
 
 // Phase 4 stubs
 func (m *agentMemoryMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {

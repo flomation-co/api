@@ -517,6 +517,11 @@ func Test_ExecutionEnvironmentSecret_MismatchedEnvironment_Returns403(t *testing
 	Expect(w.Code).To(Equal(http.StatusForbidden))
 }
 
+// Phase 5 stubs
+func (m *mockPersistence) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
+func (m *mockPersistence) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
+func (m *mockPersistence) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
+func (m *mockPersistence) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
 
 // Phase 4 stubs
 func (m *mockPersistence) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {

@@ -500,6 +500,11 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/memory/unembedded", s.getUnembeddedMemoriesInternal)
 	internal.PATCH("/memory/:id/embedding", s.updateMemoryEmbeddingInternal)
 
+	// Agent Memory Phase 5: identity linking.
+	internal.POST("/agent/:id/identity/lookup", s.lookupIdentityInternal)
+	internal.POST("/agent/:id/identity/merge", s.mergeIdentityInternal)
+	internal.GET("/agent/:id/pending-action/match", s.matchPendingActionInternal)
+
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the
 	// executor's assistant-reply hook after storing an outbound reply.

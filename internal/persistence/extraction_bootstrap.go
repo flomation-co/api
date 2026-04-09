@@ -156,6 +156,39 @@ Output:
   "confirmations": []
 }
 
+Input: {"role": "user", "content": "btw I'm also @andyesser on Slack, we've been chatting about the runner refactor there"}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [
+    {"type": "identity_link", "evidence": "btw I'm also @andyesser on Slack", "confidence": 0.9, "payload": {"channel_type": "slack", "external_id": "@andyesser"}}
+  ],
+  "commitments": [],
+  "confirmations": []
+}
+
+Input: {"role": "user", "content": "yeah that's me, go ahead and link them"}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [
+    {"pending_action_id": "", "resolution": "confirmed", "evidence": "yeah that's me, go ahead and link them"}
+  ]
+}
+
+Input: {"role": "user", "content": "no that's not me, don't link those accounts"}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [
+    {"pending_action_id": "", "resolution": "declined", "evidence": "no that's not me, don't link those accounts"}
+  ]
+}
+
 ## Rules
 
 - Return ONLY valid JSON. No markdown fences, no commentary.
@@ -166,7 +199,9 @@ Output:
 - When extracting commitments from assistant turns, set "made_by": "assistant".
 - ANY assistant reply that promises to do something later, remind the user, follow up, or check back MUST produce a commitment. Examples: "I'll remind you", "Got it, I'll ping you", "I'll check on that", "Sure, setting a reminder". Even very short confirmations are commitments if they imply a future action.
 - Reminders can be set for any duration, including 1 minute or less. Do not refuse or modify the user's requested timeframe.
-- For identity_link proposed_actions, include the claimed channel and handle in the payload.`
+- For identity_link proposed_actions, include the claimed channel and handle in the payload (channel_type and external_id fields).
+- When the user confirms or declines an identity link (or any pending action the agent asked about), emit a confirmation with resolution "confirmed" or "declined". Leave pending_action_id empty if you don't know it — the platform will match by type.
+- A confirmation is ONLY valid when the user is responding to a specific question the agent asked about linking accounts, forgetting a memory, or correcting a fact. General "yes" or "no" responses in other contexts are NOT confirmations.`
 
 // BootstrapExtractionFlow ensures the canonical extraction System Flow
 // exists. It is idempotent: re-running after the flow already exists is

@@ -175,6 +175,12 @@ type Persistence interface {
 	GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error)
 	UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error
 
+	// Agent Memory Phase 5: identity linking.
+	GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error)
+	LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error)
+	MergeAgentUsers(agentID, sourceUserID, targetUserID string) error
+	GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error)
+
 	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error
 	GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)
