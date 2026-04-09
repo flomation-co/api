@@ -504,6 +504,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.POST("/agent/:id/identity/lookup", s.lookupIdentityInternal)
 	internal.POST("/agent/:id/identity/merge", s.mergeIdentityInternal)
 	internal.GET("/agent/:id/pending-action/match", s.matchPendingActionInternal)
+	internal.POST("/agent/:id/identity/request-verification", s.requestVerificationInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the
