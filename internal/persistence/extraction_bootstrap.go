@@ -95,7 +95,8 @@ You will receive a message from either the user ("role": "user") or the assistan
 - preference: user preferences ("call me Andy not Andrew", "I prefer bullet points")
 - feedback: guidance on assistant behaviour ("don't be verbose", "always show code")
 - fact: factual information about the user ("lives in London", "works at Flomation")
-- relationship: people the user mentions ("Dave is their co-founder")
+- relationship: professional connections ("Dave is their co-founder", "Sarah is their client at Acme Corp")
+- connection: personal connections — people in the user's life who are NOT platform users. Include name, relationship, and any known attributes. Examples: "Becky — wife, birthday 9 June 1989, vegetarian", "Mum — Christine, lives in Cardiff". Auto-pinned, always included in agent context
 - task: active tasks or obligations ("owes Sarah a response on Q3 roadmap")
 - session_summary: only used by the platform for session summaries, never by extraction
 
@@ -121,6 +122,29 @@ Output:
   "confirmations": []
 }
 
+Input: {"role": "user", "content": "Can you book a table for me and Becky on Saturday? It's her birthday on the 9th and she's vegetarian."}
+Output:
+{
+  "memories": [
+    {"type": "connection", "title": "Becky", "body": "Wife/partner. Birthday: 9th (of current or next month). Vegetarian.", "confidence": 0.9},
+    {"type": "task", "title": "Book restaurant", "body": "Book a table for Saturday for user and Becky. Must have vegetarian options.", "confidence": 0.95}
+  ],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": []
+}
+
+Input: {"role": "assistant", "content": "Got it. I'll remind you in 5 minutes to go for a walk."}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [
+    {"kind": "reminder", "description": "Remind the user to go for a walk", "trigger_type": "time_elapsed", "due_in": "5 minutes", "evidence": "I'll remind you in 5 minutes to go for a walk.", "confidence": 0.95, "made_by": "assistant"}
+  ],
+  "confirmations": []
+}
+
 Input: {"role": "assistant", "content": "I'll compile a shortlist of options and get back to you within the hour."}
 Output:
 {
@@ -138,7 +162,10 @@ Output:
 - If there is nothing to extract, return: {"memories":[],"proposed_actions":[],"commitments":[],"confirmations":[]}
 - Never invent information that is not in the message.
 - Preference and feedback memories should have high confidence (0.85+) since they are auto-pinned.
-- Commitments from assistant turns should set "made_by": "assistant"; from user turns, "made_by": "user".
+- Commitments should ONLY be extracted from assistant turns (role=assistant). A user saying "remind me in 30 seconds" is a REQUEST, not a commitment — the commitment is created when the assistant CONFIRMS it in its reply. Never create commitments from user turns.
+- When extracting commitments from assistant turns, set "made_by": "assistant".
+- ANY assistant reply that promises to do something later, remind the user, follow up, or check back MUST produce a commitment. Examples: "I'll remind you", "Got it, I'll ping you", "I'll check on that", "Sure, setting a reminder". Even very short confirmations are commitments if they imply a future action.
+- Reminders can be set for any duration, including 1 minute or less. Do not refuse or modify the user's requested timeframe.
 - For identity_link proposed_actions, include the claimed channel and handle in the payload.`
 
 // BootstrapExtractionFlow ensures the canonical extraction System Flow
@@ -243,16 +270,24 @@ func buildExtractionFlowJSON() map[string]interface{} {
 	anthropicNodeID := "extraction-anthropic-002"
 	processNodeID := "extraction-process-003"
 
+	// The executor identifies nodes by data.config.type (int64):
+	//   1 = ActionTypeTrigger
+	//   2 = ActionTypeAction
+	// Inputs live inside data.config.inputs (not data.inputs).
+	// The top-level node.type (string) is used by the editor for
+	// rendering but ignored by the executor for dispatch.
 	return map[string]interface{}{
 		"nodes": []map[string]interface{}{
 			{
 				"id":   triggerNodeID,
-				"type": "trigger",
+				"type": "trigger/manual",
 				"data": map[string]interface{}{
-					"label":  "manual",
-					"name":   "Extraction Trigger",
-					"icon":   "play",
-					"inputs": []interface{}{},
+					"label": "manual",
+					"config": map[string]interface{}{
+						"id":     triggerNodeID,
+						"type":   1, // ActionTypeTrigger
+						"inputs": []interface{}{},
+					},
 				},
 				"position": map[string]interface{}{"x": 250, "y": 50},
 			},
@@ -261,14 +296,17 @@ func buildExtractionFlowJSON() map[string]interface{} {
 				"type": "action",
 				"data": map[string]interface{}{
 					"label": "ai/anthropic",
-					"name":  "Extract Memories",
-					"icon":  "brain",
-					"inputs": []map[string]interface{}{
-						{"name": "model", "value": "claude-haiku-4-5-20251001"},
-						{"name": "system_prompt", "value": extractionSystemPrompt},
-						{"name": "user_prompt", "value": "${trigger.content}"},
-						{"name": "max_tokens", "value": "2048"},
-						{"name": "temperature", "value": "0"},
+					"config": map[string]interface{}{
+						"id":   anthropicNodeID,
+						"type": 2, // ActionTypeAction
+						"inputs": []map[string]interface{}{
+							{"name": "api_key", "value": "${api_key}"},
+							{"name": "model", "value": "claude-haiku-4-5-20251001"},
+							{"name": "system_prompt", "value": extractionSystemPrompt},
+							{"name": "prompt", "value": "${content}"},
+							{"name": "max_tokens", "value": "2048"},
+							{"name": "temperature", "value": "0"},
+						},
 					},
 				},
 				"position": map[string]interface{}{"x": 250, "y": 200},
@@ -278,14 +316,17 @@ func buildExtractionFlowJSON() map[string]interface{} {
 				"type": "action",
 				"data": map[string]interface{}{
 					"label": "agent/process_extraction",
-					"name":  "Process Extraction Results",
-					"icon":  "brain",
-					"inputs": []map[string]interface{}{
-						{"name": "agent_id", "value": "${trigger.agent_id}"},
-						{"name": "extraction_json", "value": fmt.Sprintf("${node.%s.response}", anthropicNodeID)},
-						{"name": "agent_user_id", "value": "${trigger.agent_user_id}"},
-						{"name": "conversation_id", "value": "${trigger.conversation_id}"},
-						{"name": "source_message_id", "value": "${trigger.message_id}"},
+					"config": map[string]interface{}{
+						"id":   processNodeID,
+						"type": 2, // ActionTypeAction
+						"inputs": []map[string]interface{}{
+							{"name": "agent_id", "value": "${flow.agent_id}"},
+							{"name": "extraction_json", "value": "${response}"},
+							{"name": "agent_user_id", "value": "${flow.agent_user_id}"},
+							{"name": "conversation_id", "value": "${flow.conversation_id}"},
+							{"name": "source_message_id", "value": ""},
+							{"name": "role", "value": "${flow.role}"},
+						},
 					},
 				},
 				"position": map[string]interface{}{"x": 250, "y": 400},

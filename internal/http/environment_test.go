@@ -282,6 +282,9 @@ func (m *mockPersistence) ResolveOrCreateAgentIdentity(string, *string, string, 
 func (m *mockPersistence) ResolveOrCreateAgentConversation(string, *string, string, string, *string) (*api.AgentConversation, error) {
 	return nil, nil
 }
+func (m *mockPersistence) GetAgentConversationByID(string) (*api.AgentConversation, error) {
+	return nil, nil
+}
 func (m *mockPersistence) GetAgentConversationMessages(string, int) ([]*api.AgentMessage, error) {
 	return nil, nil
 }
@@ -320,6 +323,22 @@ func (m *mockPersistence) GetCommitmentsForUser(string, int) ([]*api.AgentCommit
 	return nil, nil
 }
 func (m *mockPersistence) UpdateCommitmentStatus(string, string) error { return nil }
+
+func (m *mockPersistence) UpsertGoogleAccount(string, string, string, string, string) error {
+	return nil
+}
+func (m *mockPersistence) GetGoogleAccounts(string, ...string) ([]*api.AgentUserGoogleAccount, error) {
+	return nil, nil
+}
+func (m *mockPersistence) DeleteGoogleAccount(string, string, ...string) error { return nil }
+
+func (m *mockPersistence) UpsertTriggerGoogleAccount(string, string, string, string, string) error {
+	return nil
+}
+func (m *mockPersistence) GetTriggerGoogleAccounts(string, ...string) ([]*api.TriggerGoogleAccount, error) {
+	return nil, nil
+}
+func (m *mockPersistence) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
 
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)

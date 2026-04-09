@@ -187,6 +187,9 @@ func (m *agentMock) ResolveOrCreateAgentIdentity(agentID string, organisationID 
 func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error) {
 	return nil, nil
 }
+func (m *agentMock) GetAgentConversationByID(id string) (*api.AgentConversation, error) {
+	return nil, nil
+}
 func (m *agentMock) GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error) {
 	return nil, nil
 }
@@ -238,6 +241,26 @@ func (m *agentMock) GetCommitmentsForUser(agentUserID string, limit int) ([]*api
 func (m *agentMock) UpdateCommitmentStatus(id, status string) error {
 	return nil
 }
+
+func (m *agentMock) UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error {
+	return nil
+}
+
+func (m *agentMock) GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error) {
+	return nil, nil
+}
+
+func (m *agentMock) DeleteGoogleAccount(agentUserID, email string, purpose ...string) error {
+	return nil
+}
+
+func (m *agentMock) UpsertTriggerGoogleAccount(string, string, string, string, string) error {
+	return nil
+}
+func (m *agentMock) GetTriggerGoogleAccounts(string, ...string) ([]*api.TriggerGoogleAccount, error) {
+	return nil, nil
+}
+func (m *agentMock) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
 
 func setupAgentRouter(svc *Service) *gin.Engine {
 	router := gin.New()

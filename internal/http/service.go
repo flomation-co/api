@@ -475,6 +475,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// See plans/agent_memory.md.
 	internal.POST("/agent/:id/resolve-identity", s.resolveAgentIdentityInternal)
 	internal.POST("/agent/:id/conversation", s.resolveAgentConversationInternal)
+	internal.GET("/conversation/:id", s.getAgentConversationInternal)
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
 
@@ -501,6 +502,21 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// configured, so callers can invoke it unconditionally.
 	// See internal/http/agent_memory_phase2d.go.
 	internal.POST("/agent/:id/extract", s.extractAgentInternal)
+
+	// Google Calendar: per-user account management (called by Launch OAuth callback
+	// and by the executor's calendar tool actions for token exchange).
+	internal.POST("/agent-user/:id/google-account", s.upsertGoogleAccountInternal)
+	internal.GET("/agent-user/:id/google-accounts", s.getGoogleAccountsInternal)
+	internal.GET("/agent-user/:id/google-tokens", s.getGoogleTokensInternal)
+	internal.GET("/agent-user/:id/google-refresh-tokens", s.getGoogleRefreshTokensInternal)
+	internal.DELETE("/agent-user/:id/google-account/:email", s.deleteGoogleAccountInternal)
+
+	// Trigger-scoped Google accounts (email triggers in standalone flows)
+	internal.POST("/trigger/:id/google-account", s.upsertTriggerGoogleAccountInternal)
+	internal.GET("/trigger/:id/google-accounts", s.getTriggerGoogleAccountsInternal)
+	internal.GET("/trigger/:id/google-tokens", s.getTriggerGoogleTokensInternal)
+	internal.GET("/trigger/:id/google-refresh-tokens", s.getTriggerGoogleRefreshTokensInternal)
+	internal.DELETE("/trigger/:id/google-account/:email", s.deleteTriggerGoogleAccountInternal)
 
 	return s
 }

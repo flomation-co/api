@@ -203,6 +203,7 @@ type Service struct {
 	stmtGetAgentIdentityByExternal       *sqlx.NamedStmt
 	stmtCreateAgentIdentity              *sqlx.NamedStmt
 	stmtLinkAgentIdentityToUser          *sqlx.NamedStmt
+	stmtGetAgentConversationByID         *sqlx.NamedStmt
 	stmtGetAgentConversationByKey        *sqlx.NamedStmt
 	stmtCreateAgentConversation          *sqlx.NamedStmt
 	stmtTouchAgentConversation           *sqlx.NamedStmt
@@ -713,6 +714,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.notify_on_success,
 		    f.notify_on_failure,
 		    f.notification_emails,
+		    f.system_flow,
+		    f.system_flow_purpose,
+		    f.system_prompt,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -1530,65 +1534,71 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// Atomic claim with priority: agent flows run before system flows,
+	// and only one system flow execution can run at a time. This prevents
+	// the extraction pipeline from consuming all runner capacity and
+	// blocking agent responses.
 	s.stmtGetPendingExecutionByOrganisationID, err = db.PrepareNamed(`
-		SELECT
-		    id,
-		    flo_id,
-		    name,
-		    owner_id,
-		    organisation_id,
-		    created_at,
-		    updated_at,
-		    completed_at,
-		    triggered_by,
-		    execution_status,
-		    completion_status,
-		    data,
-		    runner_id,
-		    result,
-			result->'duration' AS duration,
-			result->'billingDuration' AS billing_duration
-		FROM
-		    execution e
-		WHERE
-		    organisation_id = :organisation_id
-		AND
-		    execution_status = 'created'
-		ORDER BY created_at DESC
-		LIMIT 1
+		UPDATE execution
+		SET execution_status = 'running'
+		WHERE id = (
+		    SELECT e.id FROM execution e
+		    JOIN flo f ON f.id = e.flo_id
+		    WHERE e.organisation_id = :organisation_id
+		    AND e.execution_status = 'created'
+		    AND (
+		        f.system_flow = FALSE
+		        OR NOT EXISTS (
+		            SELECT 1 FROM execution e2
+		            JOIN flo f2 ON f2.id = e2.flo_id
+		            WHERE f2.system_flow = TRUE
+		            AND e2.execution_status = 'running'
+		        )
+		    )
+		    ORDER BY (CASE WHEN f.system_flow THEN 1 ELSE 0 END) ASC, e.created_at ASC
+		    LIMIT 1
+		    FOR UPDATE OF e SKIP LOCKED
+		)
+		RETURNING
+		    id, flo_id, name, owner_id, organisation_id,
+		    created_at, updated_at, completed_at, triggered_by,
+		    execution_status, completion_status, data, runner_id, result,
+		    result->'duration' AS duration,
+		    result->'billingDuration' AS billing_duration
 	`)
 	if err != nil {
 		return nil, err
 	}
 
 	s.stmtGetPendingExecutionByNullOrganisationID, err = db.PrepareNamed(`
-		SELECT
-		    e.id,
-		    e.flo_id,
-		    e.name,
-		    e.owner_id,
-		    e.organisation_id,
-		    e.created_at,
-		    e.updated_at,
-		    e.completed_at,
-		    e.triggered_by,
-		    e.execution_status,
-		    e.completion_status,
-		    e.data,
-		    e.runner_id,
-		    e.result,
-			e.result->'duration' AS duration,
-			e.result->'billingDuration' AS billing_duration
-		FROM
-		    execution e
-		LEFT JOIN
-		    organisation o ON e.organisation_id = o.id
-		WHERE
-		    e.execution_status = 'created'
-		AND
-		    (e.organisation_id IS NULL OR o.allow_public_runners = true)
-		ORDER BY e.created_at DESC
-		LIMIT 1
+		UPDATE execution
+		SET execution_status = 'running'
+		WHERE id = (
+		    SELECT e.id
+		    FROM execution e
+		    JOIN flo f ON f.id = e.flo_id
+		    LEFT JOIN organisation o ON e.organisation_id = o.id
+		    WHERE e.execution_status = 'created'
+		    AND (e.organisation_id IS NULL OR o.allow_public_runners = true)
+		    AND (
+		        f.system_flow = FALSE
+		        OR NOT EXISTS (
+		            SELECT 1 FROM execution e2
+		            JOIN flo f2 ON f2.id = e2.flo_id
+		            WHERE f2.system_flow = TRUE
+		            AND e2.execution_status = 'running'
+		        )
+		    )
+		    ORDER BY (CASE WHEN f.system_flow THEN 1 ELSE 0 END) ASC, e.created_at ASC
+		    LIMIT 1
+		    FOR UPDATE OF e SKIP LOCKED
+		)
+		RETURNING
+		    id, flo_id, name, owner_id, organisation_id,
+		    created_at, updated_at, completed_at, triggered_by,
+		    execution_status, completion_status, data, runner_id, result,
+		    result->'duration' AS duration,
+		    result->'billingDuration' AS billing_duration
 	`)
 	if err != nil {
 		return nil, err
@@ -2227,7 +2237,7 @@ func NewService(config *config.Config) (*Service, error) {
 	// --- Agent statements ---
 
 	s.stmtGetAgents, err = s.conn.PrepareNamed(`
-		SELECT a.*, COALESCE(mc.cnt, 0) AS message_count, COALESCE(ec.cnt, 0) AS execution_count
+		SELECT a.*, NULL AS ai_api_key, COALESCE(mc.cnt, 0) AS message_count, COALESCE(ec.cnt, 0) AS execution_count
 		FROM agent a
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
@@ -2239,7 +2249,7 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtGetAgentsByOrgID, err = s.conn.PrepareNamed(`
-		SELECT a.*, COALESCE(mc.cnt, 0) AS message_count, COALESCE(ec.cnt, 0) AS execution_count
+		SELECT a.*, NULL AS ai_api_key, COALESCE(mc.cnt, 0) AS message_count, COALESCE(ec.cnt, 0) AS execution_count
 		FROM agent a
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
@@ -2252,6 +2262,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetAgentByID, err = s.conn.PrepareNamed(`
 		SELECT a.*,
+			CASE WHEN a.ai_api_key IS NOT NULL THEN PGP_SYM_DECRYPT(a.ai_api_key, :encrypt_key) ELSE NULL END AS ai_api_key,
 			COALESCE(mc.cnt, 0) AS message_count,
 			COALESCE(ec.cnt, 0) AS execution_count,
 			f.name AS orchestrator_flow_name,
@@ -2269,11 +2280,12 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCreateAgent, err = s.conn.PrepareNamed(`
 		INSERT INTO agent (name, description, owner_id, organisation_id, environment_id, queue_id,
-			system_prompt, orchestrator_flow_id, extraction_flow_id,
+			system_prompt, orchestrator_flow_id, extraction_flow_id, ai_api_key,
 			max_concurrent_executions, idle_timeout_seconds,
 			channels, requires_approval, max_executions_per_hour)
 		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
 			:system_prompt, :orchestrator_flow_id, :extraction_flow_id,
+			PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
 			:max_concurrent_executions, :idle_timeout_seconds,
 			:channels, :requires_approval, :max_executions_per_hour)
 		RETURNING id
@@ -2287,7 +2299,7 @@ func NewService(config *config.Config) (*Service, error) {
 			name = :name, description = :description, environment_id = :environment_id,
 			queue_id = :queue_id, system_prompt = :system_prompt,
 			orchestrator_flow_id = :orchestrator_flow_id,
-			extraction_flow_id = :extraction_flow_id,
+			ai_api_key = PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
 			max_concurrent_executions = :max_concurrent_executions,
 			idle_timeout_seconds = :idle_timeout_seconds, channels = :channels,
 			requires_approval = :requires_approval,
@@ -2520,6 +2532,13 @@ func NewService(config *config.Config) (*Service, error) {
 	// at-most-one open conversation per (agent, channel_type, channel_id,
 	// thread_id). A closed conversation with the same key is ignored — a
 	// fresh conversation row will be created on the next turn.
+	s.stmtGetAgentConversationByID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_conversation WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	s.stmtGetAgentConversationByKey, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_conversation
 		WHERE agent_id = :agent_id

@@ -147,6 +147,7 @@ type Persistence interface {
 	// Agent Memory Phase 1: identity + conversation scoping. See
 	// plans/agent_memory.md and internal/persistence/agent_memory.go.
 	ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error)
+	GetAgentConversationByID(id string) (*api.AgentConversation, error)
 	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error)
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
@@ -167,4 +168,14 @@ type Persistence interface {
 	GetDueCommitments(limit int) ([]*api.AgentCommitment, error)
 	GetCommitmentsForUser(agentUserID string, limit int) ([]*api.AgentCommitment, error)
 	UpdateCommitmentStatus(id, status string) error
+
+	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
+	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error
+	GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)
+	DeleteGoogleAccount(agentUserID, email string, purpose ...string) error
+
+	// Google account connections — trigger scoped (standalone flows)
+	UpsertTriggerGoogleAccount(triggerID, email, refreshToken, label, purpose string) error
+	GetTriggerGoogleAccounts(triggerID string, purpose ...string) ([]*api.TriggerGoogleAccount, error)
+	DeleteTriggerGoogleAccount(triggerID, email string, purpose ...string) error
 }

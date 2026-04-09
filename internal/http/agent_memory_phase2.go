@@ -354,7 +354,7 @@ func (s *Service) createAgentCommitmentInternal(c *gin.Context) {
 		Payload:            body.Payload,
 		TriggerType:        body.TriggerType,
 		DueAt:              body.DueAt,
-		Condition:          body.Condition,
+		Condition:          &body.Condition,
 		SourceConversation: body.SourceConversation,
 		SourceMessage:      body.SourceMessage,
 		MadeBy:             body.MadeBy,

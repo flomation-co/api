@@ -13,6 +13,7 @@ package http
 
 import (
 	"net/http"
+	"time"
 
 	"flomation.app/automate/api"
 
@@ -131,6 +132,24 @@ func (s *Service) resolveAgentConversationInternal(c *gin.Context) {
 	c.JSON(http.StatusOK, conv)
 }
 
+// getAgentConversationInternal handles GET /api/v1/internal/conversation/:id.
+// Returns the conversation record including channel_type, channel_id, and
+// thread_id. Used by the commitment poller to reconstruct channel details
+// for proactive message delivery.
+func (s *Service) getAgentConversationInternal(c *gin.Context) {
+	conversationID := c.Param("id")
+	conv, err := s.persistence.GetAgentConversationByID(conversationID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if conv == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	c.JSON(http.StatusOK, conv)
+}
+
 // getAgentConversationHistoryInternal handles GET /api/v1/internal/conversation/:id/history.
 //
 // Returns the last N messages for a conversation in chronological order
@@ -219,7 +238,7 @@ func (s *Service) createAgentConversationMessageInternal(c *gin.Context) {
 		return
 	}
 
-	msgID, err := s.persistence.CreateAgentMessageInConversation(api.AgentMessage{
+	msg := api.AgentMessage{
 		AgentID:        agentID,
 		ConversationID: &conversationID,
 		Direction:      body.Direction,
@@ -228,7 +247,19 @@ func (s *Service) createAgentConversationMessageInternal(c *gin.Context) {
 		Content:        body.Content,
 		Metadata:       body.Metadata,
 		ExecutionID:    body.ExecutionID,
-	})
+	}
+
+	// Attach active session so the message appears in the Editor session view
+	if session, err := s.persistence.GetActiveAgentSession(agentID); err != nil {
+		log.WithFields(log.Fields{
+			"error":    err,
+			"agent_id": agentID,
+		}).Warn("failed to resolve active session for SSE publish")
+	} else if session != nil {
+		msg.SessionID = &session.ID
+	}
+
+	msgID, err := s.persistence.CreateAgentMessageInConversation(msg)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":           err,
@@ -237,6 +268,13 @@ func (s *Service) createAgentConversationMessageInternal(c *gin.Context) {
 		}).Error("unable to create conversation message (internal)")
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
+	}
+
+	// Publish to SSE so the Editor session view updates in real-time
+	if msg.SessionID != nil {
+		msg.ID = *msgID
+		msg.CreatedAt = time.Now()
+		s.agentSessionHub.PublishJSON(*msg.SessionID, "message", msg)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": *msgID})

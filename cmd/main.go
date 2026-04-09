@@ -39,6 +39,7 @@ func main() {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to create persistence service")
+		return
 	}
 
 	// Phase 2d-γ: seed the canonical extraction System Flow if it
@@ -50,6 +51,10 @@ func main() {
 			"error": err,
 		}).Warn("extraction flow bootstrap failed (non-fatal, extraction will be disabled)")
 	}
+
+	// Background reaper for stuck/stale executions. Cancels zombies
+	// (running > 5 min) and stale system flow queue entries (created > 10 min).
+	db.StartExecutionReaper()
 
 	httpService := http.NewService(cfg, db)
 

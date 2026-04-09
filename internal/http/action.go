@@ -30,6 +30,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"error":       {Key: "error", Name: "Error Handling", Icon: "triangle-exclamation", Description: "Handle and recover from flow errors"},
 	"agent":       {Key: "agent", Name: "Agent", Icon: "robot", Description: "Interact with Flomation Agents"},
 	"messaging":   {Key: "messaging", Name: "Messaging", Icon: "comments", Description: "Send messages via various channels"},
+	"tools":       {Key: "tools", Name: "Tools", Icon: "wrench", Description: "AI tool implementations for function calling"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.

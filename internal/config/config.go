@@ -27,8 +27,9 @@ type SecurityConfig struct {
 }
 
 type LaunchConfig struct {
-	URL    string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
-	APIURL string `json:"api_url" env:"API_PUBLIC_URL" arg:"api-public-url"`
+	URL       string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
+	PublicURL string `json:"public_url" env:"LAUNCH_PUBLIC_URL" arg:"launch-public-url"`
+	APIURL    string `json:"api_url" env:"API_PUBLIC_URL" arg:"api-public-url"`
 }
 
 type SMTPConfig struct {
