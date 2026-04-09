@@ -131,6 +131,24 @@ func (s *Service) resolveAgentConversationInternal(c *gin.Context) {
 	c.JSON(http.StatusOK, conv)
 }
 
+// getAgentConversationInternal handles GET /api/v1/internal/conversation/:id.
+// Returns the conversation record including channel_type, channel_id, and
+// thread_id. Used by the commitment poller to reconstruct channel details
+// for proactive message delivery.
+func (s *Service) getAgentConversationInternal(c *gin.Context) {
+	conversationID := c.Param("id")
+	conv, err := s.persistence.GetAgentConversationByID(conversationID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if conv == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	c.JSON(http.StatusOK, conv)
+}
+
 // getAgentConversationHistoryInternal handles GET /api/v1/internal/conversation/:id/history.
 //
 // Returns the last N messages for a conversation in chronological order

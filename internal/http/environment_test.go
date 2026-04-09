@@ -282,6 +282,9 @@ func (m *mockPersistence) ResolveOrCreateAgentIdentity(string, *string, string, 
 func (m *mockPersistence) ResolveOrCreateAgentConversation(string, *string, string, string, *string) (*api.AgentConversation, error) {
 	return nil, nil
 }
+func (m *mockPersistence) GetAgentConversationByID(string) (*api.AgentConversation, error) {
+	return nil, nil
+}
 func (m *mockPersistence) GetAgentConversationMessages(string, int) ([]*api.AgentMessage, error) {
 	return nil, nil
 }

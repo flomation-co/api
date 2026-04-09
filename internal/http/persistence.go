@@ -147,6 +147,7 @@ type Persistence interface {
 	// Agent Memory Phase 1: identity + conversation scoping. See
 	// plans/agent_memory.md and internal/persistence/agent_memory.go.
 	ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error)
+	GetAgentConversationByID(id string) (*api.AgentConversation, error)
 	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error)
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)

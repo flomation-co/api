@@ -212,6 +212,20 @@ func (s *Service) ResolveOrCreateAgentIdentity(
 
 // --- Agent Conversations ---
 
+// GetAgentConversationByID returns a conversation by primary key, or (nil, nil).
+func (s *Service) GetAgentConversationByID(id string) (*api.AgentConversation, error) {
+	var result api.AgentConversation
+	if err := s.stmtGetAgentConversationByID.Get(&result, struct {
+		ID string `db:"id"`
+	}{ID: id}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &result, nil
+}
+
 // GetAgentConversationByKey resolves an OPEN conversation by its natural
 // key (agent, channel_type, channel_id, thread_id). Returns (nil, nil) if
 // no open conversation exists for that key. Closed conversations are

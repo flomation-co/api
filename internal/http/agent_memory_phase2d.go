@@ -160,6 +160,11 @@ func (s *Service) extractAgentInternal(c *gin.Context) {
 	if body.ConversationID != nil {
 		triggerData["conversation_id"] = *body.ConversationID
 	}
+	// Pass the agent's AI API key so the extraction flow's Anthropic
+	// node can authenticate without depending on a user environment.
+	if agent.AIAPIKey != nil && *agent.AIAPIKey != "" {
+		triggerData["api_key"] = *agent.AIAPIKey
+	}
 
 	// Marshal once so the shape is fixed; TriggerExecution accepts
 	// interface{} and stores the raw JSON on the execution row.

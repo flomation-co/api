@@ -475,6 +475,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// See plans/agent_memory.md.
 	internal.POST("/agent/:id/resolve-identity", s.resolveAgentIdentityInternal)
 	internal.POST("/agent/:id/conversation", s.resolveAgentConversationInternal)
+	internal.GET("/conversation/:id", s.getAgentConversationInternal)
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
 

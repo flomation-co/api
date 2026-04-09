@@ -101,6 +101,8 @@ type Flo struct {
 	NotifyOnFailure     bool              `json:"notify_on_failure" db:"notify_on_failure"`
 	NotificationEmails  *string           `json:"notification_emails,omitempty" db:"notification_emails"`
 	SystemPrompt        *string           `json:"system_prompt,omitempty" db:"system_prompt"`
+	SystemFlow          bool              `json:"system_flow" db:"system_flow"`
+	SystemFlowPurpose   *string           `json:"system_flow_purpose,omitempty" db:"system_flow_purpose"`
 }
 
 type ExecutionStatus struct {
@@ -380,19 +382,21 @@ type Agent struct {
 	// dispatch after every turn to pull memories, pending actions, and
 	// commitments out of the conversation. NULL until Phase 2d-γ seeds
 	// the canonical extraction flow and backfills existing agents.
-	ExtractionFlowID        *string         `json:"extraction_flow_id,omitempty" db:"extraction_flow_id"`
-	MaxConcurrentExecutions int             `json:"max_concurrent_executions" db:"max_concurrent_executions"`
-	IdleTimeoutSeconds      int             `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
-	Channels                json.RawMessage `json:"channels" db:"channels"`
-	AllowedFlowIDs          pq.StringArray  `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
-	RequiresApproval        bool            `json:"requires_approval" db:"requires_approval"`
-	MaxExecutionsPerHour    int             `json:"max_executions_per_hour" db:"max_executions_per_hour"`
-	Status                  string          `json:"status" db:"status"`
-	StartedAt               *time.Time      `json:"started_at,omitempty" db:"started_at"`
-	StoppedAt               *time.Time      `json:"stopped_at,omitempty" db:"stopped_at"`
-	CreatedAt               time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt               time.Time       `json:"updated_at" db:"updated_at"`
-	ArchivedAt              *time.Time      `json:"archived_at,omitempty" db:"archived_at"`
+	ExtractionFlowID         *string         `json:"extraction_flow_id,omitempty" db:"extraction_flow_id"`
+	AIAPIKey                 *string         `json:"ai_api_key,omitempty" db:"ai_api_key"`
+	ConversationHistoryLimit int             `json:"conversation_history_limit" db:"conversation_history_limit"`
+	MaxConcurrentExecutions  int             `json:"max_concurrent_executions" db:"max_concurrent_executions"`
+	IdleTimeoutSeconds       int             `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
+	Channels                 json.RawMessage `json:"channels" db:"channels"`
+	AllowedFlowIDs           pq.StringArray  `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
+	RequiresApproval         bool            `json:"requires_approval" db:"requires_approval"`
+	MaxExecutionsPerHour     int             `json:"max_executions_per_hour" db:"max_executions_per_hour"`
+	Status                   string          `json:"status" db:"status"`
+	StartedAt                *time.Time      `json:"started_at,omitempty" db:"started_at"`
+	StoppedAt                *time.Time      `json:"stopped_at,omitempty" db:"stopped_at"`
+	CreatedAt                time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt                time.Time       `json:"updated_at" db:"updated_at"`
+	ArchivedAt               *time.Time      `json:"archived_at,omitempty" db:"archived_at"`
 	// Computed fields (populated at read time)
 	ActiveSessionID      *string    `json:"active_session_id,omitempty"`
 	MessageCount         int64      `json:"message_count" db:"message_count"`
@@ -542,25 +546,25 @@ type AgentPendingAction struct {
 //
 // See plans/agent_memory.md §"Commitments" and migration 42.
 type AgentCommitment struct {
-	ID                 string          `json:"id" db:"id"`
-	AgentID            string          `json:"agent_id" db:"agent_id"`
-	AgentUserID        *string         `json:"agent_user_id,omitempty" db:"agent_user_id"`
-	ConversationID     *string         `json:"conversation_id,omitempty" db:"conversation_id"`
-	Kind               string          `json:"kind" db:"kind"`
-	Description        string          `json:"description" db:"description"`
-	Payload            json.RawMessage `json:"payload" db:"payload"`
-	TriggerType        string          `json:"trigger_type" db:"trigger_type"`
-	DueAt              *time.Time      `json:"due_at,omitempty" db:"due_at"`
-	Condition          json.RawMessage `json:"condition,omitempty" db:"condition"`
-	Status             string          `json:"status" db:"status"`
-	SourceConversation *string         `json:"source_conversation,omitempty" db:"source_conversation"`
-	SourceMessage      *string         `json:"source_message,omitempty" db:"source_message"`
-	MadeBy             string          `json:"made_by" db:"made_by"`
-	CreatedAt          time.Time       `json:"created_at" db:"created_at"`
-	FiredAt            *time.Time      `json:"fired_at,omitempty" db:"fired_at"`
-	FulfilledAt        *time.Time      `json:"fulfilled_at,omitempty" db:"fulfilled_at"`
-	CancelledAt        *time.Time      `json:"cancelled_at,omitempty" db:"cancelled_at"`
-	ExpiresAt          *time.Time      `json:"expires_at,omitempty" db:"expires_at"`
+	ID                 string           `json:"id" db:"id"`
+	AgentID            string           `json:"agent_id" db:"agent_id"`
+	AgentUserID        *string          `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	ConversationID     *string          `json:"conversation_id,omitempty" db:"conversation_id"`
+	Kind               string           `json:"kind" db:"kind"`
+	Description        string           `json:"description" db:"description"`
+	Payload            json.RawMessage  `json:"payload" db:"payload"`
+	TriggerType        string           `json:"trigger_type" db:"trigger_type"`
+	DueAt              *time.Time       `json:"due_at,omitempty" db:"due_at"`
+	Condition          *json.RawMessage `json:"condition,omitempty" db:"condition"`
+	Status             string           `json:"status" db:"status"`
+	SourceConversation *string          `json:"source_conversation,omitempty" db:"source_conversation"`
+	SourceMessage      *string          `json:"source_message,omitempty" db:"source_message"`
+	MadeBy             string           `json:"made_by" db:"made_by"`
+	CreatedAt          time.Time        `json:"created_at" db:"created_at"`
+	FiredAt            *time.Time       `json:"fired_at,omitempty" db:"fired_at"`
+	FulfilledAt        *time.Time       `json:"fulfilled_at,omitempty" db:"fulfilled_at"`
+	CancelledAt        *time.Time       `json:"cancelled_at,omitempty" db:"cancelled_at"`
+	ExpiresAt          *time.Time       `json:"expires_at,omitempty" db:"expires_at"`
 }
 
 type AgentExecution struct {

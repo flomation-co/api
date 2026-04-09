@@ -187,6 +187,9 @@ func (m *agentMock) ResolveOrCreateAgentIdentity(agentID string, organisationID 
 func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error) {
 	return nil, nil
 }
+func (m *agentMock) GetAgentConversationByID(id string) (*api.AgentConversation, error) {
+	return nil, nil
+}
 func (m *agentMock) GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error) {
 	return nil, nil
 }

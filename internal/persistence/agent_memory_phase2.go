@@ -236,8 +236,8 @@ func (s *Service) CreateAgentCommitment(c api.AgentCommitment) (*string, error) 
 	// Condition is nullable; normalise nil/empty to a proper SQL NULL by
 	// passing a nil pointer when the caller didn't supply one.
 	var condition interface{}
-	if len(c.Condition) > 0 {
-		condition = []byte(c.Condition)
+	if c.Condition != nil && len(*c.Condition) > 0 {
+		condition = []byte(*c.Condition)
 	}
 	status := c.Status
 	if status == "" {

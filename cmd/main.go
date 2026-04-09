@@ -51,6 +51,10 @@ func main() {
 		}).Warn("extraction flow bootstrap failed (non-fatal, extraction will be disabled)")
 	}
 
+	// Background reaper for stuck/stale executions. Cancels zombies
+	// (running > 5 min) and stale system flow queue entries (created > 10 min).
+	db.StartExecutionReaper()
+
 	httpService := http.NewService(cfg, db)
 
 	log.Fatal(httpService.Listen())

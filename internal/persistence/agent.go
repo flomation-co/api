@@ -34,8 +34,9 @@ func (s *Service) GetAgentsByOrgID(organisationID string) ([]*api.Agent, error) 
 func (s *Service) GetAgentByID(id string) (*api.Agent, error) {
 	var agent api.Agent
 	if err := s.stmtGetAgentByID.Get(&agent, struct {
-		ID string `db:"id"`
-	}{ID: id}); err != nil {
+		ID         string `db:"id"`
+		EncryptKey string `db:"encrypt_key"`
+	}{ID: id, EncryptKey: s.config.Database.EncryptionKey}); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -62,6 +63,8 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		SystemPrompt            *string         `db:"system_prompt"`
 		OrchestratorFlowID      *string         `db:"orchestrator_flow_id"`
 		ExtractionFlowID        *string         `db:"extraction_flow_id"`
+		AIAPIKey                *string         `db:"ai_api_key"`
+		EncryptKey              string          `db:"encrypt_key"`
 		MaxConcurrentExecutions int             `db:"max_concurrent_executions"`
 		IdleTimeoutSeconds      int             `db:"idle_timeout_seconds"`
 		Channels                json.RawMessage `db:"channels"`
@@ -77,6 +80,8 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		SystemPrompt:            agent.SystemPrompt,
 		OrchestratorFlowID:      agent.OrchestratorFlowID,
 		ExtractionFlowID:        agent.ExtractionFlowID,
+		AIAPIKey:                agent.AIAPIKey,
+		EncryptKey:              s.config.Database.EncryptionKey,
 		MaxConcurrentExecutions: agent.MaxConcurrentExecutions,
 		IdleTimeoutSeconds:      agent.IdleTimeoutSeconds,
 		Channels:                channelsJSON,
@@ -103,7 +108,8 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		QueueID                 *string         `db:"queue_id"`
 		SystemPrompt            *string         `db:"system_prompt"`
 		OrchestratorFlowID      *string         `db:"orchestrator_flow_id"`
-		ExtractionFlowID        *string         `db:"extraction_flow_id"`
+		AIAPIKey                *string         `db:"ai_api_key"`
+		EncryptKey              string          `db:"encrypt_key"`
 		MaxConcurrentExecutions int             `db:"max_concurrent_executions"`
 		IdleTimeoutSeconds      int             `db:"idle_timeout_seconds"`
 		Channels                json.RawMessage `db:"channels"`
@@ -117,7 +123,8 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		QueueID:                 agent.QueueID,
 		SystemPrompt:            agent.SystemPrompt,
 		OrchestratorFlowID:      agent.OrchestratorFlowID,
-		ExtractionFlowID:        agent.ExtractionFlowID,
+		AIAPIKey:                agent.AIAPIKey,
+		EncryptKey:              s.config.Database.EncryptionKey,
 		MaxConcurrentExecutions: agent.MaxConcurrentExecutions,
 		IdleTimeoutSeconds:      agent.IdleTimeoutSeconds,
 		Channels:                channelsJSON,
