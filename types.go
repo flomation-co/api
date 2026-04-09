@@ -455,6 +455,43 @@ type AgentUser struct {
 	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
 }
 
+// AgentUserGoogleAccount represents a connected Google account for an
+// agent_user. Each user can connect multiple accounts (work + personal).
+// Tokens are encrypted at rest and scoped per-account.
+type AgentUserGoogleAccount struct {
+	ID            string    `json:"id" db:"id"`
+	AgentUserID   string    `json:"agent_user_id" db:"agent_user_id"`
+	GoogleEmail   string    `json:"google_email" db:"google_email"`
+	RefreshToken  []byte    `json:"-" db:"refresh_token"` // never serialised to JSON
+	Scopes        *string   `json:"scopes,omitempty" db:"scopes"`
+	Label         *string   `json:"label,omitempty" db:"label"`
+	Purpose       string    `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
+	ConnectedAt   time.Time `json:"connected_at" db:"connected_at"`
+}
+
+// TriggerGoogleAccount represents a Google account connected directly to
+// a trigger (not an agent_user). Used by email triggers in standalone flows.
+type TriggerGoogleAccount struct {
+	ID           string    `json:"id" db:"id"`
+	TriggerID    string    `json:"trigger_id" db:"trigger_id"`
+	GoogleEmail  string    `json:"google_email" db:"google_email"`
+	RefreshToken []byte    `json:"-" db:"refresh_token"`
+	Scopes       *string   `json:"scopes,omitempty" db:"scopes"`
+	Label        *string   `json:"label,omitempty" db:"label"`
+	Purpose      string    `json:"purpose" db:"purpose"`
+	ConnectedAt  time.Time `json:"connected_at" db:"connected_at"`
+}
+
+// GoogleTokenResponse is returned by the internal token endpoint.
+// The executor's calendar tool actions receive this and use the
+// access_token to call Google APIs.
+type GoogleTokenResponse struct {
+	Email       string `json:"email"`
+	Label       string `json:"label,omitempty"`
+	AccessToken string `json:"access_token,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
 // AgentIdentity maps a per-channel external identifier (Slack user_id,
 // Telegram sender_id, email address, etc.) to an AgentUser. A single
 // AgentUser may accumulate multiple identities over time via the

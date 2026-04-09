@@ -168,4 +168,14 @@ type Persistence interface {
 	GetDueCommitments(limit int) ([]*api.AgentCommitment, error)
 	GetCommitmentsForUser(agentUserID string, limit int) ([]*api.AgentCommitment, error)
 	UpdateCommitmentStatus(id, status string) error
+
+	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
+	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error
+	GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)
+	DeleteGoogleAccount(agentUserID, email string, purpose ...string) error
+
+	// Google account connections — trigger scoped (standalone flows)
+	UpsertTriggerGoogleAccount(triggerID, email, refreshToken, label, purpose string) error
+	GetTriggerGoogleAccounts(triggerID string, purpose ...string) ([]*api.TriggerGoogleAccount, error)
+	DeleteTriggerGoogleAccount(triggerID, email string, purpose ...string) error
 }

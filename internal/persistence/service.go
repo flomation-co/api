@@ -2262,7 +2262,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetAgentByID, err = s.conn.PrepareNamed(`
 		SELECT a.*,
-			CASE WHEN a.ai_api_key IS NOT NULL THEN PGP_SYM_DECRYPT(a.ai_api_key::bytea, :encrypt_key) ELSE NULL END AS ai_api_key,
+			CASE WHEN a.ai_api_key IS NOT NULL THEN PGP_SYM_DECRYPT(a.ai_api_key, :encrypt_key) ELSE NULL END AS ai_api_key,
 			COALESCE(mc.cnt, 0) AS message_count,
 			COALESCE(ec.cnt, 0) AS execution_count,
 			f.name AS orchestrator_flow_name,
@@ -2285,7 +2285,7 @@ func NewService(config *config.Config) (*Service, error) {
 			channels, requires_approval, max_executions_per_hour)
 		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
 			:system_prompt, :orchestrator_flow_id, :extraction_flow_id,
-			CASE WHEN :ai_api_key IS NOT NULL AND :ai_api_key != '' THEN PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key) ELSE NULL END,
+			PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
 			:max_concurrent_executions, :idle_timeout_seconds,
 			:channels, :requires_approval, :max_executions_per_hour)
 		RETURNING id
@@ -2299,7 +2299,7 @@ func NewService(config *config.Config) (*Service, error) {
 			name = :name, description = :description, environment_id = :environment_id,
 			queue_id = :queue_id, system_prompt = :system_prompt,
 			orchestrator_flow_id = :orchestrator_flow_id,
-			ai_api_key = CASE WHEN :ai_api_key IS NOT NULL AND :ai_api_key != '' THEN PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key) ELSE NULL END,
+			ai_api_key = PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
 			max_concurrent_executions = :max_concurrent_executions,
 			idle_timeout_seconds = :idle_timeout_seconds, channels = :channels,
 			requires_approval = :requires_approval,

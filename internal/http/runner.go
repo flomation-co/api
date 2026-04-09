@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -56,51 +57,43 @@ func (s *Service) verifyPayload(runnerKey string, c *gin.Context) error {
 		return errors.New("invalid block type")
 	}
 
-	var body []byte
+	// All requests use the X-Flomation-Runner-Signature header.
+	// POST: signature covers the request body.
+	// GET:  signature covers the route :id parameter (no body).
+	// Legacy: GET requests may also pass the signature as ?token= query param.
+	header := c.GetHeader("X-Flomation-Runner-Signature")
+	if header == "" {
+		// Fall back to ?token= for backwards compatibility with older
+		// executor binaries that sign environment GETs via query param.
+		header = c.DefaultQuery("token", "")
+	}
+	if header == "" {
+		return errors.New("missing signature (header or token param)")
+	}
+
+	sig, err := hex.DecodeString(header)
+	if err != nil {
+		return fmt.Errorf("invalid signature encoding: %w", err)
+	}
+
+	var hash [32]byte
 	if c.Request.Method == http.MethodGet {
-		q := c.DefaultQuery("token", "")
-		if q == "" {
-			return errors.New("missing request token")
-		}
-
-		sig, err := hex.DecodeString(q)
-		if err != nil {
-			return err
-		}
-
 		id := c.Param("id")
 		if id == "" {
 			return errors.New("unable to get execution id")
 		}
-
-		hash := sha256.Sum256([]byte(id))
-		if err := rsa.VerifyPSS(key, crypto.SHA256, hash[:], sig, nil); err != nil {
-			return err
-		}
+		hash = sha256.Sum256([]byte(id))
 	} else {
-		var err error
-		body, err = io.ReadAll(c.Request.Body)
+		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			return err
 		}
-
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+		hash = sha256.Sum256(body)
+	}
 
-		hash := sha256.Sum256(body)
-
-		header := c.GetHeader("X-Flomation-Runner-Signature")
-		if header == "" {
-			return errors.New("missing signature header")
-		}
-
-		headerDecoded, err := hex.DecodeString(header)
-		if err != nil {
-			return err
-		}
-
-		if err = rsa.VerifyPSS(key, crypto.SHA256, hash[:], headerDecoded, nil); err != nil {
-			return err
-		}
+	if err := rsa.VerifyPSS(key, crypto.SHA256, hash[:], sig, nil); err != nil {
+		return err
 	}
 
 	return nil

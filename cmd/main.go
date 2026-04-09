@@ -39,6 +39,7 @@ func main() {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to create persistence service")
+		return
 	}
 
 	// Phase 2d-γ: seed the canonical extraction System Flow if it
