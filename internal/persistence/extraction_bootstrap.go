@@ -168,6 +168,8 @@ Output:
 }
 
 Input: {"role": "user", "content": "yeah that's me, go ahead and link them"}
+Recent conversation for context (if available):
+[{"role":"assistant","content":"You mentioned you're andy@flomation.co on email — shall I link that so I recognise you as the same person across channels?"},{"role":"user","content":"yeah that's me, go ahead and link them"}]
 Output:
 {
   "memories": [],
@@ -178,7 +180,22 @@ Output:
   ]
 }
 
+Input: {"role": "user", "content": "Yes"}
+Recent conversation for context (if available):
+[{"role":"assistant","content":"You mentioned you're also reachable at andy@flomation.co — shall I link that so I recognise you as the same person across channels? Just say yes to confirm."},{"role":"user","content":"Yes"}]
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [
+    {"pending_action_id": "", "resolution": "confirmed", "evidence": "Yes"}
+  ]
+}
+
 Input: {"role": "user", "content": "no that's not me, don't link those accounts"}
+Recent conversation for context (if available):
+[{"role":"assistant","content":"You mentioned you're andy@flomation.co on email — shall I link that?"},{"role":"user","content":"no that's not me, don't link those accounts"}]
 Output:
 {
   "memories": [],
@@ -199,9 +216,10 @@ Output:
 - When extracting commitments from assistant turns, set "made_by": "assistant".
 - ANY assistant reply that promises to do something later, remind the user, follow up, or check back MUST produce a commitment. Examples: "I'll remind you", "Got it, I'll ping you", "I'll check on that", "Sure, setting a reminder". Even very short confirmations are commitments if they imply a future action.
 - Reminders can be set for any duration, including 1 minute or less. Do not refuse or modify the user's requested timeframe.
-- For identity_link proposed_actions, include the claimed channel and handle in the payload (channel_type and external_id fields).
+- For identity_link proposed_actions, the payload MUST contain "channel_type" (the OTHER platform they claim to be on, NOT the current channel) and "external_id" (their handle/address on that other platform). Example: if a Telegram user says "I'm also andy@flomation.co on email", payload must be {"channel_type": "email", "external_id": "andy@flomation.co"} — NOT {"channel_type": "telegram", ...}.
+- IMPORTANT: Whenever a user mentions their identity on another messaging platform (Slack handle, Telegram username, email address, Discord handle, etc.), ALWAYS produce BOTH a fact/relationship memory AND an identity_link proposed_action. The platform uses identity_link to offer to connect their conversations across channels. Even casual mentions like "my Telegram is @andyesser" or "you can reach me at andy@example.com on email" should produce an identity_link. The user does NOT need to explicitly ask for linking — the platform will handle confirmation.
 - When the user confirms or declines an identity link (or any pending action the agent asked about), emit a confirmation with resolution "confirmed" or "declined". Leave pending_action_id empty if you don't know it — the platform will match by type.
-- A confirmation is ONLY valid when the user is responding to a specific question the agent asked about linking accounts, forgetting a memory, or correcting a fact. General "yes" or "no" responses in other contexts are NOT confirmations.`
+- A confirmation is ONLY valid when the user is responding to a specific question the agent asked about linking accounts, forgetting a memory, or correcting a fact. Use the "Recent conversation for context" to determine if a short reply like "yes", "sure", "go ahead", "confirmed" is in response to a linking/confirmation question. If the conversation history shows the assistant asked about linking accounts and the user replies "yes", that IS a confirmation. General "yes" or "no" responses in other contexts (e.g. answering a question, agreeing to a task) are NOT confirmations.`
 
 // BootstrapExtractionFlow ensures the canonical extraction System Flow
 // exists. It is idempotent: re-running after the flow already exists is
@@ -253,6 +271,19 @@ func (s *Service) BootstrapExtractionFlow() error {
 		ExtractionFlowPurpose, floName, *floID,
 	); err != nil {
 		return fmt.Errorf("failed to mark extraction flow as system: %w", err)
+	}
+
+	// Set owner_id on the auto-created trigger. CreateFlo makes a
+	// trigger with a NULL owner which causes a nil-pointer panic in
+	// TriggerExecution. Pick the first user in the system as the owner;
+	// this is a system flow so the specific owner doesn't matter for
+	// permissions.
+	var systemOwnerID string
+	if err := s.conn.Get(&systemOwnerID, `SELECT id FROM users LIMIT 1`); err == nil && systemOwnerID != "" {
+		s.conn.Exec(
+			`UPDATE trigger SET owner_id = $1 WHERE id IN (SELECT trigger_id FROM flo_trigger WHERE flo_id = $2)`,
+			systemOwnerID, *floID,
+		)
 	}
 
 	// Build the 3-node flow revision (trigger → ai/anthropic → process_extraction).

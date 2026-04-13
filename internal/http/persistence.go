@@ -163,6 +163,8 @@ type Persistence interface {
 	CreateAgentPendingAction(pa api.AgentPendingAction) (*string, error)
 	GetAgentPendingActionByID(id string) (*api.AgentPendingAction, error)
 	GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error)
+	GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error)
+	MarkPendingActionNotified(id string) error
 	UpdatePendingActionStatus(id, status string) error
 	CreateAgentCommitment(c api.AgentCommitment) (*string, error)
 	GetAgentCommitmentByID(id string) (*api.AgentCommitment, error)

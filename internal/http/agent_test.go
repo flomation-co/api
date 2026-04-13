@@ -224,6 +224,12 @@ func (m *agentMock) GetAgentPendingActionByID(id string) (*api.AgentPendingActio
 func (m *agentMock) GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error) {
 	return nil, nil
 }
+func (m *agentMock) GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *agentMock) MarkPendingActionNotified(id string) error {
+	return nil
+}
 func (m *agentMock) UpdatePendingActionStatus(id, status string) error {
 	return nil
 }

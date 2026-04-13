@@ -227,6 +227,29 @@ func (s *Service) UpdatePendingActionStatus(id, status string) error {
 	return err
 }
 
+// GetUnnotifiedPendingActions returns pending actions that haven't been
+// notified yet (notified_at IS NULL) and are awaiting confirmation.
+// Used by the Launch pending action poller.
+func (s *Service) GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error) {
+	var results []*api.AgentPendingAction
+	err := s.conn.Select(&results, `
+		SELECT * FROM agent_pending_action
+		WHERE status = 'awaiting_confirmation'
+		  AND notified_at IS NULL
+		ORDER BY created_at ASC
+		LIMIT $1
+	`, limit)
+	return results, err
+}
+
+// MarkPendingActionNotified stamps notified_at = NOW() on a pending action.
+func (s *Service) MarkPendingActionNotified(id string) error {
+	_, err := s.conn.Exec(`
+		UPDATE agent_pending_action SET notified_at = NOW() WHERE id = $1
+	`, id)
+	return err
+}
+
 // --- Commitments ---
 
 // CreateAgentCommitment inserts a new commitment. Payload defaults to an

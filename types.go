@@ -575,6 +575,7 @@ type AgentPendingAction struct {
 	CreatedAt          time.Time       `json:"created_at" db:"created_at"`
 	ResolvedAt         *time.Time      `json:"resolved_at,omitempty" db:"resolved_at"`
 	ExpiresAt          *time.Time      `json:"expires_at,omitempty" db:"expires_at"`
+	NotifiedAt         *time.Time      `json:"notified_at,omitempty" db:"notified_at"`
 }
 
 // AgentCommitment is a promise that the agent (made_by='assistant') or

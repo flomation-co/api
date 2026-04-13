@@ -3638,7 +3638,7 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 		execution := api.Execution{
 			FloID:            f,
 			Name:             flo.Name,
-			OwnerID:          *invocation.OwnerID,
+			OwnerID:          derefOrEmpty(invocation.OwnerID),
 			OrganisationID:   invocation.OrganisationID,
 			TriggeredBy:      &invocation.ID,
 			Data:             invocation.Data,
@@ -4835,4 +4835,11 @@ func (s *Service) RemoveFloFavourite(userID, floID string) error {
 func (s *Service) CreateFeedback(feedback api.Feedback) error {
 	_, err := s.stmtCreateFeedback.Exec(feedback)
 	return err
+}
+
+func derefOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

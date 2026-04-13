@@ -11,9 +11,32 @@ package http
 import (
 	"net/http"
 
+	api "flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
+
+// --- Identity List ---
+
+// listIdentitiesInternal handles GET /api/v1/internal/agent/:id/identity.
+// Returns all identities for a given agent_user_id.
+func (s *Service) listIdentitiesInternal(c *gin.Context) {
+	agentUserID := c.Query("agent_user_id")
+	if agentUserID == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "agent_user_id required"})
+		return
+	}
+	identities, err := s.persistence.GetAgentIdentitiesByUserID(agentUserID)
+	if err != nil {
+		log.WithError(err).Error("failed to list identities")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if identities == nil {
+		identities = []*api.AgentIdentity{}
+	}
+	c.JSON(http.StatusOK, identities)
+}
 
 // --- Identity Lookup ---
 

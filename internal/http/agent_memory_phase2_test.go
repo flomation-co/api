@@ -154,6 +154,12 @@ func (m *phase2Mock) GetOpenPendingActionsForUser(agentUserID string) ([]*api.Ag
 	m.listPACalls = append(m.listPACalls, agentUserID)
 	return m.pendingListResult, m.phase2Error
 }
+func (m *phase2Mock) GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *phase2Mock) MarkPendingActionNotified(id string) error {
+	return nil
+}
 
 func (m *phase2Mock) UpdatePendingActionStatus(id, status string) error {
 	m.p2mu.Lock()

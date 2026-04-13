@@ -310,6 +310,12 @@ func (m *mockPersistence) GetAgentPendingActionByID(string) (*api.AgentPendingAc
 func (m *mockPersistence) GetOpenPendingActionsForUser(string) ([]*api.AgentPendingAction, error) {
 	return nil, nil
 }
+func (m *mockPersistence) GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *mockPersistence) MarkPendingActionNotified(id string) error {
+	return nil
+}
 func (m *mockPersistence) UpdatePendingActionStatus(string, string) error { return nil }
 func (m *mockPersistence) CreateAgentCommitment(api.AgentCommitment) (*string, error) {
 	return nil, nil

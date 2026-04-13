@@ -489,6 +489,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.DELETE("/memory/:id", s.deleteAgentMemoryInternal)
 	internal.POST("/agent/:id/pending-action", s.createAgentPendingActionInternal)
 	internal.GET("/agent/:id/pending-action", s.listOpenPendingActionsInternal)
+	internal.GET("/pending-action/:id", s.getPendingActionInternal)
 	internal.PATCH("/pending-action/:id", s.updatePendingActionStatusInternal)
 	internal.POST("/agent/:id/commitment", s.createAgentCommitmentInternal)
 	internal.GET("/commitment/due", s.listDueCommitmentsInternal)
@@ -501,10 +502,16 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.PATCH("/memory/:id/embedding", s.updateMemoryEmbeddingInternal)
 
 	// Agent Memory Phase 5: identity linking.
+	internal.GET("/agent/:id/identity", s.listIdentitiesInternal)
 	internal.POST("/agent/:id/identity/lookup", s.lookupIdentityInternal)
 	internal.POST("/agent/:id/identity/merge", s.mergeIdentityInternal)
 	internal.GET("/agent/:id/pending-action/match", s.matchPendingActionInternal)
 	internal.POST("/agent/:id/identity/request-verification", s.requestVerificationInternal)
+	internal.GET("/agent/:id/tool-summary", s.getAgentToolSummaryInternal)
+
+	// Pending action poller support (Phase 5).
+	internal.GET("/pending-action/unnotified", s.listUnnotifiedPendingActionsInternal)
+	internal.PATCH("/pending-action/:id/notified", s.markPendingActionNotifiedInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the
