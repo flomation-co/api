@@ -316,7 +316,7 @@ func (s *Service) BootstrapExtractionFlow() error {
 	// permissions.
 	var systemOwnerID string
 	if err := s.conn.Get(&systemOwnerID, `SELECT id FROM users LIMIT 1`); err == nil && systemOwnerID != "" {
-		s.conn.Exec(
+		_, _ = s.conn.Exec(
 			`UPDATE trigger SET owner_id = $1 WHERE id IN (SELECT trigger_id FROM flo_trigger WHERE flo_id = $2)`,
 			systemOwnerID, *floID,
 		)

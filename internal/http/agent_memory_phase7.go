@@ -148,7 +148,7 @@ func (s *Service) supersedeMemoryInternal(c *gin.Context) {
 		"old_id": body.OldID,
 		"new_id": body.NewID,
 	})
-	s.persistence.CreateAuditLogEntry(api.AgentAuditLog{
+	_, _ = s.persistence.CreateAuditLogEntry(api.AgentAuditLog{
 		AgentID:      agentID,
 		ActorType:    "system",
 		EventType:    "memory_superseded",
@@ -186,7 +186,7 @@ func (s *Service) mergeMemoryInternal(c *gin.Context) {
 		"duplicate_id": body.DuplicateID,
 		"canonical_id": body.CanonicalID,
 	})
-	s.persistence.CreateAuditLogEntry(api.AgentAuditLog{
+	_, _ = s.persistence.CreateAuditLogEntry(api.AgentAuditLog{
 		AgentID:      agentID,
 		ActorType:    "system",
 		EventType:    "memory_deduplicated",
@@ -255,7 +255,7 @@ func (s *Service) enforcePinLimitInternal(c *gin.Context) {
 	for _, uid := range unpinnedIDs {
 		detail, _ := json.Marshal(map[string]string{"reason": "pin_limit_exceeded"})
 		id := uid
-		s.persistence.CreateAuditLogEntry(api.AgentAuditLog{
+		_, _ = s.persistence.CreateAuditLogEntry(api.AgentAuditLog{
 			AgentID:      agentID,
 			AgentUserID:  &body.AgentUserID,
 			ActorType:    "system",
