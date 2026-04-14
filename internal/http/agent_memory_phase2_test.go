@@ -690,3 +690,19 @@ func (m *phase2Mock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory,
 func (m *phase2Mock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
 	return nil
 }
+
+// Phase 6 stubs
+func (m *phase2Mock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
+func (m *phase2Mock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *phase2Mock) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
+func (m *phase2Mock) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
+func (m *phase2Mock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *phase2Mock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *phase2Mock) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
+func (m *phase2Mock) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *phase2Mock) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
+func (m *phase2Mock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
+func (m *phase2Mock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *phase2Mock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *phase2Mock) UnlinkAgentIdentity(identityID string) error { return nil }
+func (m *phase2Mock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }

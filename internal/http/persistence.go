@@ -183,6 +183,25 @@ type Persistence interface {
 	MergeAgentUsers(agentID, sourceUserID, targetUserID string) error
 	GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error)
 
+	// Agent Memory Phase 6: user-visible memory management + retention + audit.
+	GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error)
+	GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error)
+	UpdateAgentMemory(id, title, body string, pinned bool) error
+	DeleteAllMemoriesForUser(agentUserID string) (int64, error)
+	GetExpiredMemories(limit int) ([]*api.AgentMemory, error)
+	DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error)
+	DeleteExpiredMemories(limit int) (int64, error)
+	GetAgentsWithRetentionPolicy() ([]struct {
+		ID                  string `db:"id"`
+		MemoryRetentionDays int    `db:"memory_retention_days"`
+	}, error)
+	UpdateAgentRetentionDays(agentID string, days *int) error
+	CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error)
+	GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error)
+	GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error)
+	UnlinkAgentIdentity(identityID string) error
+	GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error)
+
 	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error
 	GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)

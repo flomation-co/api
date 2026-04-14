@@ -398,6 +398,7 @@ type Agent struct {
 	CreatedAt                time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt                time.Time       `json:"updated_at" db:"updated_at"`
 	ArchivedAt               *time.Time      `json:"archived_at,omitempty" db:"archived_at"`
+	MemoryRetentionDays      *int            `json:"memory_retention_days,omitempty" db:"memory_retention_days"`
 	// Computed fields (populated at read time)
 	ActiveSessionID      *string    `json:"active_session_id,omitempty"`
 	MessageCount         int64      `json:"message_count" db:"message_count"`
@@ -552,6 +553,7 @@ type AgentMemory struct {
 	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
 	LastUsedAt         *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty" db:"expires_at"`
+	ValidUntil         *time.Time `json:"valid_until,omitempty" db:"valid_until"`
 }
 
 // AgentPendingAction is an intent detected by the extraction pipeline
@@ -645,4 +647,31 @@ type AgentChannelEmail struct {
 	SMTPHost     string   `json:"smtp_host,omitempty"`
 	SMTPPort     int      `json:"smtp_port,omitempty"`
 	FromAddress  string   `json:"from_address,omitempty"`
+}
+
+// AgentAuditLog records a write operation on agent data for compliance
+// and the user-facing audit trail. Written by Phase 6 endpoints and the
+// retention poller.
+type AgentAuditLog struct {
+	ID           string          `json:"id" db:"id"`
+	AgentID      string          `json:"agent_id" db:"agent_id"`
+	AgentUserID  *string         `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	ActorType    string          `json:"actor_type" db:"actor_type"`
+	ActorID      *string         `json:"actor_id,omitempty" db:"actor_id"`
+	EventType    string          `json:"event_type" db:"event_type"`
+	ResourceType string          `json:"resource_type" db:"resource_type"`
+	ResourceID   *string         `json:"resource_id,omitempty" db:"resource_id"`
+	Detail       json.RawMessage `json:"detail" db:"detail"`
+	CreatedAt    time.Time       `json:"created_at" db:"created_at"`
+}
+
+// AgentDataExport is the JSON payload returned by the "Export my data"
+// endpoint. Contains all data an agent holds about a specific user.
+type AgentDataExport struct {
+	User         *AgentUser         `json:"user"`
+	Identities   []*AgentIdentity   `json:"identities"`
+	Memories     []*AgentMemory     `json:"memories"`
+	Commitments  []*AgentCommitment `json:"commitments"`
+	AuditLog     []*AgentAuditLog   `json:"audit_log"`
+	ExportedAt   time.Time          `json:"exported_at"`
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"flomation.app/automate/api"
 	pgvector "github.com/pgvector/pgvector-go"
@@ -291,3 +292,19 @@ func (m *exportMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory,
 func (m *exportMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
 	return nil
 }
+
+// Phase 6 stubs
+func (m *exportMock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
+func (m *exportMock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *exportMock) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
+func (m *exportMock) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
+func (m *exportMock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *exportMock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *exportMock) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
+func (m *exportMock) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *exportMock) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
+func (m *exportMock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
+func (m *exportMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *exportMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *exportMock) UnlinkAgentIdentity(identityID string) error { return nil }
+func (m *exportMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }

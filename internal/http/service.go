@@ -458,6 +458,19 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.POST("/:id/message", s.createAgentMessage)
 	agents.GET("/:id/execution", s.getAgentExecutions)
 
+	// Agent Memory Phase 6: user-facing memory management.
+	agents.GET("/:id/my-memories", s.getMyAgentMemories)
+	agents.PATCH("/:id/my-memories/:memoryId", s.updateMyAgentMemory)
+	agents.DELETE("/:id/my-memories/:memoryId", s.deleteMyAgentMemory)
+	agents.POST("/:id/my-memories/forget-all", s.forgetAllMyAgentMemories)
+	agents.POST("/:id/my-memories/export", s.exportMyAgentData)
+	agents.GET("/:id/my-identities", s.getMyAgentIdentities)
+	agents.DELETE("/:id/my-identities/:identityId", s.unlinkMyAgentIdentity)
+	agents.GET("/:id/my-audit-log", s.getMyAgentAuditLog)
+	agents.GET("/:id/audit-log", s.getAgentAuditLog)
+	agents.GET("/:id/users", s.getAgentUsers)
+	agents.PATCH("/:id/retention", s.updateAgentRetention)
+
 	// Internal endpoints — no JWT, used by Launch service and executor actions.
 	// These are service-to-service calls on the internal network.
 	internal := v1.Group("internal")
@@ -512,6 +525,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Pending action poller support (Phase 5).
 	internal.GET("/pending-action/unnotified", s.listUnnotifiedPendingActionsInternal)
 	internal.PATCH("/pending-action/:id/notified", s.markPendingActionNotifiedInternal)
+
+	// Agent Memory Phase 6: retention poller + audit log (internal).
+	internal.GET("/memory/expired", s.getExpiredMemoriesInternal)
+	internal.GET("/agent/retention-policies", s.getAgentRetentionPoliciesInternal)
+	internal.POST("/memory/bulk-delete", s.bulkDeleteExpiredMemoriesInternal)
+	internal.POST("/audit-log", s.createAuditLogEntryInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the

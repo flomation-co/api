@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"flomation.app/automate/api"
 	pgvector "github.com/pgvector/pgvector-go"
@@ -505,3 +506,19 @@ func (m *agentMemoryMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMe
 func (m *agentMemoryMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
 	return nil
 }
+
+// Phase 6 stubs
+func (m *agentMemoryMock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
+func (m *agentMemoryMock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *agentMemoryMock) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
+func (m *agentMemoryMock) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
+func (m *agentMemoryMock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *agentMemoryMock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *agentMemoryMock) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
+func (m *agentMemoryMock) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *agentMemoryMock) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
+func (m *agentMemoryMock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
+func (m *agentMemoryMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *agentMemoryMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *agentMemoryMock) UnlinkAgentIdentity(identityID string) error { return nil }
+func (m *agentMemoryMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
