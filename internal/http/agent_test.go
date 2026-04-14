@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	pgvector "github.com/pgvector/pgvector-go"
 	. "github.com/onsi/gomega"
 
@@ -185,8 +186,11 @@ func (m *agentMock) CreateAgentMessage(msg api.AgentMessage) (*string, error) {
 func (m *agentMock) ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error) {
 	return nil, nil, nil
 }
-func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error) {
+func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error) {
 	return nil, nil
+}
+func (m *agentMock) CloseAgentConversation(conversationID string) error {
+	return nil
 }
 func (m *agentMock) GetAgentConversationByID(id string) (*api.AgentConversation, error) {
 	return nil, nil
@@ -803,3 +807,13 @@ func (m *agentMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*a
 func (m *agentMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
 func (m *agentMock) UnlinkAgentIdentity(identityID string) error { return nil }
 func (m *agentMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+
+// Phase 7 stubs
+func (m *agentMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *agentMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *agentMock) SupersedeMemory(oldID, newID string) error { return nil }
+func (m *agentMock) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *agentMock) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
+func (m *agentMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
+func (m *agentMock) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *agentMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

@@ -399,6 +399,7 @@ type Agent struct {
 	UpdatedAt                time.Time       `json:"updated_at" db:"updated_at"`
 	ArchivedAt               *time.Time      `json:"archived_at,omitempty" db:"archived_at"`
 	MemoryRetentionDays      *int            `json:"memory_retention_days,omitempty" db:"memory_retention_days"`
+	MaxPinnedMemories        *int            `json:"max_pinned_memories,omitempty" db:"max_pinned_memories"`
 	// Computed fields (populated at read time)
 	ActiveSessionID      *string    `json:"active_session_id,omitempty"`
 	MessageCount         int64      `json:"message_count" db:"message_count"`
@@ -554,6 +555,8 @@ type AgentMemory struct {
 	LastUsedAt         *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty" db:"expires_at"`
 	ValidUntil         *time.Time `json:"valid_until,omitempty" db:"valid_until"`
+	Status             string     `json:"status" db:"status"`
+	SupersededBy       *string    `json:"superseded_by,omitempty" db:"superseded_by"`
 }
 
 // AgentPendingAction is an intent detected by the extraction pipeline

@@ -45,7 +45,7 @@ func (s *Service) corsMiddleware(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items, X-Flomation-Runner-Signature")
 		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
 		c.Writer.Header().Set("Vary", "Origin")
 	}
 
@@ -470,6 +470,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.GET("/:id/audit-log", s.getAgentAuditLog)
 	agents.GET("/:id/users", s.getAgentUsers)
 	agents.PATCH("/:id/retention", s.updateAgentRetention)
+	agents.PATCH("/:id/max-pinned-memories", s.updateMaxPinnedMemories)
 
 	// Internal endpoints — no JWT, used by Launch service and executor actions.
 	// These are service-to-service calls on the internal network.
@@ -525,6 +526,16 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Pending action poller support (Phase 5).
 	internal.GET("/pending-action/unnotified", s.listUnnotifiedPendingActionsInternal)
 	internal.PATCH("/pending-action/:id/notified", s.markPendingActionNotifiedInternal)
+
+	// Channel actions — proxied to Launch (typing indicators, etc.)
+	internal.POST("/agent/:id/channel-action", s.channelActionInternal)
+
+	// Agent Memory Phase 7: memory hygiene (internal).
+	internal.POST("/agent/:id/memory/check-hygiene", s.checkHygieneInternal)
+	internal.POST("/agent/:id/memory/supersede", s.supersedeMemoryInternal)
+	internal.POST("/agent/:id/memory/merge", s.mergeMemoryInternal)
+	internal.GET("/agent/:id/memory/pinned-count", s.pinnedCountInternal)
+	internal.POST("/agent/:id/memory/enforce-pin-limit", s.enforcePinLimitInternal)
 
 	// Agent Memory Phase 6: retention poller + audit log (internal).
 	internal.GET("/memory/expired", s.getExpiredMemoriesInternal)

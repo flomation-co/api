@@ -308,3 +308,13 @@ func (m *exportMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*
 func (m *exportMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
 func (m *exportMock) UnlinkAgentIdentity(identityID string) error { return nil }
 func (m *exportMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+
+// Phase 7 stubs
+func (m *exportMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *exportMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *exportMock) SupersedeMemory(oldID, newID string) error { return nil }
+func (m *exportMock) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *exportMock) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
+func (m *exportMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
+func (m *exportMock) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *exportMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

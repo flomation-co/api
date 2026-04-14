@@ -280,8 +280,11 @@ func (m *mockPersistence) CountAgentExecutionsInHour(string) (int64, error) { re
 func (m *mockPersistence) ResolveOrCreateAgentIdentity(string, *string, string, string, *string, *string) (*api.AgentIdentity, *api.AgentUser, error) {
 	return nil, nil, nil
 }
-func (m *mockPersistence) ResolveOrCreateAgentConversation(string, *string, string, string, *string) (*api.AgentConversation, error) {
+func (m *mockPersistence) ResolveOrCreateAgentConversation(string, *string, string, string, *string, int) (*persistence.ConversationResolution, error) {
 	return nil, nil
+}
+func (m *mockPersistence) CloseAgentConversation(string) error {
+	return nil
 }
 func (m *mockPersistence) GetAgentConversationByID(string) (*api.AgentConversation, error) {
 	return nil, nil
@@ -555,3 +558,13 @@ func (m *mockPersistence) GetAuditLogForAgent(agentID string, limit, offset int)
 func (m *mockPersistence) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
 func (m *mockPersistence) UnlinkAgentIdentity(identityID string) error { return nil }
 func (m *mockPersistence) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+
+// Phase 7 stubs
+func (m *mockPersistence) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *mockPersistence) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *mockPersistence) SupersedeMemory(oldID, newID string) error { return nil }
+func (m *mockPersistence) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *mockPersistence) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
+func (m *mockPersistence) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
+func (m *mockPersistence) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *mockPersistence) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

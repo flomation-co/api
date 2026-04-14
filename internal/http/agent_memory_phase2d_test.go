@@ -447,3 +447,13 @@ func (m *phase2dMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]
 func (m *phase2dMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
 func (m *phase2dMock) UnlinkAgentIdentity(identityID string) error { return nil }
 func (m *phase2dMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+
+// Phase 7 stubs
+func (m *phase2dMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *phase2dMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *phase2dMock) SupersedeMemory(oldID, newID string) error { return nil }
+func (m *phase2dMock) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *phase2dMock) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
+func (m *phase2dMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
+func (m *phase2dMock) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *phase2dMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

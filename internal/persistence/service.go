@@ -2626,10 +2626,10 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtCreateAgentMemory, err = s.conn.PrepareNamed(`
 		INSERT INTO agent_memory (
 			agent_id, agent_user_id, scope, memory_type, title, body,
-			source_conversation, source_message, confidence, pinned, expires_at, embedding
+			source_conversation, source_message, confidence, pinned, expires_at, embedding, valid_until
 		) VALUES (
 			:agent_id, :agent_user_id, :scope, :memory_type, :title, :body,
-			:source_conversation, :source_message, :confidence, :pinned, :expires_at, :embedding
+			:source_conversation, :source_message, :confidence, :pinned, :expires_at, :embedding, :valid_until
 		)
 		RETURNING id
 	`)
@@ -2653,6 +2653,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtGetAgentMemoriesForUser, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_memory
 		WHERE agent_user_id = :agent_user_id
+		  AND status = 'active'
 		  AND (NOT :pinned_only OR pinned = TRUE)
 		  AND (expires_at IS NULL OR expires_at > NOW())
 		ORDER BY pinned DESC, created_at DESC
@@ -2794,6 +2795,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT * FROM agent_memory
 		WHERE agent_id = :agent_id
 		  AND agent_user_id = :agent_user_id
+		  AND status = 'active'
 		  AND embedding IS NOT NULL
 		  AND (NOT :exclude_pinned OR pinned = FALSE)
 		  AND (expires_at IS NULL OR expires_at > NOW())
@@ -2807,6 +2809,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtGetMemoriesWithoutEmbedding, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_memory
 		WHERE embedding IS NULL
+		  AND status = 'active'
 		ORDER BY created_at DESC
 		LIMIT :limit
 	`)

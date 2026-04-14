@@ -177,6 +177,33 @@ func (c *Connector) RegisterAgent(agentID string, orchestratorFlowID *string, tr
 	return nil
 }
 
+// ChannelAction proxies a channel-specific SDK action (e.g. typing indicator)
+// to the Launch service, which handles the actual channel API call.
+func (c *Connector) ChannelAction(agentID, channelType, action, chatID string) error {
+	payload := map[string]string{
+		"channel_type": channelType,
+		"action":       action,
+		"chat_id":      chatID,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("unable to marshal channel action: %w", err)
+	}
+
+	url := fmt.Sprintf("%v/internal/agent/%v/channel-action", c.config.Launch.URL, agentID)
+	resp, err := c.client.Post(url, "application/json", bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("unable to send channel action: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("launch returned %v for channel action", resp.Status)
+	}
+	return nil
+}
+
 // DeregisterAgent deregisters an agent from the Launch service.
 func (c *Connector) DeregisterAgent(agentID string) error {
 	url := fmt.Sprintf("%v/agent/%v", c.config.Launch.URL, agentID)

@@ -149,7 +149,8 @@ type Persistence interface {
 	// plans/agent_memory.md and internal/persistence/agent_memory.go.
 	ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error)
 	GetAgentConversationByID(id string) (*api.AgentConversation, error)
-	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error)
+	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error)
+	CloseAgentConversation(conversationID string) error
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 
@@ -201,6 +202,16 @@ type Persistence interface {
 	GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error)
 	UnlinkAgentIdentity(identityID string) error
 	GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error)
+
+	// Agent Memory Phase 7: memory hygiene.
+	FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error)
+	FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error)
+	SupersedeMemory(oldID, newID string) error
+	MergeMemory(duplicateID, canonicalID string) error
+	CountPinnedMemories(agentUserID string) (int, error)
+	UnpinOldestMemories(agentUserID string, count int) ([]string, error)
+	GetMaxPinnedMemories(agentID string) (int, error)
+	UpdateMaxPinnedMemories(agentID string, limit *int) error
 
 	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error

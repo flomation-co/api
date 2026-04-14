@@ -53,6 +53,7 @@ func (s *Service) CreateAgentMemory(mem api.AgentMemory) (*string, error) {
 		Pinned             bool             `db:"pinned"`
 		ExpiresAt          *time.Time       `db:"expires_at"`
 		Embedding          *pgvector.Vector `db:"embedding"`
+		ValidUntil         *time.Time       `db:"valid_until"`
 	}{
 		AgentID:            mem.AgentID,
 		AgentUserID:        mem.AgentUserID,
@@ -66,6 +67,7 @@ func (s *Service) CreateAgentMemory(mem api.AgentMemory) (*string, error) {
 		Pinned:             mem.Pinned,
 		ExpiresAt:          mem.ExpiresAt,
 		Embedding:          mem.Embedding,
+		ValidUntil:         mem.ValidUntil,
 	}); err != nil {
 		return nil, err
 	}
