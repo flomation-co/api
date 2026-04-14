@@ -1,0 +1,1 @@
+ALTER TABLE agent_pending_action DROP COLUMN IF EXISTS notified_at;

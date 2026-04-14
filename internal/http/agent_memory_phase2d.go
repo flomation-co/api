@@ -64,6 +64,11 @@ type extractAgentInternalRequest struct {
 	// thread. Used by the flow to attribute source_conversation on the
 	// resulting records.
 	ConversationID *string `json:"conversation_id,omitempty"`
+
+	// ConversationHistory is the recent conversation context (last few
+	// turns) so the extraction AI can determine if short replies like
+	// "yes"/"no" are confirmations of pending actions.
+	ConversationHistory interface{} `json:"conversation_history,omitempty"`
 }
 
 // extractAgentInternal handles POST /api/v1/internal/agent/:id/extract.

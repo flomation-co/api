@@ -60,6 +60,7 @@ type createAgentMemoryInternalRequest struct {
 	Confidence         *float64   `json:"confidence,omitempty"`
 	Pinned             bool       `json:"pinned,omitempty"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+	ValidUntil         *time.Time `json:"valid_until,omitempty"`
 	Embedding          []float32  `json:"embedding,omitempty"`
 }
 
@@ -99,10 +100,26 @@ func (s *Service) createAgentMemoryInternal(c *gin.Context) {
 		Confidence:         confidence,
 		Pinned:             body.Pinned,
 		ExpiresAt:          body.ExpiresAt,
+		ValidUntil:         body.ValidUntil,
 	}
 	if len(body.Embedding) > 0 {
 		vec := pgvector.NewVector(body.Embedding)
 		mem.Embedding = &vec
+	}
+
+	// Phase 7: title+body dedup — reject if an active memory with the
+	// same title, type, body, and user already exists. This catches exact
+	// duplicates created within the same extraction pass. We match on
+	// both title AND body to avoid rejecting contradictions (same title
+	// like "Location" but different body like "London" vs "Chester").
+	if body.AgentUserID != nil && body.Title != "" {
+		existing, _ := s.persistence.GetAgentMemoriesForUser(*body.AgentUserID, false, 100)
+		for _, e := range existing {
+			if e.Status == "active" && e.MemoryType == body.MemoryType && e.Title == body.Title && e.Body == body.Body {
+				c.JSON(http.StatusCreated, gin.H{"id": e.ID, "deduplicated": true})
+				return
+			}
+		}
 	}
 
 	id, err := s.persistence.CreateAgentMemory(mem)
@@ -234,6 +251,43 @@ func (s *Service) createAgentPendingActionInternal(c *gin.Context) {
 		return
 	}
 
+	// Dedup: reject identity_link if one already exists for this user
+	// with the same target (open or already linked). Specific to the
+	// external_id in the payload so users can still link a 3rd identity.
+	if body.Type == "identity_link" && body.AgentUserID != "" {
+		// Check for an existing open identity_link for this user.
+		existing, _ := s.persistence.GetOpenPendingActionsForUser(body.AgentUserID)
+		for _, pa := range existing {
+			if pa.Type == "identity_link" {
+				// Compare payloads: same external_id = duplicate.
+				var existingPayload, newPayload struct {
+					ExternalID string `json:"external_id"`
+				}
+				_ = json.Unmarshal(pa.Payload, &existingPayload)
+				_ = json.Unmarshal(body.Payload, &newPayload)
+				if existingPayload.ExternalID != "" && existingPayload.ExternalID == newPayload.ExternalID {
+					c.JSON(http.StatusOK, gin.H{"id": pa.ID, "deduplicated": true})
+					return
+				}
+			}
+		}
+		// Check if this specific identity is already linked to this user.
+		var newPayload struct {
+			ChannelType string `json:"channel_type"`
+			ExternalID  string `json:"external_id"`
+		}
+		_ = json.Unmarshal(body.Payload, &newPayload)
+		if newPayload.ExternalID != "" {
+			identities, _ := s.persistence.GetAgentIdentitiesByUserID(body.AgentUserID)
+			for _, id := range identities {
+				if id.ChannelExternalID == newPayload.ExternalID {
+					c.JSON(http.StatusOK, gin.H{"id": "", "deduplicated": true, "reason": "already_linked"})
+					return
+				}
+			}
+		}
+	}
+
 	id, err := s.persistence.CreateAgentPendingAction(api.AgentPendingAction{
 		AgentID:            agentID,
 		AgentUserID:        body.AgentUserID,
@@ -295,6 +349,17 @@ func (s *Service) listOpenPendingActionsInternal(c *gin.Context) {
 	c.JSON(http.StatusOK, actions)
 }
 
+// getPendingActionInternal handles GET /api/v1/internal/pending-action/:id.
+func (s *Service) getPendingActionInternal(c *gin.Context) {
+	id := c.Param("id")
+	pa, err := s.persistence.GetAgentPendingActionByID(id)
+	if err != nil || pa == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	c.JSON(http.StatusOK, pa)
+}
+
 type updatePendingActionInternalRequest struct {
 	Status string `json:"status" binding:"required"`
 }
@@ -314,6 +379,38 @@ func (s *Service) updatePendingActionStatusInternal(c *gin.Context) {
 			"error":             err,
 			"pending_action_id": id,
 		}).Error("unable to update pending action status (internal)")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// listUnnotifiedPendingActionsInternal handles GET /api/v1/internal/pending-action/unnotified.
+// Returns pending actions with status='awaiting_confirmation' and notified_at IS NULL.
+// Used by the Launch pending action poller to proactively dispatch confirmation prompts.
+func (s *Service) listUnnotifiedPendingActionsInternal(c *gin.Context) {
+	limit := 50
+	actions, err := s.persistence.GetUnnotifiedPendingActions(limit)
+	if err != nil {
+		log.WithError(err).Error("unable to list unnotified pending actions")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if actions == nil {
+		actions = []*api.AgentPendingAction{}
+	}
+	c.JSON(http.StatusOK, actions)
+}
+
+// markPendingActionNotifiedInternal handles PATCH /api/v1/internal/pending-action/:id/notified.
+// Stamps notified_at = NOW() so the poller doesn't re-fire.
+func (s *Service) markPendingActionNotifiedInternal(c *gin.Context) {
+	id := c.Param("id")
+	if err := s.persistence.MarkPendingActionNotified(id); err != nil {
+		log.WithFields(log.Fields{
+			"error":             err,
+			"pending_action_id": id,
+		}).Error("unable to mark pending action as notified")
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}

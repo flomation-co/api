@@ -45,7 +45,7 @@ func (s *Service) corsMiddleware(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items, X-Flomation-Runner-Signature")
 		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
 		c.Writer.Header().Set("Vary", "Origin")
 	}
 
@@ -458,6 +458,20 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.POST("/:id/message", s.createAgentMessage)
 	agents.GET("/:id/execution", s.getAgentExecutions)
 
+	// Agent Memory Phase 6: user-facing memory management.
+	agents.GET("/:id/my-memories", s.getMyAgentMemories)
+	agents.PATCH("/:id/my-memories/:memoryId", s.updateMyAgentMemory)
+	agents.DELETE("/:id/my-memories/:memoryId", s.deleteMyAgentMemory)
+	agents.POST("/:id/my-memories/forget-all", s.forgetAllMyAgentMemories)
+	agents.POST("/:id/my-memories/export", s.exportMyAgentData)
+	agents.GET("/:id/my-identities", s.getMyAgentIdentities)
+	agents.DELETE("/:id/my-identities/:identityId", s.unlinkMyAgentIdentity)
+	agents.GET("/:id/my-audit-log", s.getMyAgentAuditLog)
+	agents.GET("/:id/audit-log", s.getAgentAuditLog)
+	agents.GET("/:id/users", s.getAgentUsers)
+	agents.PATCH("/:id/retention", s.updateAgentRetention)
+	agents.PATCH("/:id/max-pinned-memories", s.updateMaxPinnedMemories)
+
 	// Internal endpoints — no JWT, used by Launch service and executor actions.
 	// These are service-to-service calls on the internal network.
 	internal := v1.Group("internal")
@@ -489,6 +503,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.DELETE("/memory/:id", s.deleteAgentMemoryInternal)
 	internal.POST("/agent/:id/pending-action", s.createAgentPendingActionInternal)
 	internal.GET("/agent/:id/pending-action", s.listOpenPendingActionsInternal)
+	internal.GET("/pending-action/:id", s.getPendingActionInternal)
 	internal.PATCH("/pending-action/:id", s.updatePendingActionStatusInternal)
 	internal.POST("/agent/:id/commitment", s.createAgentCommitmentInternal)
 	internal.GET("/commitment/due", s.listDueCommitmentsInternal)
@@ -499,6 +514,34 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.POST("/agent/:id/memory/search", s.searchAgentMemoriesInternal)
 	internal.GET("/memory/unembedded", s.getUnembeddedMemoriesInternal)
 	internal.PATCH("/memory/:id/embedding", s.updateMemoryEmbeddingInternal)
+
+	// Agent Memory Phase 5: identity linking.
+	internal.GET("/agent/:id/identity", s.listIdentitiesInternal)
+	internal.POST("/agent/:id/identity/lookup", s.lookupIdentityInternal)
+	internal.POST("/agent/:id/identity/merge", s.mergeIdentityInternal)
+	internal.GET("/agent/:id/pending-action/match", s.matchPendingActionInternal)
+	internal.POST("/agent/:id/identity/request-verification", s.requestVerificationInternal)
+	internal.GET("/agent/:id/tool-summary", s.getAgentToolSummaryInternal)
+
+	// Pending action poller support (Phase 5).
+	internal.GET("/pending-action/unnotified", s.listUnnotifiedPendingActionsInternal)
+	internal.PATCH("/pending-action/:id/notified", s.markPendingActionNotifiedInternal)
+
+	// Channel actions — proxied to Launch (typing indicators, etc.)
+	internal.POST("/agent/:id/channel-action", s.channelActionInternal)
+
+	// Agent Memory Phase 7: memory hygiene (internal).
+	internal.POST("/agent/:id/memory/check-hygiene", s.checkHygieneInternal)
+	internal.POST("/agent/:id/memory/supersede", s.supersedeMemoryInternal)
+	internal.POST("/agent/:id/memory/merge", s.mergeMemoryInternal)
+	internal.GET("/agent/:id/memory/pinned-count", s.pinnedCountInternal)
+	internal.POST("/agent/:id/memory/enforce-pin-limit", s.enforcePinLimitInternal)
+
+	// Agent Memory Phase 6: retention poller + audit log (internal).
+	internal.GET("/memory/expired", s.getExpiredMemoriesInternal)
+	internal.GET("/agent/retention-policies", s.getAgentRetentionPoliciesInternal)
+	internal.POST("/memory/bulk-delete", s.bulkDeleteExpiredMemoriesInternal)
+	internal.POST("/audit-log", s.createAuditLogEntryInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the

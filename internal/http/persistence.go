@@ -149,7 +149,8 @@ type Persistence interface {
 	// plans/agent_memory.md and internal/persistence/agent_memory.go.
 	ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error)
 	GetAgentConversationByID(id string) (*api.AgentConversation, error)
-	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error)
+	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error)
+	CloseAgentConversation(conversationID string) error
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 
@@ -163,6 +164,8 @@ type Persistence interface {
 	CreateAgentPendingAction(pa api.AgentPendingAction) (*string, error)
 	GetAgentPendingActionByID(id string) (*api.AgentPendingAction, error)
 	GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error)
+	GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error)
+	MarkPendingActionNotified(id string) error
 	UpdatePendingActionStatus(id, status string) error
 	CreateAgentCommitment(c api.AgentCommitment) (*string, error)
 	GetAgentCommitmentByID(id string) (*api.AgentCommitment, error)
@@ -174,6 +177,41 @@ type Persistence interface {
 	SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error)
 	GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, error)
 	UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error
+
+	// Agent Memory Phase 5: identity linking.
+	GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error)
+	LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error)
+	MergeAgentUsers(agentID, sourceUserID, targetUserID string) error
+	GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error)
+
+	// Agent Memory Phase 6: user-visible memory management + retention + audit.
+	GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error)
+	GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error)
+	UpdateAgentMemory(id, title, body string, pinned bool) error
+	DeleteAllMemoriesForUser(agentUserID string) (int64, error)
+	GetExpiredMemories(limit int) ([]*api.AgentMemory, error)
+	DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error)
+	DeleteExpiredMemories(limit int) (int64, error)
+	GetAgentsWithRetentionPolicy() ([]struct {
+		ID                  string `db:"id"`
+		MemoryRetentionDays int    `db:"memory_retention_days"`
+	}, error)
+	UpdateAgentRetentionDays(agentID string, days *int) error
+	CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error)
+	GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error)
+	GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error)
+	UnlinkAgentIdentity(identityID string) error
+	GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error)
+
+	// Agent Memory Phase 7: memory hygiene.
+	FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error)
+	FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error)
+	SupersedeMemory(oldID, newID string) error
+	MergeMemory(duplicateID, canonicalID string) error
+	CountPinnedMemories(agentUserID string) (int, error)
+	UnpinOldestMemories(agentUserID string, count int) ([]string, error)
+	GetMaxPinnedMemories(agentID string) (int, error)
+	UpdateMaxPinnedMemories(agentID string, limit *int) error
 
 	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error

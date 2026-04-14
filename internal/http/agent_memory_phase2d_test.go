@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"flomation.app/automate/api"
 	pgvector "github.com/pgvector/pgvector-go"
@@ -414,6 +415,11 @@ func Test_ExtractAgentInternal_TriggerExecutionFails_Returns500(t *testing.T) {
 	Expect(w.Code).To(Equal(http.StatusInternalServerError))
 }
 
+// Phase 5 stubs
+func (m *phase2dMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
+func (m *phase2dMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
+func (m *phase2dMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
+func (m *phase2dMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
 
 // Phase 4 stubs
 func (m *phase2dMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
@@ -425,3 +431,29 @@ func (m *phase2dMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory
 func (m *phase2dMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
 	return nil
 }
+
+// Phase 6 stubs
+func (m *phase2dMock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
+func (m *phase2dMock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *phase2dMock) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
+func (m *phase2dMock) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
+func (m *phase2dMock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *phase2dMock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *phase2dMock) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
+func (m *phase2dMock) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *phase2dMock) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
+func (m *phase2dMock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
+func (m *phase2dMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *phase2dMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *phase2dMock) UnlinkAgentIdentity(identityID string) error { return nil }
+func (m *phase2dMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+
+// Phase 7 stubs
+func (m *phase2dMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *phase2dMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *phase2dMock) SupersedeMemory(oldID, newID string) error { return nil }
+func (m *phase2dMock) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *phase2dMock) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
+func (m *phase2dMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
+func (m *phase2dMock) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *phase2dMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

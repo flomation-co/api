@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	pgvector "github.com/pgvector/pgvector-go"
 	. "github.com/onsi/gomega"
 
@@ -185,8 +186,11 @@ func (m *agentMock) CreateAgentMessage(msg api.AgentMessage) (*string, error) {
 func (m *agentMock) ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error) {
 	return nil, nil, nil
 }
-func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string) (*api.AgentConversation, error) {
+func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error) {
 	return nil, nil
+}
+func (m *agentMock) CloseAgentConversation(conversationID string) error {
+	return nil
 }
 func (m *agentMock) GetAgentConversationByID(id string) (*api.AgentConversation, error) {
 	return nil, nil
@@ -223,6 +227,12 @@ func (m *agentMock) GetAgentPendingActionByID(id string) (*api.AgentPendingActio
 }
 func (m *agentMock) GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error) {
 	return nil, nil
+}
+func (m *agentMock) GetUnnotifiedPendingActions(limit int) ([]*api.AgentPendingAction, error) {
+	return nil, nil
+}
+func (m *agentMock) MarkPendingActionNotified(id string) error {
+	return nil
 }
 func (m *agentMock) UpdatePendingActionStatus(id, status string) error {
 	return nil
@@ -765,6 +775,11 @@ func Test_CanAccessAgent_NoAccess(t *testing.T) {
 	Expect(svc.canAccessAgent(user, agent)).To(BeFalse())
 }
 
+// Phase 5 stubs
+func (m *agentMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
+func (m *agentMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
+func (m *agentMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
+func (m *agentMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
 
 // Phase 4 stubs
 func (m *agentMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
@@ -776,3 +791,29 @@ func (m *agentMock) GetMemoriesWithoutEmbedding(limit int) ([]*api.AgentMemory, 
 func (m *agentMock) UpdateMemoryEmbedding(id string, embedding pgvector.Vector) error {
 	return nil
 }
+
+// Phase 6 stubs
+func (m *agentMock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
+func (m *agentMock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *agentMock) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
+func (m *agentMock) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
+func (m *agentMock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *agentMock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *agentMock) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
+func (m *agentMock) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *agentMock) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
+func (m *agentMock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
+func (m *agentMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *agentMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *agentMock) UnlinkAgentIdentity(identityID string) error { return nil }
+func (m *agentMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+
+// Phase 7 stubs
+func (m *agentMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *agentMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
+func (m *agentMock) SupersedeMemory(oldID, newID string) error { return nil }
+func (m *agentMock) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *agentMock) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
+func (m *agentMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
+func (m *agentMock) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *agentMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

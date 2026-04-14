@@ -233,6 +233,10 @@ type Service struct {
 	stmtSearchMemoriesByEmbedding    *sqlx.NamedStmt
 	stmtGetMemoriesWithoutEmbedding  *sqlx.NamedStmt
 	stmtUpdateMemoryEmbedding        *sqlx.NamedStmt
+
+	// Agent Memory Phase 5: identity linking.
+	stmtGetAgentIdentitiesByUserID    *sqlx.NamedStmt
+	stmtGetPendingActionByUserAndType *sqlx.NamedStmt
 }
 
 func NewService(config *config.Config) (*Service, error) {
@@ -2622,10 +2626,10 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtCreateAgentMemory, err = s.conn.PrepareNamed(`
 		INSERT INTO agent_memory (
 			agent_id, agent_user_id, scope, memory_type, title, body,
-			source_conversation, source_message, confidence, pinned, expires_at, embedding
+			source_conversation, source_message, confidence, pinned, expires_at, embedding, valid_until
 		) VALUES (
 			:agent_id, :agent_user_id, :scope, :memory_type, :title, :body,
-			:source_conversation, :source_message, :confidence, :pinned, :expires_at, :embedding
+			:source_conversation, :source_message, :confidence, :pinned, :expires_at, :embedding, :valid_until
 		)
 		RETURNING id
 	`)
@@ -2649,6 +2653,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtGetAgentMemoriesForUser, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_memory
 		WHERE agent_user_id = :agent_user_id
+		  AND status = 'active'
 		  AND (NOT :pinned_only OR pinned = TRUE)
 		  AND (expires_at IS NULL OR expires_at > NOW())
 		ORDER BY pinned DESC, created_at DESC
@@ -2790,6 +2795,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT * FROM agent_memory
 		WHERE agent_id = :agent_id
 		  AND agent_user_id = :agent_user_id
+		  AND status = 'active'
 		  AND embedding IS NOT NULL
 		  AND (NOT :exclude_pinned OR pinned = FALSE)
 		  AND (expires_at IS NULL OR expires_at > NOW())
@@ -2803,6 +2809,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtGetMemoriesWithoutEmbedding, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_memory
 		WHERE embedding IS NULL
+		  AND status = 'active'
 		ORDER BY created_at DESC
 		LIMIT :limit
 	`)
@@ -2812,6 +2819,27 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtUpdateMemoryEmbedding, err = s.conn.PrepareNamed(`
 		UPDATE agent_memory SET embedding = :embedding WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent Memory Phase 5 statements. See internal/persistence/agent_memory_phase5.go.
+
+	s.stmtGetAgentIdentitiesByUserID, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_identity WHERE agent_user_id = :agent_user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetPendingActionByUserAndType, err = s.conn.PrepareNamed(`
+		SELECT * FROM agent_pending_action
+		WHERE agent_user_id = :agent_user_id
+		  AND type = :type
+		  AND status IN ('awaiting_confirmation', 'confirmed_here_awaiting_other_side')
+		ORDER BY created_at DESC
+		LIMIT 1
 	`)
 	if err != nil {
 		return nil, err
@@ -3613,7 +3641,7 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 		execution := api.Execution{
 			FloID:            f,
 			Name:             flo.Name,
-			OwnerID:          *invocation.OwnerID,
+			OwnerID:          derefOrEmpty(invocation.OwnerID),
 			OrganisationID:   invocation.OrganisationID,
 			TriggeredBy:      &invocation.ID,
 			Data:             invocation.Data,
@@ -4810,4 +4838,11 @@ func (s *Service) RemoveFloFavourite(userID, floID string) error {
 func (s *Service) CreateFeedback(feedback api.Feedback) error {
 	_, err := s.stmtCreateFeedback.Exec(feedback)
 	return err
+}
+
+func derefOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

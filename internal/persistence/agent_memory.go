@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"flomation.app/automate/api"
 )
@@ -300,18 +301,36 @@ func (s *Service) TouchAgentConversation(conversationID string) error {
 // every (agent, channel, thread) has at most one open conversation at a
 // time, and that conversation is owned by the AgentUser who first spoke
 // in it.
+// ConversationResolution is the result of resolving a conversation.
+// ClosedConversationID is set when a stale conversation was closed.
+type ConversationResolution struct {
+	Conversation         *api.AgentConversation
+	ClosedConversationID *string
+}
+
 func (s *Service) ResolveOrCreateAgentConversation(
 	agentID string,
 	agentUserID *string,
 	channelType, channelID string,
 	threadID *string,
-) (*api.AgentConversation, error) {
+	idleTimeout int,
+) (*ConversationResolution, error) {
+	result := &ConversationResolution{}
+
 	existing, err := s.GetAgentConversationByKey(agentID, channelType, channelID, threadID)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
-		return existing, nil
+		// Check if the conversation is stale (idle timeout exceeded).
+		// If so, close it and fall through to create a new one.
+		if idleTimeout > 0 && time.Since(existing.LastMessageAt) > time.Duration(idleTimeout)*time.Second {
+			_ = s.CloseAgentConversation(existing.ID)
+			result.ClosedConversationID = &existing.ID
+		} else {
+			result.Conversation = existing
+			return result, nil
+		}
 	}
 
 	if _, err := s.CreateAgentConversation(api.AgentConversation{
@@ -326,7 +345,21 @@ func (s *Service) ResolveOrCreateAgentConversation(
 
 	// Re-fetch so the caller sees the server-side defaults (started_at,
 	// last_message_at, metadata) without another round-trip of synthesis.
-	return s.GetAgentConversationByKey(agentID, channelType, channelID, threadID)
+	conv, err := s.GetAgentConversationByKey(agentID, channelType, channelID, threadID)
+	if err != nil {
+		return nil, err
+	}
+	result.Conversation = conv
+	return result, nil
+}
+
+// CloseAgentConversation sets ended_at on a conversation, closing it.
+// The next message on this channel will create a new conversation.
+func (s *Service) CloseAgentConversation(conversationID string) error {
+	_, err := s.conn.Exec(`
+		UPDATE agent_conversation SET ended_at = NOW() WHERE id = $1 AND ended_at IS NULL
+	`, conversationID)
+	return err
 }
 
 // --- Conversation-scoped messages ---

@@ -113,12 +113,20 @@ func (s *Service) resolveAgentConversationInternal(c *gin.Context) {
 		return
 	}
 
-	conv, err := s.persistence.ResolveOrCreateAgentConversation(
+	// Check for stale conversation first — if we close one, we need
+	// its ID to generate a session summary.
+	idleTimeout := agent.IdleTimeoutSeconds
+	if idleTimeout == 0 {
+		idleTimeout = 1800 // default 30 minutes
+	}
+
+	resolution, err := s.persistence.ResolveOrCreateAgentConversation(
 		agentID,
 		body.AgentUserID,
 		body.ChannelType,
 		body.ChannelID,
 		body.ThreadID,
+		idleTimeout,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -129,7 +137,27 @@ func (s *Service) resolveAgentConversationInternal(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, conv)
+	conv := resolution.Conversation
+
+	// Include closed_conversation_id in the response so Launch can
+	// trigger session summary generation for the closed conversation.
+	response := gin.H{
+		"id":              conv.ID,
+		"agent_id":        conv.AgentID,
+		"agent_user_id":   conv.AgentUserID,
+		"channel_type":    conv.ChannelType,
+		"channel_id":      conv.ChannelID,
+		"thread_id":       conv.ThreadID,
+		"started_at":      conv.StartedAt,
+		"last_message_at": conv.LastMessageAt,
+		"ended_at":        conv.EndedAt,
+		"metadata":        conv.Metadata,
+	}
+	if resolution.ClosedConversationID != nil {
+		response["closed_conversation_id"] = *resolution.ClosedConversationID
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // getAgentConversationInternal handles GET /api/v1/internal/conversation/:id.
