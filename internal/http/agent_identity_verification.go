@@ -173,7 +173,7 @@ func (s *Service) dispatchVerificationToLaunch(agentID, sourceChannel, targetCha
 	})
 
 	endpoint := fmt.Sprintf("%s/internal/agent/%s/verify-identity", launchURL, agentID)
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(payload))
+	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(payload)) // #nosec G107 — internal service-to-service call
 	if err != nil {
 		log.WithFields(log.Fields{
 			"agent_id": agentID,

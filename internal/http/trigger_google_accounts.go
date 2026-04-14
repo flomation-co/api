@@ -109,7 +109,7 @@ func (s *Service) getTriggerGoogleTokensInternal(c *gin.Context) {
 	if purpose := c.Query("purpose"); purpose != "" {
 		endpoint += "?purpose=" + purpose
 	}
-	resp, err := http.Get(endpoint)
+	resp, err := http.Get(endpoint) // #nosec G107 — internal service-to-service call
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "trigger_id": triggerID}).Error("unable to proxy trigger Google token request")
 		c.AbortWithStatus(http.StatusInternalServerError)
