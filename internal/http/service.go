@@ -12,7 +12,6 @@ import (
 	"flomation.app/automate/api/internal/connector/identity"
 	"flomation.app/automate/api/internal/embedding"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
-	"flomation.app/automate/api/internal/poller"
 	"github.com/flomation-co/sentinel-client"
 	"github.com/google/uuid"
 
@@ -301,12 +300,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Initialise the system prompt assembler with optional embedding provider.
 	s.promptAssembler = s.initPromptAssembler(config)
 
-	// Phase 3: initialise inbound message handler.
-	selfURL := fmt.Sprintf("http://127.0.0.1:%d", config.HttpListenConfig.Port)
+	// Phase 3+4: initialise inbound message handler with direct dispatch.
+	directDispatcher := agent.NewDirectFlowDispatcher(persistence, s.executionNotifier)
 	s.inboundHandler = agent.NewInboundHandler(
-		&inboundPersistenceAdapter{Service: persistence, selfURL: selfURL},
+		&inboundPersistenceAdapter{Service: persistence, notifier: s.executionNotifier},
 		s.promptAssembler,
-		poller.NewHTTPFlowDispatcher(selfURL),
+		directDispatcher,
 	)
 
 	// Start API-side pollers (Phase 2 of Launch → API migration).
