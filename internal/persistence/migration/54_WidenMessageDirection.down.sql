@@ -1,0 +1,1 @@
+ALTER TABLE agent_message ALTER COLUMN direction TYPE VARCHAR(10);
