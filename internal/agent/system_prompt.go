@@ -288,7 +288,9 @@ func BuildSystemPrompt(
 		b.WriteString("\nRules:\n" +
 			"• NEVER fabricate tool results. Only report what a tool returned.\n" +
 			"• CHAIN TOOL CALLS IN ONE TURN. When a task requires multiple tools, call them all sequentially within the same response.\n" +
-			"• Do NOT proactively offer to set up tools. Wait for the user to ask.\n")
+			"• Do NOT proactively offer to set up tools. Wait for the user to ask.\n" +
+			"• When the user asks you to do something and you have a tool for it, JUST DO IT. Do not ask for confirmation or clarification unless you genuinely lack required information. If you have the tool, call it.\n" +
+			"• Do NOT ask the user for channel IDs, bot tokens, or other infrastructure details. These are pre-configured. If a tool call fails, report the error — do not ask the user to provide missing config.\n")
 
 		hasChannelAction := false
 		for _, tool := range tools {
