@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api/internal/actions"
+	"flomation.app/automate/api/internal/agent"
 	"flomation.app/automate/api/internal/connector/identity"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"github.com/flomation-co/sentinel-client"
@@ -34,6 +35,7 @@ type Service struct {
 	streamTokens      *StreamTokenStore
 	executionNotifier *ExecutionNotifier
 	agentSessionHub   *AgentSessionHub
+	promptAssembler   *agent.SystemPromptAssembler
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -292,6 +294,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		agentSessionHub:   NewAgentSessionHub(),
 	}
 
+	// Initialise the system prompt assembler with optional embedding provider.
+	s.promptAssembler = s.initPromptAssembler(config)
+
 	// API Group
 	s.engine.Use(s.corsMiddleware, hstsMiddleware)
 
@@ -522,6 +527,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/agent/:id/pending-action/match", s.matchPendingActionInternal)
 	internal.POST("/agent/:id/identity/request-verification", s.requestVerificationInternal)
 	internal.GET("/agent/:id/tool-summary", s.getAgentToolSummaryInternal)
+
+	// System prompt assembly — Phase 1 of Launch → API migration.
+	internal.POST("/agent/:id/assemble-system-prompt", s.assembleSystemPromptInternal)
 
 	// Pending action poller support (Phase 5).
 	internal.GET("/pending-action/unnotified", s.listUnnotifiedPendingActionsInternal)

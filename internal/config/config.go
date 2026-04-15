@@ -40,12 +40,23 @@ type SMTPConfig struct {
 	From     string `json:"from" env:"SMTP_FROM" arg:"smtp-from"`
 }
 
+type EmbeddingConfig struct {
+	Enabled        bool   `json:"enabled" env:"EMBEDDING_ENABLED" arg:"embedding-enabled"`
+	Region         string `json:"region" env:"EMBEDDING_REGION" arg:"embedding-region"`
+	ModelID        string `json:"model_id" env:"EMBEDDING_MODEL_ID" arg:"embedding-model-id"`
+	Dimensions     int    `json:"dimensions" env:"EMBEDDING_DIMENSIONS" arg:"embedding-dimensions"`
+	TopK           int    `json:"top_k" env:"EMBEDDING_TOP_K" arg:"embedding-top-k"`
+	AccessKeyID    string `json:"access_key_id" env:"EMBEDDING_ACCESS_KEY_ID" arg:"embedding-access-key-id"`
+	SecretAccessKey string `json:"secret_access_key" env:"EMBEDDING_SECRET_ACCESS_KEY" arg:"embedding-secret-access-key"`
+}
+
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
 	Security         SecurityConfig   `json:"security"`
 	Launch           LaunchConfig     `json:"launch"`
 	SMTP             SMTPConfig       `json:"smtp"`
+	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
 }
 
 func LoadConfig(path string) (*Config, error) {
