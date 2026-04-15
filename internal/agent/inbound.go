@@ -91,7 +91,11 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	var conversationID *string
 	channelID, threadID := DeriveChannelScope(msg)
 	if channelID != "" {
-		idleTimeout := 30 // minutes
+		// Use the agent's configured idle timeout, falling back to 30 minutes.
+		idleTimeout := 1800
+		if agent.IdleTimeoutSeconds > 0 {
+			idleTimeout = agent.IdleTimeoutSeconds
+		}
 		conv, err := h.persistence.ResolveOrCreateAgentConversation(
 			agentID, agentUserID, msg.ChannelType, channelID, threadID, idleTimeout)
 		if err != nil {
