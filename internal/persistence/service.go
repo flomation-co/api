@@ -2583,6 +2583,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtGetAgentConversationMessages, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_message
 		WHERE conversation_id = :conversation_id
+		  AND direction IN ('inbound', 'outbound', 'system')
 		ORDER BY sequence ASC, created_at ASC
 		LIMIT :limit
 	`)
