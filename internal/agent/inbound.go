@@ -337,22 +337,33 @@ func (h *InboundHandler) checkPendingActionConfirmation(agentID string, msg Inbo
 }
 
 // normaliseMessages converts agent_message rows to role/content maps.
+// Tool exchange messages (tool_use/tool_result) are excluded — they are
+// internal mechanics within a single AI turn. The final outbound message
+// already summarises the tool results. Including them confuses the model
+// into thinking the user said the tool results.
 func normaliseMessages(msgs []*api.AgentMessage) []map[string]interface{} {
 	var result []map[string]interface{}
 	for _, msg := range msgs {
-		role := "user"
 		switch msg.Direction {
+		case "inbound":
+			result = append(result, map[string]interface{}{
+				"role":    "user",
+				"content": msg.Content,
+			})
 		case "outbound":
-			role = "assistant"
-		case "tool_use":
-			role = "assistant"
-		case "tool_result":
-			role = "user"
+			result = append(result, map[string]interface{}{
+				"role":    "assistant",
+				"content": msg.Content,
+			})
+		case "tool_use", "tool_result":
+			// Skip — internal to a single AI turn.
+			continue
+		default:
+			result = append(result, map[string]interface{}{
+				"role":    "user",
+				"content": msg.Content,
+			})
 		}
-		result = append(result, map[string]interface{}{
-			"role":    role,
-			"content": msg.Content,
-		})
 	}
 	return result
 }

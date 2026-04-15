@@ -168,22 +168,29 @@ func (cp *CommitmentPoller) processCommitment(c *api.AgentCommitment) {
 
 // normaliseHistory converts agent_message rows to role/content maps
 // for the AI action's conversation_history input.
+// Tool exchange messages are excluded — they confuse the model.
 func normaliseHistory(msgs []*api.AgentMessage) []map[string]interface{} {
 	var result []map[string]interface{}
 	for _, msg := range msgs {
-		role := "user"
 		switch msg.Direction {
+		case "inbound":
+			result = append(result, map[string]interface{}{
+				"role":    "user",
+				"content": msg.Content,
+			})
 		case "outbound":
-			role = "assistant"
-		case "tool_use":
-			role = "assistant"
-		case "tool_result":
-			role = "user"
+			result = append(result, map[string]interface{}{
+				"role":    "assistant",
+				"content": msg.Content,
+			})
+		case "tool_use", "tool_result":
+			continue // internal to a single AI turn
+		default:
+			result = append(result, map[string]interface{}{
+				"role":    "user",
+				"content": msg.Content,
+			})
 		}
-		result = append(result, map[string]interface{}{
-			"role":    role,
-			"content": msg.Content,
-		})
 	}
 	return result
 }
