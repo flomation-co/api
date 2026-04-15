@@ -12,6 +12,7 @@ import (
 	"flomation.app/automate/api/internal/connector/identity"
 	"flomation.app/automate/api/internal/embedding"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
+	"flomation.app/automate/api/internal/poller"
 	"github.com/flomation-co/sentinel-client"
 	"github.com/google/uuid"
 
@@ -38,6 +39,7 @@ type Service struct {
 	agentSessionHub   *AgentSessionHub
 	promptAssembler   *agent.SystemPromptAssembler
 	embeddingProvider embedding.Provider
+	inboundHandler    *agent.InboundHandler
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -299,6 +301,14 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Initialise the system prompt assembler with optional embedding provider.
 	s.promptAssembler = s.initPromptAssembler(config)
 
+	// Phase 3: initialise inbound message handler.
+	selfURL := fmt.Sprintf("http://127.0.0.1:%d", config.HttpListenConfig.Port)
+	s.inboundHandler = agent.NewInboundHandler(
+		&inboundPersistenceAdapter{Service: persistence, selfURL: selfURL},
+		s.promptAssembler,
+		poller.NewHTTPFlowDispatcher(selfURL),
+	)
+
 	// Start API-side pollers (Phase 2 of Launch → API migration).
 	// These replace the pollers that previously ran in Launch and made
 	// HTTP calls back to the API — now they use direct DB access.
@@ -537,6 +547,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	// System prompt assembly — Phase 1 of Launch → API migration.
 	internal.POST("/agent/:id/assemble-system-prompt", s.assembleSystemPromptInternal)
+
+	// Phase 3: inbound message pipeline (replaces Launch's 7-step pipeline).
+	internal.POST("/agent/:id/inbound-message", s.handleInboundMessageInternal)
 
 	// Pending action poller support (Phase 5).
 	internal.GET("/pending-action/unnotified", s.listUnnotifiedPendingActionsInternal)
