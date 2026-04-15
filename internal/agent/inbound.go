@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const defaultHistoryLimit = 20
+const defaultHistoryLimit = 10
 
 // InboundMessage is the raw message from a channel webhook.
 type InboundMessage struct {

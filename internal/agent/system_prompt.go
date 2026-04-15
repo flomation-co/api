@@ -273,37 +273,17 @@ func BuildSystemPrompt(
 
 	if len(tools) > 0 {
 		b.WriteString("━━━ Tools ━━━\n")
-		b.WriteString("CRITICAL: You have tools. You MUST use them. NEVER claim you have done something " +
-			"without actually calling the tool. If you say 'Done' without a tool call, you are lying to the user.\n\n" +
-			"Available tools:\n")
-		for _, tool := range tools {
-			b.WriteString("• ")
+		b.WriteString("You have tools — use them. Never claim you did something without calling the tool. " +
+			"Just do it when asked, don't seek confirmation. Infrastructure (tokens, IDs) is pre-configured.\n")
+		b.WriteString("Available: ")
+		for i, tool := range tools {
+			if i > 0 {
+				b.WriteString(", ")
+			}
 			b.WriteString(tool.Name)
-			if tool.Description != "" {
-				b.WriteString(" — ")
-				b.WriteString(tool.Description)
-			}
-			b.WriteString("\n")
 		}
-		b.WriteString("\nRules:\n" +
-			"• NEVER fabricate tool results. Only report what a tool returned.\n" +
-			"• CHAIN TOOL CALLS IN ONE TURN. When a task requires multiple tools, call them all sequentially within the same response.\n" +
-			"• Do NOT proactively offer to set up tools. Wait for the user to ask.\n" +
-			"• When the user asks you to do something and you have a tool for it, JUST DO IT. Do not ask for confirmation or clarification unless you genuinely lack required information. If you have the tool, call it.\n" +
-			"• Do NOT ask the user for channel IDs, bot tokens, or other infrastructure details. These are pre-configured. If a tool call fails, report the error — do not ask the user to provide missing config.\n")
+		b.WriteString("\n")
 
-		hasChannelAction := false
-		for _, tool := range tools {
-			if tool.Type == "tools/channel_action" {
-				hasChannelAction = true
-				break
-			}
-		}
-		if hasChannelAction && channelType == "telegram" {
-			b.WriteString("• TYPING INDICATOR: When you are about to use any tool (search, email, calendar, etc.), " +
-				"call Channel_Action with action=\"typing\" FIRST, before calling the other tool. " +
-				"This shows the user you are working on their request. Always do this on Telegram.\n")
-		}
 		b.WriteString("\n")
 	}
 
