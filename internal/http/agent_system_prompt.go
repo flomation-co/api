@@ -116,6 +116,7 @@ func (s *Service) initPromptAssembler(cfg *apiconfig.Config) *agent.SystemPrompt
 			log.WithError(err).Warn("failed to initialise embedding provider — semantic search disabled")
 		} else {
 			emb = provider
+			s.embeddingProvider = provider
 			log.Info("embedding provider initialised for system prompt assembly")
 		}
 		if cfg.Embedding.TopK > 0 {

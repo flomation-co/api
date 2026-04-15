@@ -10,6 +10,7 @@ import (
 	"flomation.app/automate/api/internal/actions"
 	"flomation.app/automate/api/internal/agent"
 	"flomation.app/automate/api/internal/connector/identity"
+	"flomation.app/automate/api/internal/embedding"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"github.com/flomation-co/sentinel-client"
 	"github.com/google/uuid"
@@ -36,6 +37,7 @@ type Service struct {
 	executionNotifier *ExecutionNotifier
 	agentSessionHub   *AgentSessionHub
 	promptAssembler   *agent.SystemPromptAssembler
+	embeddingProvider embedding.Provider
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -296,6 +298,11 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	// Initialise the system prompt assembler with optional embedding provider.
 	s.promptAssembler = s.initPromptAssembler(config)
+
+	// Start API-side pollers (Phase 2 of Launch → API migration).
+	// These replace the pollers that previously ran in Launch and made
+	// HTTP calls back to the API — now they use direct DB access.
+	s.startPollers(config, persistence)
 
 	// API Group
 	s.engine.Use(s.corsMiddleware, hstsMiddleware)
