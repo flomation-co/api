@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	apiTypes "flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -81,30 +82,35 @@ func (s *Service) getAgentToolSummaryInternal(c *gin.Context) {
 		return
 	}
 
-	// Extract tool nodes: skip triggers (type 1), AI nodes, and internal
-	// nodes like set_variable. Deduplicate by type.
+	tools := parseToolNodes(flowData.Nodes, s.persistence)
+	c.JSON(http.StatusOK, tools)
+}
+
+// parseToolNodes extracts tool entries from a list of flow nodes.
+func parseToolNodes(nodes []struct {
+	Type string `json:"type"`
+	Data struct {
+		Label  string `json:"label"`
+		Config struct {
+			Name string `json:"name"`
+		} `json:"config"`
+	} `json:"data"`
+}, p Persistence) []toolSummaryEntry {
 	seen := make(map[string]bool)
 	var tools []toolSummaryEntry
 
-	// Look up descriptions from the actions table (plugin field = node type).
 	actionDescs := make(map[string]string)
 	actionNames := make(map[string]string)
-	if actions, err := s.persistence.GetActions(); err == nil {
+	if actions, err := p.GetActions(); err == nil {
 		for _, a := range actions {
 			actionDescs[a.Plugin] = a.Description
 			actionNames[a.Plugin] = a.Name
 		}
 	}
 
-	for _, node := range flowData.Nodes {
+	for _, node := range nodes {
 		nodeType := node.Type
-
-		// Skip triggers, AI actions, and utility nodes
-		if isInternalNode(nodeType) {
-			continue
-		}
-
-		if seen[nodeType] {
+		if isInternalNode(nodeType) || seen[nodeType] {
 			continue
 		}
 		seen[nodeType] = true
@@ -117,20 +123,52 @@ func (s *Service) getAgentToolSummaryInternal(c *gin.Context) {
 				name = node.Data.Label
 			}
 		}
-
 		desc := ""
 		if d, ok := actionDescs[nodeType]; ok {
 			desc = d
 		}
+		tools = append(tools, toolSummaryEntry{Type: nodeType, Name: name, Description: desc})
+	}
+	return tools
+}
 
-		tools = append(tools, toolSummaryEntry{
-			Type:        nodeType,
-			Name:        name,
-			Description: desc,
-		})
+// getToolsFromRevision extracts tool entries from a flow revision record.
+// Used by both the tool-summary endpoint and the prompt assembler adapter.
+func getToolsFromRevision(revision *apiTypes.Revision, p Persistence) []toolSummaryEntry {
+	if revision == nil {
+		return nil
 	}
 
-	c.JSON(http.StatusOK, tools)
+	var rawData []byte
+	switch v := revision.Data.(type) {
+	case string:
+		rawData = []byte(v)
+	case []byte:
+		rawData = v
+	default:
+		var err error
+		rawData, err = json.Marshal(v)
+		if err != nil {
+			return nil
+		}
+	}
+
+	var flowData struct {
+		Nodes []struct {
+			Type string `json:"type"`
+			Data struct {
+				Label  string `json:"label"`
+				Config struct {
+					Name string `json:"name"`
+				} `json:"config"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(rawData, &flowData); err != nil {
+		return nil
+	}
+
+	return parseToolNodes(flowData.Nodes, p)
 }
 
 // isInternalNode returns true for node types that shouldn't appear
