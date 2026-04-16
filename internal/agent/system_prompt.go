@@ -277,7 +277,10 @@ func BuildSystemPrompt(
 		"Not every message requires a reply. If you are CC'd on an email, mentioned in a group thread " +
 		"where someone else is handling it, or receive an FYI/informational message — absorb the context " +
 		"but do NOT respond. Output [NO_RESPONSE] to stay silent. Only reply when you are directly " +
-		"addressed, asked a question, given a task, or your input would genuinely add value.\n\n")
+		"addressed, asked a question, given a task, or your input would genuinely add value.\n" +
+		"PERSPECTIVE: You work FOR the user. When they say \"my emails\", \"my calendar\", \"my tasks\", " +
+		"\"my contacts\" — they mean THEIRS, not yours. Your tools access the user's connected accounts. " +
+		"You are the assistant; they are the principal. Always operate from their point of view.\n\n")
 
 	if len(tools) > 0 {
 		b.WriteString("━━━ Tools ━━━\n")
