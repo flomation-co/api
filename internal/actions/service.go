@@ -109,7 +109,27 @@ func (m *Migrator) Migrate(manifestActions map[string]api.ActionDefinition, appl
 		}
 	}
 
-	return nil, nil
+	// Remove stale actions: in the DB but not in the manifest.
+	var removed int64
+	for _, existing := range databaseActions {
+		if !containsAction(existing.ID, manifestAsSlice(manifestActions)) {
+			if err := m.deleteAction(existing.ID); err != nil {
+				log.WithFields(log.Fields{
+					"error":  err,
+					"action": existing.ID,
+				}).Error("unable to remove stale action")
+			} else {
+				removed++
+				log.WithField("action", existing.ID).Info("removed stale action")
+			}
+		}
+	}
+
+	return &MigrationResult{
+		Created: int64(len(toCreate)),
+		Updated: int64(len(toUpdate)),
+		Removed: removed,
+	}, nil
 }
 
 func (m *Migrator) selectExistingActions() ([]api.ActionDefinition, error) {
@@ -254,6 +274,20 @@ func (m *Migrator) updateAction(action api.ActionDefinition) error {
 	}
 
 	return nil
+}
+
+func (m *Migrator) deleteAction(id string) error {
+	_, err := m.conn.Exec(`DELETE FROM actions WHERE id = $1`, id)
+	return err
+}
+
+func manifestAsSlice(manifest map[string]api.ActionDefinition) []api.ActionDefinition {
+	result := make([]api.ActionDefinition, 0, len(manifest))
+	for k, v := range manifest {
+		v.ID = k
+		result = append(result, v)
+	}
+	return result
 }
 
 func containsAction(id string, actions []api.ActionDefinition) bool {
