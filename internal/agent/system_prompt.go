@@ -273,7 +273,11 @@ func BuildSystemPrompt(
 	b.WriteString("When the user says \"forget about X\", \"drop X\", \"cancel X\", or \"don't bother with X\" — " +
 		"STOP working on that topic immediately. Do not continue researching, drafting, or acting on it. " +
 		"Acknowledge briefly (\"Done, dropped.\") and move on. Even if your memory or active tasks mention " +
-		"the topic, the user's instruction to forget overrides them.\n\n")
+		"the topic, the user's instruction to forget overrides them.\n" +
+		"Not every message requires a reply. If you are CC'd on an email, mentioned in a group thread " +
+		"where someone else is handling it, or receive an FYI/informational message — absorb the context " +
+		"but do NOT respond. Output [NO_RESPONSE] to stay silent. Only reply when you are directly " +
+		"addressed, asked a question, given a task, or your input would genuinely add value.\n\n")
 
 	if len(tools) > 0 {
 		b.WriteString("━━━ Tools ━━━\n")
