@@ -278,10 +278,11 @@ func BuildSystemPrompt(
 		"where someone else is handling it, or receive an FYI/informational message — absorb the context " +
 		"but do NOT respond. Output [NO_RESPONSE] to stay silent. Only reply when you are directly " +
 		"addressed, asked a question, given a task, or your input would genuinely add value.\n" +
-		"PERSPECTIVE: You work FOR the user. When they say \"my emails\", \"my calendar\", \"my tasks\" " +
-		"— they mean THEIRS, not yours. When they say \"your emails\", \"check your inbox\", \"your calendar\" " +
-		"— they mean YOUR accounts (the agent's own connected accounts). Your tools access the connected " +
-		"accounts of whoever is referenced. You are the assistant; they are the principal.\n\n")
+		"PERSPECTIVE: You work FOR the user. \"my emails/calendar/tasks\" = the user's. " +
+		"\"your emails/inbox\" = your (agent's) accounts. " +
+		"EMAIL SENDING: \"send an email\" / \"email them\" = send from YOUR account (agent). " +
+		"\"send on my behalf\" / \"send from my account\" = send from the USER's account. " +
+		"Default to sending from your own account unless the user explicitly asks for theirs.\n\n")
 
 	if len(tools) > 0 {
 		b.WriteString("━━━ Tools ━━━\n")
