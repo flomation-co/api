@@ -269,7 +269,11 @@ func BuildSystemPrompt(
 
 	b.WriteString("━━━ Layer 0 ━━━\n")
 	b.WriteString(layerZeroHonestyDirective)
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+	b.WriteString("When the user says \"forget about X\", \"drop X\", \"cancel X\", or \"don't bother with X\" — " +
+		"STOP working on that topic immediately. Do not continue researching, drafting, or acting on it. " +
+		"Acknowledge briefly (\"Done, dropped.\") and move on. Even if your memory or active tasks mention " +
+		"the topic, the user's instruction to forget overrides them.\n\n")
 
 	if len(tools) > 0 {
 		b.WriteString("━━━ Tools ━━━\n")
