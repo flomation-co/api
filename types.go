@@ -610,6 +610,7 @@ type AgentCommitment struct {
 	FulfilledAt        *time.Time       `json:"fulfilled_at,omitempty" db:"fulfilled_at"`
 	CancelledAt        *time.Time       `json:"cancelled_at,omitempty" db:"cancelled_at"`
 	ExpiresAt          *time.Time       `json:"expires_at,omitempty" db:"expires_at"`
+	Recurrence         *string          `json:"recurrence,omitempty" db:"recurrence"`
 }
 
 type AgentExecution struct {

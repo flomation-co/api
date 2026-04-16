@@ -2,6 +2,7 @@ package poller
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	api "flomation.app/automate/api"
@@ -12,6 +13,7 @@ import (
 type CommitmentPersistence interface {
 	GetDueCommitments(limit int) ([]*api.AgentCommitment, error)
 	UpdateCommitmentStatus(id, status string) error
+	CreateAgentCommitment(c api.AgentCommitment) (*string, error)
 	GetAgentByID(id string) (*api.Agent, error)
 	GetAgentConversationByID(id string) (*api.AgentConversation, error)
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
@@ -163,7 +165,130 @@ func (cp *CommitmentPoller) processCommitment(c *api.AgentCommitment) {
 		l.WithError(err).Warn("failed to mark commitment fulfilled (dispatch already sent)")
 	}
 
+	// If recurring, schedule the next occurrence.
+	if c.Recurrence != nil && *c.Recurrence != "" {
+		cp.scheduleNextOccurrence(c)
+	}
+
 	l.Info("commitment fired and fulfilled")
+}
+
+// scheduleNextOccurrence creates a new commitment with the next due_at
+// based on the recurrence pattern. Supported patterns:
+//   - "daily" / "every day"
+//   - "weekly" / "every week"
+//   - "monthly" / "every month"
+//   - "weekdays" / "every weekday"
+//   - "every Monday" / "every Tuesday" etc.
+//   - "every N hours" / "every N minutes" / "every N days"
+func (cp *CommitmentPoller) scheduleNextOccurrence(c *api.AgentCommitment) {
+	nextDue := calculateNextDue(*c.Recurrence, c.DueAt)
+	if nextDue == nil {
+		log.WithFields(log.Fields{
+			"commitment_id": c.ID,
+			"recurrence":    *c.Recurrence,
+		}).Warn("could not calculate next occurrence for recurring commitment")
+		return
+	}
+
+	next := api.AgentCommitment{
+		AgentID:        c.AgentID,
+		AgentUserID:    c.AgentUserID,
+		ConversationID: c.ConversationID,
+		Kind:           c.Kind,
+		Description:    c.Description,
+		Payload:        c.Payload,
+		TriggerType:    "absolute_time",
+		DueAt:          nextDue,
+		Status:         "pending",
+		MadeBy:         c.MadeBy,
+		Recurrence:     c.Recurrence,
+	}
+
+	id, err := cp.persistence.CreateAgentCommitment(next)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":      err,
+			"recurrence": *c.Recurrence,
+		}).Warn("failed to schedule next recurring commitment")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"original_id": c.ID,
+		"new_id":      id,
+		"next_due":    nextDue.Format(time.RFC3339),
+		"recurrence":  *c.Recurrence,
+	}).Info("scheduled next recurring commitment")
+}
+
+// calculateNextDue determines the next due_at from a recurrence pattern.
+func calculateNextDue(recurrence string, lastDue *time.Time) *time.Time {
+	now := time.Now()
+	base := now
+	if lastDue != nil {
+		base = *lastDue
+	}
+
+	r := strings.ToLower(strings.TrimSpace(recurrence))
+
+	switch r {
+	case "daily", "every day":
+		t := base.Add(24 * time.Hour)
+		return &t
+	case "weekly", "every week":
+		t := base.Add(7 * 24 * time.Hour)
+		return &t
+	case "monthly", "every month":
+		t := base.AddDate(0, 1, 0)
+		return &t
+	case "weekdays", "every weekday":
+		t := base.Add(24 * time.Hour)
+		for t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
+			t = t.Add(24 * time.Hour)
+		}
+		return &t
+	}
+
+	// "every Monday", "every Tuesday", etc.
+	days := map[string]time.Weekday{
+		"monday": time.Monday, "tuesday": time.Tuesday,
+		"wednesday": time.Wednesday, "thursday": time.Thursday,
+		"friday": time.Friday, "saturday": time.Saturday,
+		"sunday": time.Sunday,
+	}
+	for name, day := range days {
+		if r == "every "+name {
+			t := base.Add(24 * time.Hour)
+			for t.Weekday() != day {
+				t = t.Add(24 * time.Hour)
+			}
+			return &t
+		}
+	}
+
+	// "every N hours/minutes/days"
+	var n int
+	var unit string
+	if _, err := fmt.Sscanf(r, "every %d %s", &n, &unit); err == nil && n > 0 {
+		unit = strings.TrimSuffix(unit, "s") // "hours" → "hour"
+		switch unit {
+		case "minute":
+			t := base.Add(time.Duration(n) * time.Minute)
+			return &t
+		case "hour":
+			t := base.Add(time.Duration(n) * time.Hour)
+			return &t
+		case "day":
+			t := base.Add(time.Duration(n) * 24 * time.Hour)
+			return &t
+		case "week":
+			t := base.Add(time.Duration(n) * 7 * 24 * time.Hour)
+			return &t
+		}
+	}
+
+	return nil
 }
 
 // normaliseHistory converts agent_message rows to role/content maps

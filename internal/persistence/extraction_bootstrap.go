@@ -83,7 +83,8 @@ Analyse it and return a JSON object with these arrays:
       "due_at": "ISO-8601 if a specific time was mentioned",
       "evidence": "The exact utterance containing the promise",
       "confidence": 0.0-1.0,
-      "made_by": "user|assistant"
+      "made_by": "user|assistant",
+      "recurrence": "daily|weekly|monthly|weekdays|every Monday|every N hours|null"
     }
   ],
   "confirmations": [
@@ -251,6 +252,7 @@ Output:
 - When extracting commitments from assistant turns, set "made_by": "assistant".
 - ANY assistant reply that promises to do something later, remind the user, follow up, or check back MUST produce a commitment. Examples: "I'll remind you", "Got it, I'll ping you", "I'll check on that", "Sure, setting a reminder". Even very short confirmations are commitments if they imply a future action.
 - Reminders can be set for any duration, including 1 minute or less. Do not refuse or modify the user's requested timeframe.
+- RECURRING COMMITMENTS: When the user asks for "every day", "every Monday", "weekly", "daily", "monthly", "every weekday", or "every N hours/days" — set the "recurrence" field to the pattern. The platform will automatically schedule the next occurrence after each firing. Examples: "remind me every morning at 9am" → recurrence: "daily", due_at for 9am today or tomorrow. "Weekly standup reminder on Mondays" → recurrence: "every Monday". One-off reminders should have recurrence: null.
 - For identity_link proposed_actions, the payload MUST contain "channel_type" (the OTHER platform they claim to be on, NOT the current channel) and "external_id" (their handle/address on that other platform). Example: if a Telegram user says "I'm also andy@flomation.co on email", payload must be {"channel_type": "email", "external_id": "andy@flomation.co"} — NOT {"channel_type": "telegram", ...}.
 - identity_link proposed_actions should ONLY be created when the user EXPLICITLY states they have an identity on another channel and wants to link it. Trigger phrases: "I'm also X on Y", "link my X account", "you can reach me at X", "connect my X". Simply MENTIONING an email address or handle (e.g. "Becky's email is bex@yahoo.com", "CC sarah@example.com", "email Bob at bob@test.com", "send it to ada@flomation.co") is NOT an identity claim — store those as facts or connection memories, never as identity_link actions. The bar for identity_link is HIGH: the user must be claiming the identity is THEIRS and expressing intent to link channels.
 - CRITICAL: When a user says "don't link", "don't do that", "stop", or any negative instruction about a proposed action, do NOT create a forget_memory or any new proposed_action. This is the user declining a suggestion, not requesting memory deletion. If there is a pending action being declined, emit a confirmation with resolution "declined" instead.

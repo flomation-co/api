@@ -1,0 +1,1 @@
+ALTER TABLE agent_commitment DROP COLUMN IF EXISTS recurrence;
