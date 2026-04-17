@@ -294,6 +294,20 @@ func (s *Service) createFloRevision(c *gin.Context) {
 	rawData, _ := json.Marshal(revision.Data)
 	_ = json.Unmarshal(rawData, &revisionData)
 
+	// Enforce single On Error handler per flow
+	var onErrorCount int
+	for _, node := range revisionData.Nodes {
+		if node.Type == "error/on_error" || node.Data.Label == "error/on_error" {
+			onErrorCount++
+		}
+	}
+	if onErrorCount > 1 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Only one On Error handler is allowed per flow",
+		})
+		return
+	}
+
 	j, err := json.Marshal(revision.Data)
 	if err != nil {
 		log.WithFields(log.Fields{

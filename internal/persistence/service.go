@@ -1574,7 +1574,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    created_at, updated_at, completed_at, triggered_by,
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
-		    result->'billingDuration' AS billing_duration
+		    result->'billingDuration' AS billing_duration,
+		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
 		return nil, err
@@ -1608,7 +1609,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    created_at, updated_at, completed_at, triggered_by,
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
-		    result->'billingDuration' AS billing_duration
+		    result->'billingDuration' AS billing_duration,
+		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
 		return nil, err
