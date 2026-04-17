@@ -1240,8 +1240,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtUpdateExecutionRunnerID, err = s.conn.PrepareNamed(`
 		UPDATE execution
 		SET
-		    runner_id = :runner_id,
-			completed_at = CURRENT_TIMESTAMP
+		    runner_id = :runner_id
 		WHERE
 		    id = :id;
 	`)
@@ -2579,15 +2578,21 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
-	// Conversation-scoped message history ordered oldest-first for AI
-	// consumers that append the current turn at the end. Sequence ordering
-	// is authoritative; created_at is only a tiebreaker for any edge cases.
+	// Conversation-scoped message history: fetch the MOST RECENT N messages
+	// but return them in chronological order (oldest-first) so the AI sees
+	// turns in the correct sequence. The subquery grabs the latest N by
+	// descending order, then the outer query re-sorts ascending.
+	// Without the subquery, LIMIT with ASC order returns the OLDEST N
+	// messages, causing the AI to lose context in long conversations.
 	s.stmtGetAgentConversationMessages, err = s.conn.PrepareNamed(`
-		SELECT * FROM agent_message
-		WHERE conversation_id = :conversation_id
-		  AND direction IN ('inbound', 'outbound', 'system')
+		SELECT * FROM (
+			SELECT * FROM agent_message
+			WHERE conversation_id = :conversation_id
+			  AND direction IN ('inbound', 'outbound', 'system')
+			ORDER BY sequence DESC, created_at DESC
+			LIMIT :limit
+		) recent
 		ORDER BY sequence ASC, created_at ASC
-		LIMIT :limit
 	`)
 	if err != nil {
 		return nil, err
