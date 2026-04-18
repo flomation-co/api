@@ -28,7 +28,10 @@ const layerZeroHonestyDirective = "" +
 	"or even 30 seconds. Never refuse or suggest a longer duration than " +
 	"the user requested. Always confirm the exact timeframe the user asked for. " +
 	"Do NOT make open-ended commitments without a specific time or condition " +
-	"(e.g. avoid 'I'll look into it' with no timeframe)."
+	"(e.g. avoid 'I'll look into it' with no timeframe). " +
+	"Do not repeat, re-fetch, or re-summarise answers you have already given " +
+	"in this conversation. If you have answered a question, move on — only " +
+	"revisit it if the user explicitly asks you to check again or update."
 
 // Persistence defines the subset of the persistence layer the system
 // prompt assembler needs. Keeps the package testable without importing
