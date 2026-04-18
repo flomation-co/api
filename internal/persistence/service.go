@@ -980,6 +980,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.triggered_by,
 		    e.execution_status,
 		    e.completion_status,
+			e.runner_id,
+			r.name AS runner_name,
 			e.result->'duration' AS duration,
 			e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
@@ -989,6 +991,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    execution e
 		INNER JOIN
 			flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN
+			runner r ON r.id = e.runner_id
 		WHERE
 		    e.owner_id = :user_id
 		    AND e.organisation_id IS NULL
@@ -1006,12 +1010,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -1045,12 +1051,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1064,12 +1072,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -1249,30 +1259,32 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtGetExecutionByID, err = s.conn.PrepareNamed(`
-		SELECT 
-			id,
-			flo_id,
-			name,
-			owner_id,
-			organisation_id,
-			created_at,
-			updated_at,
-			completed_at,
-			triggered_by,
-			execution_status,
-			completion_status,
-			data,
-			runner_id,
-			result,
-			result->'duration' AS duration,
-			result->'billingDuration' AS billing_duration,
+		SELECT
+			e.id,
+			e.flo_id,
+			e.name,
+			e.owner_id,
+			e.organisation_id,
+			e.created_at,
+			e.updated_at,
+			e.completed_at,
+			e.triggered_by,
+			e.execution_status,
+			e.completion_status,
+			e.data,
+			e.runner_id,
+			r.name AS runner_name,
+			e.result,
+			e.result->'duration' AS duration,
+			e.result->'billingDuration' AS billing_duration,
 			(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			agent_id,
-			agent_session_id
+			e.agent_id,
+			e.agent_session_id
 		FROM
 		    execution e
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE
-		    id = :id;
+		    e.id = :id;
 	`)
 	if err != nil {
 		return nil, err

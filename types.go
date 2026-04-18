@@ -127,6 +127,7 @@ type Execution struct {
 	Sequence          int64            `json:"sequence" db:"sequence"`
 	Data              json.RawMessage  `json:"data" db:"data"`
 	RunnerID          *string          `json:"runner_id" db:"runner_id"`
+	RunnerName        *string          `json:"runner_name,omitempty" db:"runner_name"`
 	Result            *json.RawMessage `json:"result" db:"result"`
 	Duration          *int64           `json:"duration" db:"duration"`
 	BillingDuration   *int64           `json:"billing_duration" db:"billing_duration"`
