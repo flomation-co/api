@@ -387,19 +387,18 @@ func BuildSystemPrompt(
 	}
 
 	if len(pendingActions) > 0 {
-		b.WriteString("━━━ ACTION REQUIRED ━━━\n")
-		b.WriteString("CRITICAL: You MUST address the items below in your VERY NEXT reply. Do NOT ignore them. Do NOT just answer the user's question without also addressing these items. Weave them naturally into your response.\n")
-		b.WriteString("When the user responds affirmatively (e.g. \"yes\", \"link them\", \"go ahead\"), treat it as confirmation of these items — NOT as a request to use a tool.\n")
+		b.WriteString("━━━ PENDING ITEMS ━━━\n")
+		b.WriteString("The following items are awaiting the user's response. Mention them ONCE if there is a natural opportunity, but do NOT force them into every reply. If the user is focused on something else, leave them for later. Never repeat an item the user has already addressed.\n")
 		for _, pa := range pendingActions {
 			switch pa.Type {
 			case "identity_link":
-				fmt.Fprintf(&b, "• IDENTITY LINK PENDING: The user previously said: %q. You have not yet asked them to confirm this. You MUST ask: \"I noticed you mentioned [identity] — would you like me to link your accounts so I can recognise you as the same person across channels?\" Do this NOW, in this reply.\n",
+				fmt.Fprintf(&b, "• Identity link: The user mentioned %q — you could ask if they'd like to link their accounts across channels.\n",
 					pa.Evidence)
 			case "identity_link_verification":
-				fmt.Fprintf(&b, "• IDENTITY VERIFICATION PENDING: Someone on another channel claims to also be this user: %q. You MUST ask them to confirm or deny: \"Someone on [channel] says they're also you — is that right?\" Do this NOW.\n",
+				fmt.Fprintf(&b, "• Identity verification: Someone on another channel claims to be this user: %q — ask them to confirm when appropriate.\n",
 					pa.Evidence)
 			default:
-				fmt.Fprintf(&b, "• %s was inferred from: %q. You MUST confirm this with the user in your reply.\n",
+				fmt.Fprintf(&b, "• %s: %q — confirm with the user if relevant.\n",
 					pa.Type, pa.Evidence)
 			}
 		}

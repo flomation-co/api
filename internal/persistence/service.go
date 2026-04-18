@@ -2713,6 +2713,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT * FROM agent_pending_action
 		WHERE agent_user_id = :agent_user_id
 		  AND status IN ('awaiting_confirmation', 'confirmed_here_awaiting_other_side')
+		  AND created_at > NOW() - INTERVAL '24 hours'
 		ORDER BY created_at DESC
 	`)
 	if err != nil {

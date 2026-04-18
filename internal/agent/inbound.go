@@ -319,7 +319,16 @@ func (h *InboundHandler) checkPendingActionConfirmation(agentID string, msg Inbo
 
 		newStatus := "declined"
 		if isConfirm {
-			newStatus = "confirmed_here_awaiting_other_side"
+			switch pa.Type {
+			case "identity_link":
+				newStatus = "confirmed_here_awaiting_other_side"
+			case "identity_link_verification":
+				newStatus = "confirmed_here_awaiting_other_side"
+			default:
+				// For non-identity actions (forget_memory, correct_memory, etc.)
+				// a confirmation resolves them immediately — no second side needed.
+				newStatus = "resolved"
+			}
 		}
 
 		if err := h.persistence.UpdatePendingActionStatus(pa.ID, newStatus); err != nil {
