@@ -71,11 +71,16 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	}
 
 	// Step 1: resolve identity.
+	// Normalise channel sub-types to their base type for identity resolution.
+	// telegram_voice is the same user as telegram — they shouldn't get
+	// separate identities just because one message was a voice note.
+	identityChannelType := normaliseChannelType(msg.ChannelType)
+
 	var agentUserID *string
 	externalID, displayName := DeriveExternalID(msg)
 	if externalID != "" {
 		identity, user, err := h.persistence.ResolveOrCreateAgentIdentity(
-			agentID, agent.OrganisationID, msg.ChannelType, externalID, nil, &displayName)
+			agentID, agent.OrganisationID, identityChannelType, externalID, nil, &displayName)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -97,7 +102,7 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 			idleTimeout = agent.IdleTimeoutSeconds
 		}
 		conv, err := h.persistence.ResolveOrCreateAgentConversation(
-			agentID, agentUserID, msg.ChannelType, channelID, threadID, idleTimeout)
+			agentID, agentUserID, identityChannelType, channelID, threadID, idleTimeout)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -370,6 +375,18 @@ func normaliseMessages(msgs []*api.AgentMessage) []map[string]interface{} {
 		}
 	}
 	return result
+}
+
+// normaliseChannelType maps channel sub-types to their base type for identity
+// and conversation resolution. Voice, video, and other media variants of a
+// channel are the same user on the same platform.
+func normaliseChannelType(channelType string) string {
+	switch channelType {
+	case "telegram_voice":
+		return "telegram"
+	default:
+		return channelType
+	}
 }
 
 // DeriveExternalID extracts the stable channel-specific ID from message metadata.
