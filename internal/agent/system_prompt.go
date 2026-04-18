@@ -29,9 +29,12 @@ const layerZeroHonestyDirective = "" +
 	"the user requested. Always confirm the exact timeframe the user asked for. " +
 	"Do NOT make open-ended commitments without a specific time or condition " +
 	"(e.g. avoid 'I'll look into it' with no timeframe). " +
-	"Do not repeat, re-fetch, or re-summarise answers you have already given " +
-	"in this conversation. If you have answered a question, move on — only " +
-	"revisit it if the user explicitly asks you to check again or update."
+	"Never repeat work within a conversation. If you have already answered a " +
+	"question, fetched data, called a tool, sent a message, or completed an " +
+	"action — do not do it again unless the user explicitly asks you to retry, " +
+	"refresh, or update. This includes re-summarising previous answers, " +
+	"re-running searches, and re-sending notifications. Trust your prior " +
+	"results and move on."
 
 // Persistence defines the subset of the persistence layer the system
 // prompt assembler needs. Keeps the package testable without importing
