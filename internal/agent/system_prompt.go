@@ -416,6 +416,8 @@ func ChannelDirective(channelType string) string {
 		return "Responding via Slack — use mrkdwn formatting (*bold*, _italic_, `code`, triple-backtick code blocks). Do NOT use standard Markdown **bold** — it renders literally in Slack."
 	case "telegram":
 		return "Responding via Telegram — standard Markdown (**bold**, _italic_, `code`) is supported. Keep replies under 4096 characters."
+	case "telegram_voice":
+		return "Responding via Telegram voice message — the user sent a voice note which has been transcribed. Your text response will be converted to speech, so write naturally as if speaking. Avoid formatting, bullet points, URLs, and code blocks — they don't translate well to speech. Keep responses concise and conversational."
 	case "email":
 		return "Responding via email — use plain text. Keep formatting minimal and professional.\n" +
 			"IMPORTANT: When using tools, do NOT emit any intermediate text alongside tool calls. " +

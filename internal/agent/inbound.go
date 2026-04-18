@@ -388,7 +388,7 @@ func DeriveExternalID(msg InboundMessage) (externalID, displayName string) {
 		} else if v, ok := msg.Metadata["display_name"].(string); ok && v != "" {
 			displayName = v
 		}
-	case "telegram":
+	case "telegram", "telegram_voice":
 		if v, ok := msg.Metadata["sender_id"].(string); ok && v != "" {
 			externalID = v
 		}
@@ -423,7 +423,7 @@ func DeriveChannelScope(msg InboundMessage) (channelID string, threadID *string)
 			t := v
 			threadID = &t
 		}
-	case "telegram":
+	case "telegram", "telegram_voice":
 		if v, ok := msg.Metadata["chat_id"].(string); ok {
 			channelID = v
 		}
