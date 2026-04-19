@@ -333,8 +333,14 @@ func (s *Service) appendExecutionLogs(c *gin.Context) {
 		s.logHub.Publish(id, payload.Lines)
 
 		// Forward __NODE__ events to agent session SSE if applicable
+		// and intercept __LINK_OFFER__ events for identity linking.
 		var sessionID *string
 		for _, line := range payload.Lines {
+			if strings.HasPrefix(line, "__LINK_OFFER__:") {
+				tag := strings.TrimPrefix(line, "__LINK_OFFER__:")
+				go s.handleLinkOfferEvent(id, tag)
+				continue
+			}
 			if strings.HasPrefix(line, "__NODE__:") {
 				// Lazy lookup — only hit DB once per batch
 				if sessionID == nil {
@@ -354,6 +360,62 @@ func (s *Service) appendExecutionLogs(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// handleLinkOfferEvent processes a __LINK_OFFER__ event from the executor.
+// The tag format is "channel_type:external_id". Creates an identity_link
+// pending action for the agent user associated with this execution.
+func (s *Service) handleLinkOfferEvent(executionID, tag string) {
+	parts := strings.SplitN(tag, ":", 2)
+	if len(parts) != 2 {
+		return
+	}
+	channelType, externalID := parts[0], parts[1]
+
+	exec, err := s.persistence.GetExecutionByID(executionID)
+	if err != nil || exec == nil || exec.AgentID == nil {
+		return
+	}
+
+	// Get the agent_user_id from the execution's data (trigger data contains it)
+	var triggerData map[string]interface{}
+	if exec.Data != nil {
+		_ = json.Unmarshal(exec.Data, &triggerData)
+	}
+
+	agentUserID, _ := triggerData["agent_user_id"].(string)
+	if agentUserID == "" {
+		return
+	}
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"channel_type": channelType,
+		"external_id":  externalID,
+	})
+
+	expires := time.Now().Add(24 * time.Hour)
+	_, err = s.persistence.CreateAgentPendingAction(api.AgentPendingAction{
+		AgentID:     *exec.AgentID,
+		AgentUserID: agentUserID,
+		Type:        "identity_link",
+		Payload:     payload,
+		Evidence:    fmt.Sprintf("AI offered to link %s identity: %s", channelType, externalID),
+		Status:      "awaiting_confirmation",
+		ExpiresAt:   &expires,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"agent_id": *exec.AgentID,
+			"error":    err,
+		}).Error("failed to create identity_link PA from LINK_OFFER event")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"agent_id":     *exec.AgentID,
+		"channel_type": channelType,
+		"external_id":  externalID,
+	}).Info("identity_link PA created from LINK_OFFER event")
 }
 
 func (s *Service) streamExecutionLogs(c *gin.Context) {
