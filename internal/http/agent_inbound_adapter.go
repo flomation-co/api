@@ -5,7 +5,11 @@ package http
 // instead of HTTP self-calls (Phase 4 cleanup).
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
 
 	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/agent"
@@ -17,7 +21,8 @@ import (
 // orchestration methods that aren't pure DB operations.
 type inboundPersistenceAdapter struct {
 	*apipersistence.Service
-	notifier agent.ExecutionNotifier
+	notifier  agent.ExecutionNotifier
+	launchURL string
 }
 
 func (a *inboundPersistenceAdapter) DispatchExtraction(
@@ -36,15 +41,100 @@ func (a *inboundPersistenceAdapter) UpdatePendingActionStatus(id, status string)
 }
 
 func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pendingActionID, agentUserID string) {
-	// This still needs the identity/request-verification handler logic.
-	// For now, delegate to the handler via a simplified direct path.
-	// The full handler creates a verification pending action and dispatches
-	// to the target channel — both are DB operations we can do directly.
+	pa, err := a.GetAgentPendingActionByID(pendingActionID)
+	if err != nil || pa == nil {
+		log.WithError(err).Warn("cross-channel verification: pending action not found")
+		return
+	}
+
+	var payload struct {
+		ChannelType  string `json:"channel_type"`
+		ExternalID   string `json:"external_id"`
+		TargetUserID string `json:"target_user_id"`
+	}
+	if err := json.Unmarshal(pa.Payload, &payload); err != nil || payload.ChannelType == "" || payload.ExternalID == "" {
+		log.Warn("cross-channel verification: payload missing channel_type or external_id")
+		return
+	}
+
+	// Look up the target identity.
+	targetIdentity, targetUser, err := a.LookupIdentity(agentID, payload.ChannelType, payload.ExternalID)
+	if err != nil || targetIdentity == nil || targetUser == nil {
+		log.WithFields(log.Fields{
+			"agent_id":     agentID,
+			"channel_type": payload.ChannelType,
+			"external_id":  payload.ExternalID,
+		}).Warn("cross-channel verification: target identity not found")
+		return
+	}
+
+	channelID := payload.ExternalID
+	if targetIdentity.ChannelScope != nil && *targetIdentity.ChannelScope != "" {
+		channelID = *targetIdentity.ChannelScope
+	}
+
+	// Determine source channel from the requesting user's identities.
+	sourceChannel := "unknown"
+	if identities, err := a.GetAgentIdentitiesByUserID(agentUserID); err == nil && len(identities) > 0 {
+		sourceChannel = identities[0].ChannelType
+	}
+
+	// Create a verification pending action on the target user.
+	targetPayload, _ := json.Marshal(map[string]interface{}{
+		"source_user_id": agentUserID,
+		"target_user_id": targetUser.ID,
+		"source_channel": sourceChannel,
+		"original_pa_id": pendingActionID,
+	})
+
+	expires := time.Now().Add(24 * time.Hour)
+	_, err = a.CreateAgentPendingAction(api.AgentPendingAction{
+		AgentID:     agentID,
+		AgentUserID: targetUser.ID,
+		Type:        "identity_link_verification",
+		Payload:     targetPayload,
+		Evidence:    "A user on " + sourceChannel + " claims to also be you on " + payload.ChannelType,
+		Status:      "awaiting_confirmation",
+		ExpiresAt:   &expires,
+	})
+	if err != nil {
+		log.WithError(err).Error("cross-channel verification: failed to create target PA")
+		return
+	}
+
 	log.WithFields(log.Fields{
-		"agent_id":          agentID,
-		"pending_action_id": pendingActionID,
-	}).Info("cross-channel verification requested (direct)")
-	// TODO: extract requestVerificationInternal handler logic into agent package
+		"agent_id":       agentID,
+		"target_user_id": targetUser.ID,
+		"target_channel": payload.ChannelType,
+	}).Info("cross-channel verification: target PA created, dispatching to Launch")
+
+	// Dispatch to Launch so it fires the orchestrator flow on the target channel.
+	if a.launchURL == "" {
+		log.Warn("cross-channel verification: Launch URL not configured")
+		return
+	}
+
+	dispatchPayload, _ := json.Marshal(map[string]interface{}{
+		"target_user_id":      targetUser.ID,
+		"target_channel_type": payload.ChannelType,
+		"target_channel_id":   channelID,
+		"target_external_id":  payload.ExternalID,
+		"source_channel_type": sourceChannel,
+	})
+
+	endpoint := fmt.Sprintf("%s/internal/agent/%s/verify-identity", a.launchURL, agentID)
+	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(dispatchPayload)) // #nosec G107 — internal service-to-service call
+	if err != nil {
+		log.WithError(err).Error("cross-channel verification: failed to dispatch to Launch")
+		return
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		log.WithFields(log.Fields{
+			"status": resp.StatusCode,
+		}).Error("cross-channel verification: Launch dispatch returned non-2xx")
+	}
 }
 
 func (a *inboundPersistenceAdapter) TriggerIdentityMerge(agentID, verificationPAID string) {

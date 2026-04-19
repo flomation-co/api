@@ -377,7 +377,12 @@ func BuildSystemPrompt(
 	if directive := ChannelDirective(channelType); directive != "" {
 		b.WriteString("━━━ Current channel ━━━\n")
 		b.WriteString(directive)
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+		b.WriteString("CROSS-CHANNEL: You can interact with users across multiple channels " +
+			"(Slack, Telegram, email, etc.). If a user tells you their username or address " +
+			"on another channel, the platform can link their identities so you share context " +
+			"and conversation history across all their channels. You DO have this ability — " +
+			"never deny it. The linking process is automatic once both sides confirm.\n\n")
 	}
 
 	if len(pendingActions) > 0 {
