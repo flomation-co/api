@@ -33,6 +33,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"tools":       {Key: "tools", Name: "Tools", Icon: "wrench", Description: "AI tool implementations for function calling"},
 	"linear":      {Key: "linear", Name: "Linear", Icon: "linear", Description: "Manage issues, projects, and teams in Linear"},
 	"elevenlabs":  {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
+	"subflow":     {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
