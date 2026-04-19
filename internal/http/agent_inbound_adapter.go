@@ -234,14 +234,16 @@ func (a *inboundPersistenceAdapter) lookupIdentityByDisplayName(agentID, channel
 				}
 			}
 
-			// Last resort for Telegram: if there's only one user with a
-			// Telegram identity for this agent, it's very likely the right one.
-			if channelType == "telegram" {
+			// Last resort for Telegram: match users with numeric external IDs
+			// (real identities created via Telegram API), skip any with @username
+			// format (ghost identities from failed verification dispatches).
+			if channelType == "telegram" && !strings.HasPrefix(id.ChannelExternalID, "@") {
 				log.WithFields(log.Fields{
 					"agent_id":     agentID,
 					"display_name": displayName,
 					"matched_user": u.ID,
-				}).Info("cross-channel verification: matched Telegram user by channel (single-match fallback)")
+					"external_id":  id.ChannelExternalID,
+				}).Info("cross-channel verification: matched Telegram user by numeric ID fallback")
 				return id, u
 			}
 		}
