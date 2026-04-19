@@ -380,13 +380,16 @@ func BuildSystemPrompt(
 		b.WriteString("\n")
 		b.WriteString("CROSS-CHANNEL: You can interact with users across multiple channels " +
 			"(Slack, Telegram, email, etc.). If a user mentions their username, handle, or " +
-			"email address on another channel, you MUST proactively offer to link their " +
-			"accounts so you share context and conversation history across channels. " +
-			"You DO have this ability — never deny it.\n" +
-			"When you offer to link, include this tag at the END of your message (it will " +
-			"be stripped before delivery): [LINK_OFFER:<channel_type>:<external_id>]\n" +
-			"Examples: [LINK_OFFER:telegram:@AndyEsser] or [LINK_OFFER:email:andy@example.com]\n" +
-			"The platform uses this to prepare the link. The user then confirms with a simple yes/no.\n\n")
+			"email address on another channel, you SHOULD offer to link their accounts so " +
+			"you share context and conversation history across channels. You DO have this " +
+			"ability — never deny it.\n" +
+			"When you offer to link, ASK the user to confirm (e.g. \"Would you like me to " +
+			"link your accounts?\"). Do NOT say it's already done — linking requires " +
+			"confirmation from both sides. Include this invisible tag at the END of your " +
+			"message: [LINK_OFFER:<channel_type>:<external_id>]\n" +
+			"Example: [LINK_OFFER:telegram:@AndyEsser]\n" +
+			"Only include the tag ONCE per identity mention. If you already offered in a " +
+			"previous message, do NOT include it again.\n\n")
 	}
 
 	if len(pendingActions) > 0 {

@@ -388,6 +388,15 @@ func (s *Service) handleLinkOfferEvent(executionID, tag string) {
 		return
 	}
 
+	// Check for existing identity_link PA to avoid duplicates
+	existingPAs, _ := s.persistence.GetOpenPendingActionsForUser(agentUserID)
+	for _, existing := range existingPAs {
+		if existing.Type == "identity_link" {
+			log.WithField("agent_user_id", agentUserID).Debug("LINK_OFFER: identity_link PA already exists, skipping")
+			return
+		}
+	}
+
 	payload, _ := json.Marshal(map[string]interface{}{
 		"channel_type": channelType,
 		"external_id":  externalID,
