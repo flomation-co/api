@@ -107,7 +107,7 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 	})
 
 	expires := time.Now().Add(24 * time.Hour)
-	_, err = a.CreateAgentPendingAction(api.AgentPendingAction{
+	paID, err := a.CreateAgentPendingAction(api.AgentPendingAction{
 		AgentID:     agentID,
 		AgentUserID: targetUser.ID,
 		Type:        "identity_link_verification",
@@ -119,6 +119,12 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 	if err != nil {
 		log.WithError(err).Error("cross-channel verification: failed to create target PA")
 		return
+	}
+
+	// Mark as notified immediately — the adapter dispatches to Launch below,
+	// so the poller should NOT also dispatch (which causes double messages).
+	if paID != nil {
+		_ = a.MarkPendingActionNotified(*paID)
 	}
 
 	log.WithFields(log.Fields{
