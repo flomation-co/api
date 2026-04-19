@@ -730,8 +730,8 @@ func (s *Service) createAgentMessageInternal(c *gin.Context) {
 	// can be matched.
 	if msg.Direction == "outbound" && msg.ConversationID != nil {
 		// Look up the agent_user from the conversation
-		if conv, err := s.persistence.GetAgentConversation(*msg.ConversationID); err == nil && conv != nil {
-			msg.Content = s.processLinkOfferTag(id, msg.Content, &conv.AgentUserID)
+		if conv, err := s.persistence.GetAgentConversationByID(*msg.ConversationID); err == nil && conv != nil {
+			msg.Content = s.processLinkOfferTag(id, msg.Content, conv.AgentUserID)
 		}
 	}
 
