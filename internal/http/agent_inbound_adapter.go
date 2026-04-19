@@ -77,7 +77,9 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 		return
 	}
 
-	channelID := payload.ExternalID
+	// Use the identity's actual external ID (e.g. numeric Telegram user ID)
+	// rather than the PA payload's external_id (which may be a username).
+	channelID := targetIdentity.ChannelExternalID
 	if targetIdentity.ChannelScope != nil && *targetIdentity.ChannelScope != "" {
 		channelID = *targetIdentity.ChannelScope
 	}
@@ -127,7 +129,7 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 		"target_user_id":      targetUser.ID,
 		"target_channel_type": payload.ChannelType,
 		"target_channel_id":   channelID,
-		"target_external_id":  payload.ExternalID,
+		"target_external_id":  targetIdentity.ChannelExternalID,
 		"source_channel_type": sourceChannel,
 	})
 
