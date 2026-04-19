@@ -84,6 +84,14 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 		channelID = *targetIdentity.ChannelScope
 	}
 
+	log.WithFields(log.Fields{
+		"agent_id":            agentID,
+		"payload_external_id": payload.ExternalID,
+		"identity_external":   targetIdentity.ChannelExternalID,
+		"resolved_channel_id": channelID,
+		"target_user_id":      targetUser.ID,
+	}).Info("cross-channel verification: identity resolved")
+
 	// Determine source channel from the requesting user's identities.
 	sourceChannel := "unknown"
 	if identities, err := a.GetAgentIdentitiesByUserID(agentUserID); err == nil && len(identities) > 0 {
