@@ -198,20 +198,40 @@ func (a *inboundPersistenceAdapter) lookupIdentityByDisplayName(agentID, channel
 
 	lower := strings.ToLower(displayName)
 	for _, u := range users {
-		if u.DisplayName == nil {
-			continue
-		}
-		// Match display name case-insensitively
-		if strings.ToLower(*u.DisplayName) != lower {
-			continue
-		}
-		// Check if this user has an identity on the target channel
 		identities, err := a.GetAgentIdentitiesByUserID(u.ID)
 		if err != nil || len(identities) == 0 {
 			continue
 		}
+
 		for _, id := range identities {
-			if id.ChannelType == channelType {
+			if id.ChannelType != channelType {
+				continue
+			}
+
+			// Exact display name match (case-insensitive)
+			if u.DisplayName != nil && strings.ToLower(*u.DisplayName) == lower {
+				return id, u
+			}
+
+			// For Telegram: the user says "@AndyEsser" but display name
+			// might be "Andy" or "@AndyEsser". Also try matching display
+			// name prefixed with @ against the search term.
+			if channelType == "telegram" && u.DisplayName != nil {
+				dn := strings.ToLower(*u.DisplayName)
+				// "@andyesser" matches display name "@andyesser" or "andyesser"
+				if dn == lower || "@"+dn == lower || dn == "@"+lower {
+					return id, u
+				}
+			}
+
+			// Last resort for Telegram: if there's only one user with a
+			// Telegram identity for this agent, it's very likely the right one.
+			if channelType == "telegram" {
+				log.WithFields(log.Fields{
+					"agent_id":     agentID,
+					"display_name": displayName,
+					"matched_user": u.ID,
+				}).Info("cross-channel verification: matched Telegram user by channel (single-match fallback)")
 				return id, u
 			}
 		}

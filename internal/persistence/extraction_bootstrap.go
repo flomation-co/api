@@ -68,7 +68,7 @@ Analyse it and return a JSON object with these arrays:
   ],
   "proposed_actions": [
     {
-      "type": "identity_link|forget_memory|correct_memory",
+      "type": "forget_memory|correct_memory",
       "evidence": "The exact user utterance that triggered this",
       "confidence": 0.0-1.0,
       "payload": {}
@@ -187,17 +187,6 @@ Output:
   "confirmations": [
     {"pending_action_id": "", "resolution": "task_completed", "evidence": "Thanks, that's perfect", "task_title": "Email Bob about deadline"}
   ]
-}
-
-Input: {"role": "user", "content": "btw I'm also @andyesser on Slack, we've been chatting about the runner refactor there"}
-Output:
-{
-  "memories": [],
-  "proposed_actions": [
-    {"type": "identity_link", "evidence": "btw I'm also @andyesser on Slack", "confidence": 0.9, "payload": {"channel_type": "slack", "external_id": "@andyesser"}}
-  ],
-  "commitments": [],
-  "confirmations": []
 }
 
 Input: {"role": "user", "content": "yeah that's me, go ahead and link them"}
