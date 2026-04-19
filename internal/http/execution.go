@@ -388,12 +388,11 @@ func (s *Service) handleLinkOfferEvent(executionID, tag string) {
 		return
 	}
 
-	// Check for existing identity_link PA to avoid duplicates
+	// Expire any existing identity_link PAs so the latest one takes precedence.
 	existingPAs, _ := s.persistence.GetOpenPendingActionsForUser(agentUserID)
 	for _, existing := range existingPAs {
 		if existing.Type == "identity_link" {
-			log.WithField("agent_user_id", agentUserID).Debug("LINK_OFFER: identity_link PA already exists, skipping")
-			return
+			_ = s.persistence.UpdatePendingActionStatus(existing.ID, "expired")
 		}
 	}
 
