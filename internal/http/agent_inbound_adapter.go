@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	api "flomation.app/automate/api"
@@ -57,9 +58,17 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 		return
 	}
 
-	// Look up the target identity.
+	// Look up the target identity by exact external ID first.
 	targetIdentity, targetUser, err := a.LookupIdentity(agentID, payload.ChannelType, payload.ExternalID)
-	if err != nil || targetIdentity == nil || targetUser == nil {
+
+	// Fallback: if the external ID is a username (e.g. @AndyEsser) but the
+	// identity is stored with a numeric ID, search by display name instead.
+	if (targetIdentity == nil || targetUser == nil) && strings.HasPrefix(payload.ExternalID, "@") {
+		username := strings.TrimPrefix(payload.ExternalID, "@")
+		targetIdentity, targetUser = a.lookupIdentityByDisplayName(agentID, payload.ChannelType, username)
+	}
+
+	if targetIdentity == nil || targetUser == nil {
 		log.WithFields(log.Fields{
 			"agent_id":     agentID,
 			"channel_type": payload.ChannelType,
@@ -175,4 +184,37 @@ func (a *inboundPersistenceAdapter) TriggerIdentityMerge(agentID, verificationPA
 			"target":   payload.TargetUserID,
 		}).Info("identity merge completed (direct)")
 	}
+}
+
+// lookupIdentityByDisplayName searches for a user with a matching display name
+// who has an identity on the given channel type. This handles the case where
+// the extraction stores a username (e.g. @AndyEsser) but the identity table
+// uses a numeric ID from the channel's API.
+func (a *inboundPersistenceAdapter) lookupIdentityByDisplayName(agentID, channelType, displayName string) (*api.AgentIdentity, *api.AgentUser) {
+	users, err := a.GetAgentUsersByAgentID(agentID, 100, 0)
+	if err != nil || len(users) == 0 {
+		return nil, nil
+	}
+
+	lower := strings.ToLower(displayName)
+	for _, u := range users {
+		if u.DisplayName == nil {
+			continue
+		}
+		// Match display name case-insensitively
+		if strings.ToLower(*u.DisplayName) != lower {
+			continue
+		}
+		// Check if this user has an identity on the target channel
+		identities, err := a.GetAgentIdentitiesByUserID(u.ID)
+		if err != nil || len(identities) == 0 {
+			continue
+		}
+		for _, id := range identities {
+			if id.ChannelType == channelType {
+				return id, u
+			}
+		}
+	}
+	return nil, nil
 }
