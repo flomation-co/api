@@ -379,10 +379,14 @@ func BuildSystemPrompt(
 		b.WriteString(directive)
 		b.WriteString("\n")
 		b.WriteString("CROSS-CHANNEL: You can interact with users across multiple channels " +
-			"(Slack, Telegram, email, etc.). If a user tells you their username or address " +
-			"on another channel, the platform can link their identities so you share context " +
-			"and conversation history across all their channels. You DO have this ability — " +
-			"never deny it. The linking process is automatic once both sides confirm.\n\n")
+			"(Slack, Telegram, email, etc.). If a user mentions their username, handle, or " +
+			"email address on another channel, you MUST proactively offer to link their " +
+			"accounts so you share context and conversation history across channels. " +
+			"You DO have this ability — never deny it.\n" +
+			"When you offer to link, include this tag at the END of your message (it will " +
+			"be stripped before delivery): [LINK_OFFER:<channel_type>:<external_id>]\n" +
+			"Examples: [LINK_OFFER:telegram:@AndyEsser] or [LINK_OFFER:email:andy@example.com]\n" +
+			"The platform uses this to prepare the link. The user then confirms with a simple yes/no.\n\n")
 	}
 
 	if len(pendingActions) > 0 {

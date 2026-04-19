@@ -724,6 +724,17 @@ func (s *Service) createAgentMessageInternal(c *gin.Context) {
 
 	msg.AgentID = id
 
+	// Intercept [LINK_OFFER:channel_type:external_id] tags from AI responses.
+	// These are emitted when the AI proactively offers to link identities.
+	// Strip the tag and create a pending action so the user's confirmation
+	// can be matched.
+	if msg.Direction == "outbound" && msg.ConversationID != nil {
+		// Look up the agent_user from the conversation
+		if conv, err := s.persistence.GetAgentConversation(*msg.ConversationID); err == nil && conv != nil {
+			msg.Content = s.processLinkOfferTag(id, msg.Content, &conv.AgentUserID)
+		}
+	}
+
 	// Attach active session if present
 	if session, _ := s.persistence.GetActiveAgentSession(id); session != nil {
 		msg.SessionID = &session.ID
