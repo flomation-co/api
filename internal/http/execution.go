@@ -394,7 +394,7 @@ func (s *Service) handleLinkOfferEvent(executionID, tag string) {
 	})
 
 	expires := time.Now().Add(24 * time.Hour)
-	_, err = s.persistence.CreateAgentPendingAction(api.AgentPendingAction{
+	paID, err := s.persistence.CreateAgentPendingAction(api.AgentPendingAction{
 		AgentID:     *exec.AgentID,
 		AgentUserID: agentUserID,
 		Type:        "identity_link",
@@ -409,6 +409,13 @@ func (s *Service) handleLinkOfferEvent(executionID, tag string) {
 			"error":    err,
 		}).Error("failed to create identity_link PA from LINK_OFFER event")
 		return
+	}
+
+	// Mark as notified immediately — the AI already asked the user in its
+	// response, so the poller shouldn't re-notify and checkPendingActionConfirmation
+	// should accept the user's "yes" without waiting for NotifiedAt.
+	if paID != nil {
+		_ = s.persistence.MarkPendingActionNotified(*paID)
 	}
 
 	log.WithFields(log.Fields{
