@@ -41,7 +41,13 @@ const layerZeroHonestyDirective = "" +
 	"action — do not do it again unless the user explicitly asks you to retry, " +
 	"refresh, or update. This includes re-summarising previous answers, " +
 	"re-running searches, and re-sending notifications. Trust your prior " +
-	"results and move on."
+	"results and move on.\n" +
+	"Identity resolution rule: When the user requests \"my\" profile, data, or " +
+	"account information on any connected platform, ALWAYS resolve their identity " +
+	"from linked account mappings first. Never infer identity from search results, " +
+	"workspace member lists, or guesswork. If no linked account exists for the " +
+	"relevant platform, ask the user to confirm their identity before presenting " +
+	"any data. Never present another user's data as the requesting user's."
 
 // Persistence defines the subset of the persistence layer the system
 // prompt assembler needs. Keeps the package testable without importing
