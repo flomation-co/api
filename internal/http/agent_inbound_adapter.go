@@ -38,7 +38,7 @@ func (a *inboundPersistenceAdapter) GetOpenPendingActionsForUser(agentUserID str
 }
 
 func (a *inboundPersistenceAdapter) UpdatePendingActionStatus(id, status string) error {
-	return a.Service.UpdatePendingActionStatus(id, status)
+	return a.UpdatePendingActionStatus(id, status)
 }
 
 func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pendingActionID, agentUserID string) {
@@ -163,7 +163,7 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 }
 
 func (a *inboundPersistenceAdapter) TriggerIdentityMerge(agentID, verificationPAID string) {
-	pa, err := a.Service.GetAgentPendingActionByID(verificationPAID)
+	pa, err := a.GetAgentPendingActionByID(verificationPAID)
 	if err != nil || pa == nil {
 		return
 	}
@@ -183,12 +183,12 @@ func (a *inboundPersistenceAdapter) TriggerIdentityMerge(agentID, verificationPA
 
 	// Mark both PAs as executed.
 	if payload.OriginalPAID != "" {
-		_ = a.Service.UpdatePendingActionStatus(payload.OriginalPAID, "executed")
+		_ = a.UpdatePendingActionStatus(payload.OriginalPAID, "executed")
 	}
-	_ = a.Service.UpdatePendingActionStatus(verificationPAID, "executed")
+	_ = a.UpdatePendingActionStatus(verificationPAID, "executed")
 
 	// Merge directly.
-	if err := a.Service.MergeAgentUsers(agentID, payload.SourceUserID, payload.TargetUserID); err != nil {
+	if err := a.MergeAgentUsers(agentID, payload.SourceUserID, payload.TargetUserID); err != nil {
 		log.WithFields(log.Fields{
 			"agent_id": agentID,
 			"error":    err,
