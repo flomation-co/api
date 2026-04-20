@@ -980,6 +980,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.triggered_by,
 		    e.execution_status,
 		    e.completion_status,
+			e.runner_id,
+			r.name AS runner_name,
 			e.result->'duration' AS duration,
 			e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
@@ -989,6 +991,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    execution e
 		INNER JOIN
 			flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN
+			runner r ON r.id = e.runner_id
 		WHERE
 		    e.owner_id = :user_id
 		    AND e.organisation_id IS NULL
@@ -1006,12 +1010,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -1045,12 +1051,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1064,12 +1072,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
     		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -1240,8 +1250,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtUpdateExecutionRunnerID, err = s.conn.PrepareNamed(`
 		UPDATE execution
 		SET
-		    runner_id = :runner_id,
-			completed_at = CURRENT_TIMESTAMP
+		    runner_id = :runner_id
 		WHERE
 		    id = :id;
 	`)
@@ -1250,30 +1259,32 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtGetExecutionByID, err = s.conn.PrepareNamed(`
-		SELECT 
-			id,
-			flo_id,
-			name,
-			owner_id,
-			organisation_id,
-			created_at,
-			updated_at,
-			completed_at,
-			triggered_by,
-			execution_status,
-			completion_status,
-			data,
-			runner_id,
-			result,
-			result->'duration' AS duration,
-			result->'billingDuration' AS billing_duration,
+		SELECT
+			e.id,
+			e.flo_id,
+			e.name,
+			e.owner_id,
+			e.organisation_id,
+			e.created_at,
+			e.updated_at,
+			e.completed_at,
+			e.triggered_by,
+			e.execution_status,
+			e.completion_status,
+			e.data,
+			e.runner_id,
+			r.name AS runner_name,
+			e.result,
+			e.result->'duration' AS duration,
+			e.result->'billingDuration' AS billing_duration,
 			(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			agent_id,
-			agent_session_id
+			e.agent_id,
+			e.agent_session_id
 		FROM
 		    execution e
+		LEFT JOIN runner r ON r.id = e.runner_id
 		WHERE
-		    id = :id;
+		    e.id = :id;
 	`)
 	if err != nil {
 		return nil, err
@@ -1574,7 +1585,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    created_at, updated_at, completed_at, triggered_by,
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
-		    result->'billingDuration' AS billing_duration
+		    result->'billingDuration' AS billing_duration,
+		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
 		return nil, err
@@ -1608,7 +1620,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    created_at, updated_at, completed_at, triggered_by,
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
-		    result->'billingDuration' AS billing_duration
+		    result->'billingDuration' AS billing_duration,
+		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
 		return nil, err
@@ -2577,15 +2590,21 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
-	// Conversation-scoped message history ordered oldest-first for AI
-	// consumers that append the current turn at the end. Sequence ordering
-	// is authoritative; created_at is only a tiebreaker for any edge cases.
+	// Conversation-scoped message history: fetch the MOST RECENT N messages
+	// but return them in chronological order (oldest-first) so the AI sees
+	// turns in the correct sequence. The subquery grabs the latest N by
+	// descending order, then the outer query re-sorts ascending.
+	// Without the subquery, LIMIT with ASC order returns the OLDEST N
+	// messages, causing the AI to lose context in long conversations.
 	s.stmtGetAgentConversationMessages, err = s.conn.PrepareNamed(`
-		SELECT * FROM agent_message
-		WHERE conversation_id = :conversation_id
-		  AND direction IN ('inbound', 'outbound', 'system')
+		SELECT * FROM (
+			SELECT * FROM agent_message
+			WHERE conversation_id = :conversation_id
+			  AND direction IN ('inbound', 'outbound', 'system')
+			ORDER BY sequence DESC, created_at DESC
+			LIMIT :limit
+		) recent
 		ORDER BY sequence ASC, created_at ASC
-		LIMIT :limit
 	`)
 	if err != nil {
 		return nil, err
@@ -2706,6 +2725,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT * FROM agent_pending_action
 		WHERE agent_user_id = :agent_user_id
 		  AND status IN ('awaiting_confirmation', 'confirmed_here_awaiting_other_side')
+		  AND created_at > NOW() - INTERVAL '24 hours'
 		ORDER BY created_at DESC
 	`)
 	if err != nil {

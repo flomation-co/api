@@ -35,7 +35,13 @@ const layerZeroHonestyDirective = "" +
 	"the platform will schedule it automatically. Schedules repeat until " +
 	"cancelled. You can modify or cancel existing schedules when asked. " +
 	"Schedules are different from one-off reminders — they persist and fire " +
-	"repeatedly on the configured pattern."
+	"repeatedly on the configured pattern.\n" +
+	"Never repeat work within a conversation. If you have already answered a " +
+	"question, fetched data, called a tool, sent a message, or completed an " +
+	"action — do not do it again unless the user explicitly asks you to retry, " +
+	"refresh, or update. This includes re-summarising previous answers, " +
+	"re-running searches, and re-sending notifications. Trust your prior " +
+	"results and move on."
 
 // Persistence defines the subset of the persistence layer the system
 // prompt assembler needs. Keeps the package testable without importing
@@ -462,7 +468,19 @@ func BuildSystemPrompt(
 	if directive := ChannelDirective(channelType); directive != "" {
 		b.WriteString("━━━ Current channel ━━━\n")
 		b.WriteString(directive)
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+		b.WriteString("CROSS-CHANNEL: You can interact with users across multiple channels " +
+			"(Slack, Telegram, email, etc.). If a user mentions their username, handle, or " +
+			"email address on another channel, you SHOULD offer to link their accounts so " +
+			"you share context and conversation history across channels. You DO have this " +
+			"ability — never deny it.\n" +
+			"When you offer to link, ASK the user to confirm (e.g. \"Would you like me to " +
+			"link your accounts?\"). Do NOT say it's already done — linking requires " +
+			"confirmation from both sides. Include this invisible tag at the END of your " +
+			"message: [LINK_OFFER:<channel_type>:<external_id>]\n" +
+			"Example: [LINK_OFFER:telegram:@AndyEsser]\n" +
+			"Only include the tag ONCE per identity mention. If you already offered in a " +
+			"previous message, do NOT include it again.\n\n")
 	}
 
 	if len(schedules) > 0 {
@@ -484,19 +502,18 @@ func BuildSystemPrompt(
 	}
 
 	if len(pendingActions) > 0 {
-		b.WriteString("━━━ ACTION REQUIRED ━━━\n")
-		b.WriteString("CRITICAL: You MUST address the items below in your VERY NEXT reply. Do NOT ignore them. Do NOT just answer the user's question without also addressing these items. Weave them naturally into your response.\n")
-		b.WriteString("When the user responds affirmatively (e.g. \"yes\", \"link them\", \"go ahead\"), treat it as confirmation of these items — NOT as a request to use a tool.\n")
+		b.WriteString("━━━ PENDING ITEMS ━━━\n")
+		b.WriteString("The following items are awaiting the user's response. Mention them ONCE if there is a natural opportunity, but do NOT force them into every reply. If the user is focused on something else, leave them for later. Never repeat an item the user has already addressed.\n")
 		for _, pa := range pendingActions {
 			switch pa.Type {
 			case "identity_link":
-				fmt.Fprintf(&b, "• IDENTITY LINK PENDING: The user previously said: %q. You have not yet asked them to confirm this. You MUST ask: \"I noticed you mentioned [identity] — would you like me to link your accounts so I can recognise you as the same person across channels?\" Do this NOW, in this reply.\n",
+				fmt.Fprintf(&b, "• Identity link: The user mentioned %q — you could ask if they'd like to link their accounts across channels.\n",
 					pa.Evidence)
 			case "identity_link_verification":
-				fmt.Fprintf(&b, "• IDENTITY VERIFICATION PENDING: Someone on another channel claims to also be this user: %q. You MUST ask them to confirm or deny: \"Someone on [channel] says they're also you — is that right?\" Do this NOW.\n",
+				fmt.Fprintf(&b, "• Identity verification: Someone on another channel claims to be this user: %q — ask them to confirm when appropriate.\n",
 					pa.Evidence)
 			default:
-				fmt.Fprintf(&b, "• %s was inferred from: %q. You MUST confirm this with the user in your reply.\n",
+				fmt.Fprintf(&b, "• %s: %q — confirm with the user if relevant.\n",
 					pa.Type, pa.Evidence)
 			}
 		}
@@ -513,6 +530,14 @@ func ChannelDirective(channelType string) string {
 		return "Responding via Slack — use mrkdwn formatting (*bold*, _italic_, `code`, triple-backtick code blocks). Do NOT use standard Markdown **bold** — it renders literally in Slack."
 	case "telegram":
 		return "Responding via Telegram — standard Markdown (**bold**, _italic_, `code`) is supported. Keep replies under 4096 characters."
+	case "telegram_voice":
+		return "The user sent a Telegram voice note (transcribed to text). " +
+			"You can respond with EITHER voice or text — prefix your response with [VOICE] or [TEXT] to choose.\n" +
+			"[VOICE] — default for conversational replies. Write naturally as spoken language. " +
+			"No formatting, bullet points, URLs, code blocks, or markdown — these don't work in speech. Keep it concise.\n" +
+			"[TEXT] — use when sending links, formatted information, code, lists, or anything visual. " +
+			"Standard Telegram Markdown is supported.\n" +
+			"Default to [VOICE] unless the content genuinely needs to be read rather than heard."
 	case "email":
 		return "Responding via email — use plain text. Keep formatting minimal and professional.\n" +
 			"IMPORTANT: When using tools, do NOT emit any intermediate text alongside tool calls. " +
