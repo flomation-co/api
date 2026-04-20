@@ -121,6 +121,27 @@ func (s *Service) checkSlackPermissions(c *gin.Context) {
 	teamName, _ := authResult["team"].(string)
 	botUser, _ := authResult["user"].(string)
 	botUserID, _ := authResult["user_id"].(string)
+	botID, _ := authResult["bot_id"].(string)
+
+	// Resolve app_id via bots.info so we can link to the Slack admin page.
+	var appID string
+	if botID != "" {
+		botReq, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet,
+			"https://slack.com/api/bots.info?bot="+botID, nil)
+		if botReq != nil {
+			botReq.Header.Set("Authorization", "Bearer "+botToken)
+			if botResp, err := http.DefaultClient.Do(botReq); err == nil {
+				defer func() { _ = botResp.Body.Close() }()
+				botBody, _ := io.ReadAll(io.LimitReader(botResp.Body, 8*1024))
+				var botResult map[string]interface{}
+				if json.Unmarshal(botBody, &botResult) == nil {
+					if bot, ok := botResult["bot"].(map[string]interface{}); ok {
+						appID, _ = bot["app_id"].(string)
+					}
+				}
+			}
+		}
+	}
 
 	type scopeCheck struct {
 		Scope       string `json:"scope"`
@@ -152,12 +173,18 @@ func (s *Service) checkSlackPermissions(c *gin.Context) {
 		"granted":     grantedScopesRaw,
 	}).Info("Slack permissions check completed")
 
-	c.JSON(http.StatusOK, gin.H{
+	result := gin.H{
 		"ok":          true,
 		"team":        teamName,
 		"bot_user":    botUser,
 		"bot_user_id": botUserID,
 		"scopes":      scopes,
 		"all_granted": allGranted,
-	})
+	}
+	if appID != "" {
+		result["app_id"] = appID
+		result["oauth_url"] = "https://api.slack.com/apps/" + appID + "/oauth"
+	}
+
+	c.JSON(http.StatusOK, result)
 }
