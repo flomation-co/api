@@ -28,7 +28,14 @@ const layerZeroHonestyDirective = "" +
 	"or even 30 seconds. Never refuse or suggest a longer duration than " +
 	"the user requested. Always confirm the exact timeframe the user asked for. " +
 	"Do NOT make open-ended commitments without a specific time or condition " +
-	"(e.g. avoid 'I'll look into it' with no timeframe)."
+	"(e.g. avoid 'I'll look into it' with no timeframe).\n" +
+	"You can also set up RECURRING SCHEDULED TASKS. When a user asks you to " +
+	"do something regularly (e.g. 'check my tasks every morning at 8am', " +
+	"'send me a weekly summary on Mondays at 9am'), agree naturally and " +
+	"the platform will schedule it automatically. Schedules repeat until " +
+	"cancelled. You can modify or cancel existing schedules when asked. " +
+	"Schedules are different from one-off reminders — they persist and fire " +
+	"repeatedly on the configured pattern."
 
 // Persistence defines the subset of the persistence layer the system
 // prompt assembler needs. Keeps the package testable without importing
@@ -37,6 +44,7 @@ type Persistence interface {
 	GetAgentMemoriesForUser(agentUserID string, pinnedOnly bool, limit int) ([]*api.AgentMemory, error)
 	GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error)
 	SearchMemoriesByEmbedding(agentID, agentUserID string, emb pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error)
+	GetAgentSchedulesForUser(agentID, agentUserID string) ([]*api.AgentSchedule, error)
 }
 
 // ToolSummaryProvider retrieves the tool summary for an agent.
@@ -62,6 +70,13 @@ type assembledMemory struct {
 type assembledPendingAction struct {
 	Type     string
 	Evidence string
+}
+
+// assembledSchedule is the prompt-assembly view of an active schedule.
+type assembledSchedule struct {
+	Name        string
+	Description string
+	Summary     string // e.g. "Daily at 08:00 (Europe/London)"
 }
 
 // SystemPromptRequest contains the parameters for assembling a system prompt.
@@ -120,18 +135,19 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 	// Without an agent_user_id, degrade to persona + honesty + channel.
 	if req.AgentUserID == "" {
 		return SystemPromptResult{
-			Prompt: BuildSystemPrompt(req.Persona, nil, nil, nil, toolSummary, req.ChannelType),
+			Prompt: BuildSystemPrompt(req.Persona, nil, nil, nil, nil, toolSummary, req.ChannelType),
 		}
 	}
 
-	// Parallel fetch: pinned memories, pending actions, semantic search.
+	// Parallel fetch: pinned memories, pending actions, schedules, semantic search.
 	// All direct DB calls — no HTTP overhead.
 	var wg sync.WaitGroup
 	var pinnedMem []assembledMemory
 	var pending []assembledPendingAction
 	var relevantMem []assembledMemory
+	var schedules []assembledSchedule
 
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		pinnedMem = a.fetchPinnedMemories(req.AgentUserID)
@@ -139,6 +155,10 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 	go func() {
 		defer wg.Done()
 		pending = a.fetchOpenPendingActions(req.AgentUserID)
+	}()
+	go func() {
+		defer wg.Done()
+		schedules = a.fetchActiveSchedules(req.AgentID, req.AgentUserID)
 	}()
 
 	if a.embedding != nil && req.Content != "" {
@@ -157,10 +177,11 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 		"pinned_memories":   len(pinnedMem),
 		"relevant_memories": len(relevantMem),
 		"pending_actions":   len(pending),
+		"schedules":         len(schedules),
 		"tools":             len(toolSummary),
 	}).Info("system prompt assembly complete (API-side)")
 
-	prompt := BuildSystemPrompt(req.Persona, pinnedMem, relevantMem, pending, toolSummary, req.ChannelType)
+	prompt := BuildSystemPrompt(req.Persona, pinnedMem, relevantMem, pending, schedules, toolSummary, req.ChannelType)
 
 	return SystemPromptResult{
 		Prompt:            prompt,
@@ -245,6 +266,69 @@ func (a *SystemPromptAssembler) fetchRelevantMemories(agentID, agentUserID, cont
 	return result
 }
 
+// fetchActiveSchedules loads enabled schedules for a user.
+func (a *SystemPromptAssembler) fetchActiveSchedules(agentID, agentUserID string) []assembledSchedule {
+	scheds, err := a.persistence.GetAgentSchedulesForUser(agentID, agentUserID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"agent_id":      agentID,
+			"agent_user_id": agentUserID,
+			"error":         err,
+		}).Warn("failed to fetch active schedules")
+		return nil
+	}
+	result := make([]assembledSchedule, 0, len(scheds))
+	for _, s := range scheds {
+		result = append(result, assembledSchedule{
+			Name:        s.Name,
+			Description: s.Description,
+			Summary:     formatScheduleSummary(s),
+		})
+	}
+	return result
+}
+
+// formatScheduleSummary produces a human-readable schedule description.
+func formatScheduleSummary(s *api.AgentSchedule) string {
+	tz := s.Timezone
+	if tz == "" || tz == "UTC" {
+		tz = ""
+	} else {
+		tz = " (" + tz + ")"
+	}
+
+	switch s.ScheduleMode {
+	case "interval":
+		val := ""
+		unit := ""
+		if s.IntervalVal != nil {
+			val = *s.IntervalVal
+		}
+		if s.Unit != nil {
+			unit = *s.Unit
+		}
+		return fmt.Sprintf("Every %s %s%s", val, unit, tz)
+	case "daily":
+		tod := "00:00"
+		if s.TimeOfDay != nil {
+			tod = *s.TimeOfDay
+		}
+		return fmt.Sprintf("Daily at %s%s", tod, tz)
+	case "weekly":
+		tod := "00:00"
+		if s.TimeOfDay != nil {
+			tod = *s.TimeOfDay
+		}
+		days := ""
+		if s.DaysOfWeek != nil {
+			days = *s.DaysOfWeek
+		}
+		return fmt.Sprintf("Weekly on %s at %s%s", days, tod, tz)
+	default:
+		return s.ScheduleMode
+	}
+}
+
 // BuildSystemPrompt is the pure-function core of the assembler. Given
 // already-fetched data it composes the final string deterministically.
 // Exported so it can be unit-tested directly.
@@ -253,6 +337,7 @@ func BuildSystemPrompt(
 	pinnedMemories []assembledMemory,
 	relevantMemories []assembledMemory,
 	pendingActions []assembledPendingAction,
+	schedules []assembledSchedule,
 	tools []AssembledTool,
 	channelType string,
 ) string {
@@ -378,6 +463,24 @@ func BuildSystemPrompt(
 		b.WriteString("━━━ Current channel ━━━\n")
 		b.WriteString(directive)
 		b.WriteString("\n\n")
+	}
+
+	if len(schedules) > 0 {
+		b.WriteString("━━━ Active schedules ━━━\n")
+		b.WriteString("You have the following recurring tasks set up for this user. " +
+			"You can modify or cancel these if the user asks.\n")
+		for _, sched := range schedules {
+			b.WriteString("• ")
+			b.WriteString(sched.Name)
+			b.WriteString(" — ")
+			b.WriteString(sched.Summary)
+			if sched.Description != "" {
+				b.WriteString(": ")
+				b.WriteString(sched.Description)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
 	}
 
 	if len(pendingActions) > 0 {
