@@ -16,16 +16,6 @@ OS_ARCHS := \
 	darwin/arm64 \
 	windows/amd64
 
-build: lint
-	rm -rf dist/
-	@for platform in $(OS_ARCHS); do \
-		os=$$(echo $$platform | cut -d'/' -f1); \
-		arch=$$(echo $$platform | cut -d'/' -f2); \
-		echo "Building for $$os/$$arch"; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -ldflags "-s -X $(NAMESPACE)/internal/version.Version=$(VERSION) -X $(NAMESPACE)/internal/version.Hash=$(GITHASH) -X $(NAMESPACE)/internal/version.BuiltDate=$(DATE)" -o ./dist/flomation-${NAME}-$$arch-$$os-${VERSION} $(NAMESPACE)/cmd; \
-	done
-	cd dist && zip -r ../build.zip .
-
 lint:
 	go mod tidy
 	goimports -l .
@@ -35,6 +25,16 @@ lint:
 	gosec -exclude=G117,G704 ./...
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 	govulncheck ./...
+
+build:
+	rm -rf dist/
+	@for platform in $(OS_ARCHS); do \
+		os=$$(echo $$platform | cut -d'/' -f1); \
+		arch=$$(echo $$platform | cut -d'/' -f2); \
+		echo "Building for $$os/$$arch"; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -ldflags "-s -X $(NAMESPACE)/internal/version.Version=$(VERSION) -X $(NAMESPACE)/internal/version.Hash=$(GITHASH) -X $(NAMESPACE)/internal/version.BuiltDate=$(DATE)" -o ./dist/flomation-${NAME}-$$arch-$$os-${VERSION} $(NAMESPACE)/cmd; \
+	done
+	cd dist && zip -r ../build.zip .
 
 test:
 	go test ./... -coverprofile cover.out

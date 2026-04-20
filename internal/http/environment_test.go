@@ -350,6 +350,22 @@ func (m *mockPersistence) GetTriggerGoogleAccounts(string, ...string) ([]*api.Tr
 }
 func (m *mockPersistence) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
 
+// Agent schedule stubs.
+func (m *mockPersistence) CreateAgentSchedule(api.AgentSchedule) (*string, error)  { return nil, nil }
+func (m *mockPersistence) GetAgentSchedules(string) ([]*api.AgentSchedule, error)  { return nil, nil }
+func (m *mockPersistence) GetAgentSchedulesForUser(string, string) ([]*api.AgentSchedule, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAgentScheduleByID(string) (*api.AgentSchedule, error) { return nil, nil }
+func (m *mockPersistence) UpdateAgentSchedule(api.AgentSchedule) error             { return nil }
+func (m *mockPersistence) DeleteAgentSchedule(string) error                        { return nil }
+func (m *mockPersistence) DeleteAgentScheduleByName(string, string) error          { return nil }
+func (m *mockPersistence) FindAgentScheduleByName(string, string) (*api.AgentSchedule, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetEnabledAgentSchedules() ([]*api.AgentSchedule, error) { return nil, nil }
+func (m *mockPersistence) UpdateAgentScheduleLastFired(string, time.Time) error    { return nil }
+
 func setupTestService(mock *mockPersistence) *Service {
 	gin.SetMode(gin.TestMode)
 	return &Service{

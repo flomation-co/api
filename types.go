@@ -614,6 +614,25 @@ type AgentCommitment struct {
 	Recurrence         *string          `json:"recurrence,omitempty" db:"recurrence"`
 }
 
+type AgentSchedule struct {
+	ID             string     `json:"id" db:"id"`
+	AgentID        string     `json:"agent_id" db:"agent_id"`
+	AgentUserID    *string    `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	ConversationID *string    `json:"conversation_id,omitempty" db:"conversation_id"`
+	Name           string     `json:"name" db:"name"`
+	Description    string     `json:"description" db:"description"`
+	ScheduleMode   string     `json:"schedule_mode" db:"schedule_mode"`
+	IntervalVal    *string    `json:"interval_val,omitempty" db:"interval_val"`
+	Unit           *string    `json:"unit,omitempty" db:"unit"`
+	TimeOfDay      *string    `json:"time_of_day,omitempty" db:"time_of_day"`
+	DaysOfWeek     *string    `json:"days_of_week,omitempty" db:"days_of_week"`
+	Timezone       string     `json:"timezone" db:"timezone"`
+	Enabled        bool       `json:"enabled" db:"enabled"`
+	LastFiredAt    *time.Time `json:"last_fired_at,omitempty" db:"last_fired_at"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+}
+
 type AgentExecution struct {
 	ID               string     `json:"id" db:"id"`
 	AgentID          string     `json:"agent_id" db:"agent_id"`

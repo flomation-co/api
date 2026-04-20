@@ -492,6 +492,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.GET("/:id/users", s.getAgentUsers)
 	agents.PATCH("/:id/retention", s.updateAgentRetention)
 	agents.PATCH("/:id/max-pinned-memories", s.updateMaxPinnedMemories)
+	agents.GET("/:id/schedule", s.getAgentSchedules)
 	agents.GET("/:id/slack-permissions", s.checkSlackPermissions)
 
 	// Internal endpoints — no JWT, used by Launch service and executor actions.
@@ -531,6 +532,13 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/commitment/due", s.listDueCommitmentsInternal)
 	internal.GET("/agent/:id/commitment", s.listCommitmentsForUserInternal)
 	internal.PATCH("/commitment/:id", s.updateCommitmentStatusInternal)
+
+	// Agent schedules — AI-managed recurring flow execution.
+	internal.POST("/agent/:id/schedule", s.createAgentScheduleInternal)
+	internal.GET("/agent/:id/schedule", s.listAgentSchedulesInternal)
+	internal.PATCH("/schedule/:id", s.updateAgentScheduleInternal)
+	internal.DELETE("/schedule/:id", s.deleteAgentScheduleInternal)
+	internal.DELETE("/agent/:id/schedule/by-name/*name", s.deleteAgentScheduleByNameInternal)
 
 	// Agent Memory Phase 4: semantic retrieval with pgvector.
 	internal.POST("/agent/:id/memory/search", s.searchAgentMemoriesInternal)

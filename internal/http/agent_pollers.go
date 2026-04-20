@@ -29,6 +29,10 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	poller.StartPendingActionPoller(p, pollerDispatcher)
 	log.Info("API-side pending action poller registered")
 
+	// Schedule poller (30s) — fires due agent schedules.
+	poller.StartSchedulePoller(p, pollerDispatcher)
+	log.Info("API-side schedule poller registered")
+
 	// Embedding backfill poller (15s) — generates missing embeddings.
 	if s.embeddingProvider != nil {
 		poller.StartEmbeddingBackfillPoller(p, s.embeddingProvider)

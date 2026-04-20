@@ -94,6 +94,21 @@ Analyse it and return a JSON object with these arrays:
       "evidence": "The exact utterance",
       "task_title": "Title of the completed task (only for task_completed)"
     }
+  ],
+  "schedules": [
+    {
+      "action": "create|update|delete",
+      "name": "Short label for the schedule (3-8 words)",
+      "description": "What to do when the schedule fires",
+      "mode": "interval|daily|weekly",
+      "interval": "N (number, for interval mode only)",
+      "unit": "minutes|hours|days (for interval mode only)",
+      "time_of_day": "HH:MM in 24-hour format (for daily/weekly)",
+      "days_of_week": "comma-separated day names (for weekly only)",
+      "timezone": "IANA timezone, e.g. Europe/London (optional)",
+      "evidence": "The exact utterance",
+      "confidence": 0.0-1.0
+    }
   ]
 }
 
@@ -228,10 +243,58 @@ Output:
   ]
 }
 
+Input: {"role": "assistant", "content": "Sure! I'll check your tasks every morning at 8am and send you a summary."}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [],
+  "schedules": [
+    {"action": "create", "name": "Morning tasks summary", "description": "Check the user's tasks and send them a summary of what they have for the day", "mode": "daily", "time_of_day": "08:00", "evidence": "I'll check your tasks every morning at 8am and send you a summary.", "confidence": 0.95}
+  ]
+}
+
+Input: {"role": "assistant", "content": "Done — I've cancelled the morning tasks check."}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [],
+  "schedules": [
+    {"action": "delete", "name": "Morning tasks summary", "evidence": "I've cancelled the morning tasks check.", "confidence": 0.9}
+  ]
+}
+
+Input: {"role": "assistant", "content": "Updated — I'll send your summary at 9am instead of 8am from now on."}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [],
+  "schedules": [
+    {"action": "update", "name": "Morning tasks summary", "time_of_day": "09:00", "evidence": "I'll send your summary at 9am instead of 8am from now on.", "confidence": 0.9}
+  ]
+}
+
+Input: {"role": "assistant", "content": "Sure, I'll send you a weekly report every Monday and Friday at 9am."}
+Output:
+{
+  "memories": [],
+  "proposed_actions": [],
+  "commitments": [],
+  "confirmations": [],
+  "schedules": [
+    {"action": "create", "name": "Weekly report", "description": "Send the user a weekly report", "mode": "weekly", "time_of_day": "09:00", "days_of_week": "monday,friday", "evidence": "I'll send you a weekly report every Monday and Friday at 9am.", "confidence": 0.95}
+  ]
+}
+
 ## Rules
 
 - Return ONLY valid JSON. No markdown fences, no commentary.
-- If there is nothing to extract, return: {"memories":[],"proposed_actions":[],"commitments":[],"confirmations":[]}
+- If there is nothing to extract, return: {"memories":[],"proposed_actions":[],"commitments":[],"confirmations":[],"schedules":[]}
 - CRITICAL: Never invent information that is not EXPLICITLY stated in the message. Do not infer, guess, or add context from prior conversations. If the user says "I've booked one for tomorrow at 10.35am" in a conversation about dentists, the memory is about a DENTIST appointment, not a restaurant. Only use words and concepts present in the actual message.
 - CRITICAL: When a user says "never mind", "I've already done it", "I've sorted it", "I've booked one myself" — this means they completed the task THEMSELVES. Do NOT create a new task memory. Instead, emit a task_completed confirmation. If there is useful factual information (e.g. an appointment time), extract that as a FACT, not a task.
 - CRITICAL: When a user says "forget about X", "drop the X task", "don't bother with X", "cancel X", "scrap X" — this means the task is CANCELLED. Emit a task_completed confirmation with the task title matching what was cancelled. Use the conversation context to identify which task(s) the user is referring to.
@@ -248,7 +311,13 @@ Output:
 - When the user confirms or declines an identity link (or any pending action the agent asked about), emit a confirmation with resolution "confirmed" or "declined". Leave pending_action_id empty if you don't know it — the platform will match by type.
 - A confirmation is ONLY valid when the user is responding to a specific question the agent asked about linking accounts, forgetting a memory, or correcting a fact. Use the "Recent conversation for context" to determine if a short reply like "yes", "sure", "go ahead", "confirmed" is in response to a linking/confirmation question. If the conversation history shows the assistant asked about linking accounts and the user replies "yes", that IS a confirmation. General "yes" or "no" responses in other contexts (e.g. answering a question, agreeing to a task) are NOT confirmations.
 - For SUMMARY turns (role=summary): create exactly ONE session_summary memory summarising the conversation in 2-3 sentences. Focus on what was discussed, what was accomplished, and any outstanding items. Also check if any tasks in the conversation were completed — if the user explicitly said "thanks", "sorted", "done", or the assistant completed the requested action (e.g. sent an email that was requested, found information that was asked for), emit a confirmation with type "task_completed" and evidence describing which task was finished.
-- Task completion signals include: explicit user acknowledgement ("thanks", "perfect", "that's done"), the assistant confirming an action was performed ("Email sent to Bob", "Meeting scheduled"), or the conversation naturally concluding after the task was fulfilled. Do NOT mark a task as complete just because the topic changed — the user may return to it later. If in doubt, do NOT emit task_completed.`
+- Task completion signals include: explicit user acknowledgement ("thanks", "perfect", "that's done"), the assistant confirming an action was performed ("Email sent to Bob", "Meeting scheduled"), or the conversation naturally concluding after the task was fulfilled. Do NOT mark a task as complete just because the topic changed — the user may return to it later. If in doubt, do NOT emit task_completed.
+- SCHEDULES: Schedules should ONLY be extracted from ASSISTANT turns (role=assistant), like commitments. A schedule is a RECURRING task the assistant agreed to do at specific times. Distinguish from one-off commitments: "remind me tomorrow at 9am" = commitment (one-off), "check my tasks every morning at 8am" = schedule (recurring). The key difference is RECURRENCE — if the assistant agreed to do something REGULARLY or REPEATEDLY, it's a schedule. If it's a one-time action, it's a commitment.
+- SCHEDULE ACTIONS: Use action="create" when the assistant agrees to a new recurring task. Use action="delete" when the assistant confirms cancelling a schedule. Use action="update" when the assistant confirms changing a schedule's timing or details. Only include fields being changed for updates.
+- SCHEDULE CONFIDENCE: Confidence must be 0.8+ to create, update, or delete a schedule. Do not create schedules from vague statements — the assistant must explicitly agree to a recurring pattern.
+- SCHEDULE TIMEZONE: ALWAYS include the timezone field when creating schedules. Use the user's known timezone from their memories/facts (e.g. "Europe/London" for a UK-based user). If unknown, use "Europe/London" as the default. NEVER leave timezone empty — an empty timezone defaults to UTC which will fire at the wrong time for most users.
+- SCHEDULE DEDUPLICATION: If a schedule with a similar purpose already exists (same mode and time), do NOT create a new one. The platform handles deduplication but you should avoid it at the extraction level too.
+- SCHEDULE vs COMMITMENT: If the user says "remind me every day at 8am" and the assistant agrees, create a SCHEDULE (not a commitment with recurrence). Schedules are the preferred mechanism for recurring tasks.`
 
 // BootstrapExtractionFlow ensures the canonical extraction System Flow
 // exists. It is idempotent: re-running after the flow already exists is

@@ -273,6 +273,26 @@ func (m *agentMock) GetTriggerGoogleAccounts(string, ...string) ([]*api.TriggerG
 }
 func (m *agentMock) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
 
+// Agent schedule stubs.
+func (m *agentMock) CreateAgentSchedule(s api.AgentSchedule) (*string, error) { return nil, nil }
+func (m *agentMock) GetAgentSchedules(agentID string) ([]*api.AgentSchedule, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentSchedulesForUser(agentID, agentUserID string) ([]*api.AgentSchedule, error) {
+	return nil, nil
+}
+func (m *agentMock) GetAgentScheduleByID(id string) (*api.AgentSchedule, error) { return nil, nil }
+func (m *agentMock) UpdateAgentSchedule(s api.AgentSchedule) error              { return nil }
+func (m *agentMock) DeleteAgentSchedule(id string) error                        { return nil }
+func (m *agentMock) DeleteAgentScheduleByName(agentID, name string) error       { return nil }
+func (m *agentMock) FindAgentScheduleByName(agentID, name string) (*api.AgentSchedule, error) {
+	return nil, nil
+}
+func (m *agentMock) GetEnabledAgentSchedules() ([]*api.AgentSchedule, error) { return nil, nil }
+func (m *agentMock) UpdateAgentScheduleLastFired(id string, firedAt time.Time) error {
+	return nil
+}
+
 func setupAgentRouter(svc *Service) *gin.Engine {
 	router := gin.New()
 	agents := router.Group("/agent")
