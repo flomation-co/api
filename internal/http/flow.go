@@ -56,7 +56,8 @@ func (s *Service) getMyFlos(c *gin.Context) {
 	}
 
 	if len(flos) == 0 {
-		c.AbortWithStatus(http.StatusNoContent)
+		c.Writer.Header().Set("x-total-items", "0")
+		c.JSON(http.StatusOK, []interface{}{})
 		return
 	}
 
