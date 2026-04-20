@@ -15,12 +15,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"flomation.app/automate/api"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
+
+var linkOfferTagRe = regexp.MustCompile(`\[LINK_OFFER:(\w+):([^\]]+)\]`)
 
 type requestVerificationBody struct {
 	PendingActionID string `json:"pending_action_id" binding:"required"`
@@ -190,6 +194,54 @@ func (s *Service) dispatchVerificationToLaunch(agentID, sourceChannel, targetCha
 			"target":     targetChannel,
 		}).Error("identity verification: Launch dispatch returned non-2xx")
 	}
+}
+
+// processLinkOfferTag detects [LINK_OFFER:channel:id] tags in AI responses,
+// strips them from the content, and creates an identity_link pending action
+// so the user's confirmation can be matched.
+func (s *Service) processLinkOfferTag(agentID, content string, agentUserID *string) string {
+	match := linkOfferTagRe.FindStringSubmatch(content)
+	if match == nil || agentUserID == nil {
+		return content
+	}
+
+	channelType := strings.ToLower(match[1])
+	externalID := strings.TrimSpace(match[2])
+
+	// Strip the tag from the message content
+	cleaned := strings.TrimSpace(linkOfferTagRe.ReplaceAllString(content, ""))
+
+	// Create the pending action
+	payload, _ := json.Marshal(map[string]interface{}{
+		"channel_type": channelType,
+		"external_id":  externalID,
+	})
+
+	expires := time.Now().Add(24 * time.Hour)
+	_, err := s.persistence.CreateAgentPendingAction(api.AgentPendingAction{
+		AgentID:     agentID,
+		AgentUserID: *agentUserID,
+		Type:        "identity_link",
+		Payload:     payload,
+		Evidence:    fmt.Sprintf("AI offered to link %s identity: %s", channelType, externalID),
+		Status:      "awaiting_confirmation",
+		ExpiresAt:   &expires,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"agent_id": agentID,
+			"error":    err,
+		}).Error("failed to create identity_link pending action from LINK_OFFER tag")
+		return cleaned
+	}
+
+	log.WithFields(log.Fields{
+		"agent_id":     agentID,
+		"channel_type": channelType,
+		"external_id":  externalID,
+	}).Info("identity_link pending action created from AI LINK_OFFER tag")
+
+	return cleaned
 }
 
 // isPrivateChannel returns true if the channel is a direct/private channel

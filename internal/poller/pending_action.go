@@ -164,6 +164,8 @@ func (pap *PendingActionPoller) processAction(pa *api.AgentPendingAction) {
 				triggerData["content"] = content
 			case "telegram":
 				triggerData["sender_id"] = identity.ChannelExternalID
+				triggerData["chat_id"] = identity.ChannelExternalID
+				triggerData["channel_id"] = identity.ChannelExternalID
 			case "slack":
 				triggerData["user_id"] = identity.ChannelExternalID
 			}

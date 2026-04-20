@@ -303,7 +303,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Phase 3+4: initialise inbound message handler with direct dispatch.
 	directDispatcher := agent.NewDirectFlowDispatcher(persistence, s.executionNotifier)
 	s.inboundHandler = agent.NewInboundHandler(
-		&inboundPersistenceAdapter{Service: persistence, notifier: s.executionNotifier},
+		&inboundPersistenceAdapter{Service: persistence, notifier: s.executionNotifier, launchURL: config.Launch.URL},
 		s.promptAssembler,
 		directDispatcher,
 	)
