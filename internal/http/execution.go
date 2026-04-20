@@ -542,7 +542,21 @@ func (s *Service) sendExecutionNotification(floID string, completion string, exe
 	shouldNotify := (completion == "success" && flo.NotifyOnSuccess) ||
 		(completion == "fail" && flo.NotifyOnFailure)
 
-	if !shouldNotify || flo.NotificationEmails == nil || *flo.NotificationEmails == "" {
+	if !shouldNotify {
+		return
+	}
+
+	// Determine recipients: use configured emails, or fall back to flow author.
+	emailList := ""
+	if flo.NotificationEmails != nil && *flo.NotificationEmails != "" {
+		emailList = *flo.NotificationEmails
+	} else if flo.AuthorID != nil && *flo.AuthorID != "" {
+		author, err := s.persistence.GetUserByID(*flo.AuthorID)
+		if err == nil && author != nil && author.EmailAddress != nil && *author.EmailAddress != "" {
+			emailList = *author.EmailAddress
+		}
+	}
+	if emailList == "" {
 		return
 	}
 
@@ -551,7 +565,7 @@ func (s *Service) sendExecutionNotification(floID string, completion string, exe
 		return
 	}
 
-	recipients := strings.Split(*flo.NotificationEmails, ",")
+	recipients := strings.Split(emailList, ",")
 	for i := range recipients {
 		recipients[i] = strings.TrimSpace(recipients[i])
 	}
