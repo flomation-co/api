@@ -493,6 +493,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.PATCH("/:id/retention", s.updateAgentRetention)
 	agents.PATCH("/:id/max-pinned-memories", s.updateMaxPinnedMemories)
 	agents.GET("/:id/schedule", s.getAgentSchedules)
+	agents.GET("/:id/slack-permissions", s.checkSlackPermissions)
 
 	// Internal endpoints — no JWT, used by Launch service and executor actions.
 	// These are service-to-service calls on the internal network.
