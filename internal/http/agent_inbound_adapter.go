@@ -28,11 +28,11 @@ func (a *inboundPersistenceAdapter) DispatchExtraction(
 }
 
 func (a *inboundPersistenceAdapter) GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error) {
-	return a.GetOpenPendingActionsForUser(agentUserID)
+	return a.Service.GetOpenPendingActionsForUser(agentUserID) //nolint:staticcheck // must use Service to avoid recursion
 }
 
 func (a *inboundPersistenceAdapter) UpdatePendingActionStatus(id, status string) error {
-	return a.UpdatePendingActionStatus(id, status)
+	return a.Service.UpdatePendingActionStatus(id, status) //nolint:staticcheck // must use Service to avoid recursion
 }
 
 func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pendingActionID, agentUserID string) {
