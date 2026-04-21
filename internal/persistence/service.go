@@ -1990,7 +1990,7 @@ func NewService(config *config.Config) (*Service, error) {
 				WHEN e.result->'duration' IS NULL THEN 0
 				ELSE CAST(e.result->>'duration' AS INT)
 			END), 0) AS usage,
-		    50 * 1000 AS allowance
+		    50 * 60 * 1000 AS allowance
 		FROM
 		    execution e
 		INNER JOIN flo f ON f.id = e.flo_id
@@ -2012,7 +2012,7 @@ func NewService(config *config.Config) (*Service, error) {
 				WHEN e.result->'duration' IS NULL THEN 0
 				ELSE CAST(e.result->>'duration' AS INT)
 			END), 0) AS usage,
-		    50 * 1000 AS allowance
+		    50 * 60 * 1000 AS allowance
 		FROM
 		    execution e
 		WHERE
