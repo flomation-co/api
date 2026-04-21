@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	htmltemplate "html/template"
 	"io"
 	"net/http"
@@ -588,10 +589,10 @@ func (s *Service) sendExecutionNotification(floID string, completion string, exe
 			"<strong>Execution ID:</strong> %s<br>"+
 			"<strong>Status:</strong> %s<br>"+
 			"<strong>Timestamp:</strong> %s",
-		flo.Name,
-		status,
-		execution.ID,
-		strings.ToUpper(completion),
+		html.EscapeString(flo.Name),
+		html.EscapeString(status),
+		html.EscapeString(execution.ID),
+		strings.ToUpper(html.EscapeString(completion)),
 		time.Now().UTC().Format(time.RFC1123),
 	)
 
@@ -718,7 +719,7 @@ func renderNotificationEmail(header, message, executionID string) string {
 		TransactionTime string
 	}{
 		Header:          header,
-		Message:         htmltemplate.HTML(message),
+		Message:         htmltemplate.HTML(message), //nolint:gosec // G203: inputs are HTML-escaped via html.EscapeString before interpolation
 		ButtonText:      "View Execution",
 		ButtonURL:       "https://www.flomation.app",
 		TransactionID:   executionID,
