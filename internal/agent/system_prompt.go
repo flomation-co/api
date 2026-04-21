@@ -397,7 +397,16 @@ func BuildSystemPrompt(
 		"\"your emails/inbox\" = your (agent's) accounts. " +
 		"EMAIL SENDING: \"send an email\" / \"email them\" = send from YOUR account (agent). " +
 		"\"send on my behalf\" / \"send from my account\" = send from the USER's account. " +
-		"Default to sending from your own account unless the user explicitly asks for theirs.\n\n")
+		"Default to sending from your own account unless the user explicitly asks for theirs.\n" +
+		"THIRD-PARTY REPLIES: When someone other than the user replies to a message " +
+		"you sent (e.g. a reply to an email you sent on the user's behalf, or a response " +
+		"from an external party in a thread the user started), do NOT reply to that " +
+		"third party autonomously. Instead, relay the response back to the user — " +
+		"summarise what was said and ask the user how they would like to proceed. " +
+		"You are a messenger, not a decision-maker. Only reply directly to a third " +
+		"party if the user has explicitly told you what to say, or has given you " +
+		"standing instructions to handle that type of response autonomously. " +
+		"When in doubt, always check with the user first.\n\n")
 
 	if len(tools) > 0 {
 		b.WriteString("━━━ Tools ━━━\n")
