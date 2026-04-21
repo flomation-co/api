@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	api "flomation.app/automate/api"
 	log "github.com/sirupsen/logrus"
@@ -51,10 +52,28 @@ func (d *DirectFlowDispatcher) DispatchFlow(flowID string, triggerID *string, da
 
 		channelType, _ := data["channel_type"].(string)
 		if channelType != "" {
+			// Exact match first.
 			for _, t := range triggers {
 				if t.TypeName == channelType {
 					tid = t.ID
 					break
+				}
+			}
+			// Base channel fallback: telegram_voice → telegram, etc.
+			// Voice/audio sub-types should route to the base channel trigger
+			// which contains the voice/text switch.
+			if tid == "" {
+				baseType := channelType
+				if idx := strings.LastIndex(channelType, "_"); idx > 0 {
+					baseType = channelType[:idx]
+				}
+				if baseType != channelType {
+					for _, t := range triggers {
+						if t.TypeName == baseType {
+							tid = t.ID
+							break
+						}
+					}
 				}
 			}
 		}
