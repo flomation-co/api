@@ -370,6 +370,10 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	users.POST("", s.createUser)
 	users.POST("/:ID", s.updateUser)
+	users.POST("/eula/accept", s.acceptEula)
+
+	eula := v1.Group("eula")
+	eula.GET("", s.getEula)
 
 	actions := v1.Group("action")
 	actions.GET("", s.getActions)

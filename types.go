@@ -52,6 +52,8 @@ type User struct {
 	Name           string         `json:"name" db:"name"`
 	EmailAddress   *string        `json:"email_address" db:"email_address"`
 	MarketingOptIn bool           `json:"marketing_opt_in" db:"marketing_opt_in"`
+	EulaVersion    int            `json:"eula_version" db:"eula_version"`
+	EulaAcceptedAt *time.Time     `json:"eula_accepted_at,omitempty" db:"eula_accepted_at"`
 	CreatedAt      time.Time      `json:"created_at" db:"created_at"`
 	Organisations  []Organisation `json:"organisations"`
 }
