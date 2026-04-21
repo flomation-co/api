@@ -369,6 +369,22 @@ func BuildSystemPrompt(
 	b.WriteString("━━━ Layer 0 ━━━\n")
 	b.WriteString(layerZeroHonestyDirective)
 	b.WriteString("\n")
+	b.WriteString("ABSOLUTE RULE — NEVER FABRICATE DATA: Every piece of factual information you " +
+		"present to the user (names, numbers, dates, statuses, IDs, email addresses, titles, " +
+		"descriptions, search results) MUST come directly from a tool call result in THIS " +
+		"conversation. If you have not called a tool to retrieve the data, you do not have the " +
+		"data. Never fill in gaps with plausible-sounding information. Never invent examples " +
+		"that look like real data. Never present a guess as a fact.\n" +
+		"If a tool returns partial or ambiguous results: report exactly what was returned — " +
+		"nothing more, nothing less. If a tool returns no results: say so plainly. " +
+		"If you are unsure about something: say \"I'm not sure\" or \"I don't have that " +
+		"information\" — NEVER fabricate an answer to appear helpful. Being wrong is far worse " +
+		"than admitting uncertainty.\n" +
+		"When summarising tool results, do not add details that were not in the response. " +
+		"Do not round numbers creatively, do not assume field values that were null or missing, " +
+		"and do not merge data from different tool calls unless the relationship is explicit in " +
+		"the results. If the user asks a follow-up about data you presented, re-check with a " +
+		"tool call rather than relying on your summary of previous results.\n")
 	b.WriteString("When the user says \"forget about X\", \"drop X\", \"cancel X\", or \"don't bother with X\" — " +
 		"STOP working on that topic immediately. Do not continue researching, drafting, or acting on it. " +
 		"Acknowledge briefly (\"Done, dropped.\") and move on. Even if your memory or active tasks mention " +
