@@ -37,9 +37,11 @@ type Service struct {
 	stmtAcceptInvite               *sqlx.NamedStmt
 	stmtRevokeInvite               *sqlx.NamedStmt
 
-	stmtGetUserByID *sqlx.NamedStmt
-	stmtCreateUser  *sqlx.NamedStmt
-	stmtUpdateUser  *sqlx.NamedStmt
+	stmtGetUserByID    *sqlx.NamedStmt
+	stmtCreateUser     *sqlx.NamedStmt
+	stmtUpdateUser     *sqlx.NamedStmt
+	stmtAcceptEula     *sqlx.NamedStmt
+	stmtGetLatestEula  *sqlx.NamedStmt
 
 	stmtGetMyFlos              *sqlx.NamedStmt
 	stmtGetMyFlosWithFilter    *sqlx.NamedStmt
@@ -454,7 +456,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    name,
 		    created_at,
 		    PGP_SYM_DECRYPT(email_address, :encrypt_key) AS email_address,
-		    marketing_opt_in
+		    marketing_opt_in,
+		    eula_version,
+		    eula_accepted_at
 		FROM
 		    users
 		WHERE
@@ -482,14 +486,33 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtUpdateUser, err = s.conn.PrepareNamed(`
-		UPDATE 
-		    users 
+		UPDATE
+		    users
 		SET
 		    name = :name,
 		    email_address = PGP_SYM_ENCRYPT(:email_address, :encrypt_key),
 		    marketing_opt_in = :marketing_opt_in
 		WHERE
 		    id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtAcceptEula, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET eula_version = :eula_version, eula_accepted_at = NOW()
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetLatestEula, err = s.conn.PrepareNamed(`
+		SELECT id, version, content, created_at
+		FROM eula
+		ORDER BY version DESC
+		LIMIT 1
 	`)
 	if err != nil {
 		return nil, err
@@ -3148,6 +3171,28 @@ func (s *Service) UpdateUser(user *api.User) error {
 	}
 
 	return nil
+}
+
+func (s *Service) AcceptEula(userID string, version int) error {
+	if _, err := s.stmtAcceptEula.Exec(struct {
+		ID          string `db:"id"`
+		EulaVersion int    `db:"eula_version"`
+	}{
+		userID,
+		version,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) GetLatestEula() (*api.Eula, error) {
+	var result api.Eula
+	// Named query requires at least one param; use a dummy struct.
+	if err := s.stmtGetLatestEula.Get(&result, struct{}{}); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
