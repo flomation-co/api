@@ -581,7 +581,8 @@ func (s *Service) sendExecutionNotification(floID string, completion string, exe
 
 	subject := fmt.Sprintf("Flow %q %s", flo.Name, status)
 
-	header := fmt.Sprintf("%s Flow %s", statusEmoji, strings.Title(status))
+	titleStatus := strings.ToUpper(status[:1]) + status[1:]
+	header := fmt.Sprintf("%s Flow %s", statusEmoji, titleStatus)
 	message := fmt.Sprintf(
 		"Your flow <strong>%s</strong> has %s.<br><br>"+
 			"<strong>Execution ID:</strong> %s<br>"+
