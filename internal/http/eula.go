@@ -7,20 +7,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type eulaResponse struct {
-	Version int    `json:"version"`
-	Content string `json:"content"`
-}
-
 type acceptEulaRequest struct {
 	Version int `json:"version" binding:"required"`
 }
 
 func (s *Service) getEula(c *gin.Context) {
-	c.JSON(http.StatusOK, eulaResponse{
-		Version: s.config.Eula.Version,
-		Content: s.config.Eula.Content,
-	})
+	eula, err := s.persistence.GetLatestEula()
+	if err != nil {
+		log.WithField("error", err).Error("unable to fetch latest eula")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	if eula == nil {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	c.JSON(http.StatusOK, eula)
 }
 
 func (s *Service) acceptEula(c *gin.Context) {
@@ -36,10 +40,18 @@ func (s *Service) acceptEula(c *gin.Context) {
 		return
 	}
 
-	if req.Version != s.config.Eula.Version {
+	// Verify the version being accepted is the current one.
+	latest, err := s.persistence.GetLatestEula()
+	if err != nil || latest == nil {
+		log.WithField("error", err).Error("unable to fetch latest eula for validation")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	if req.Version != latest.Version {
 		c.JSON(http.StatusConflict, gin.H{
 			"error":           "eula_version_mismatch",
-			"current_version": s.config.Eula.Version,
+			"current_version": latest.Version,
 		})
 		return
 	}

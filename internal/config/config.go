@@ -50,11 +50,6 @@ type EmbeddingConfig struct {
 	SecretAccessKey string `json:"secret_access_key" env:"EMBEDDING_SECRET_ACCESS_KEY" arg:"embedding-secret-access-key"`
 }
 
-type EulaConfig struct {
-	Version int    `json:"version" env:"EULA_VERSION" arg:"eula-version"`
-	Content string `json:"content" env:"EULA_CONTENT" arg:"eula-content"`
-}
-
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
@@ -62,7 +57,6 @@ type Config struct {
 	Launch           LaunchConfig     `json:"launch"`
 	SMTP             SMTPConfig       `json:"smtp"`
 	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
-	Eula             EulaConfig       `json:"eula"`
 }
 
 func LoadConfig(path string) (*Config, error) {

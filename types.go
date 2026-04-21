@@ -58,6 +58,13 @@ type User struct {
 	Organisations  []Organisation `json:"organisations"`
 }
 
+type Eula struct {
+	ID        int       `json:"id" db:"id"`
+	Version   int       `json:"version" db:"version"`
+	Content   string    `json:"content" db:"content"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
 type Trigger struct {
 	ID             string      `json:"id" db:"id"`
 	Name           string      `json:"name" db:"name"`

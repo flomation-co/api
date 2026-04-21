@@ -86,6 +86,7 @@ type Persistence interface {
 	LinkFloToTrigger(floID string, triggerID string) error
 	UpdateUser(user *api.User) error
 	AcceptEula(userID string, version int) error
+	GetLatestEula() (*api.Eula, error)
 
 	// Favourites
 	GetFloFavourites(userID string) ([]string, error)
