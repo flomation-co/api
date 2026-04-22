@@ -26,8 +26,8 @@ func (s *Service) updateOnboardingProgress(c *gin.Context) {
 		return
 	}
 
-	if req.Step < 0 || req.Step > 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "step must be between 0 and 6"})
+	if req.Step < 0 || req.Step > 7 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "step must be between 0 and 7"})
 		return
 	}
 
