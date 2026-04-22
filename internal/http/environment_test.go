@@ -218,6 +218,7 @@ func (m *mockPersistence) LinkFloToTrigger(string, string) error { panic("not im
 func (m *mockPersistence) UpdateUser(*api.User) error            { panic("not implemented") }
 func (m *mockPersistence) AcceptEula(string, int) error          { return nil }
 func (m *mockPersistence) GetLatestEula() (*api.Eula, error)     { return nil, nil }
+func (m *mockPersistence) UpdateOnboardingProgress(string, int, *time.Time) error { return nil }
 
 // Favourites stubs
 func (m *mockPersistence) GetFloFavourites(string) ([]string, error) { return nil, nil }

@@ -87,6 +87,7 @@ type Persistence interface {
 	UpdateUser(user *api.User) error
 	AcceptEula(userID string, version int) error
 	GetLatestEula() (*api.Eula, error)
+	UpdateOnboardingProgress(userID string, step int, completedAt *time.Time) error
 
 	// Favourites
 	GetFloFavourites(userID string) ([]string, error)
