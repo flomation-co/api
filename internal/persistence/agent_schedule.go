@@ -18,14 +18,14 @@ func (s *Service) CreateAgentSchedule(sched api.AgentSchedule) (*string, error) 
 		`INSERT INTO agent_schedule
 			(agent_id, agent_user_id, conversation_id, name, description,
 			 schedule_mode, interval_val, unit, time_of_day, days_of_week,
-			 timezone, enabled)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 timezone, source_channel, enabled)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING id`,
 		sched.AgentID, sched.AgentUserID, sched.ConversationID,
 		sched.Name, sched.Description,
 		sched.ScheduleMode, sched.IntervalVal, sched.Unit,
 		sched.TimeOfDay, sched.DaysOfWeek,
-		tz, true,
+		tz, sched.SourceChannel, true,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert agent_schedule: %w", err)
