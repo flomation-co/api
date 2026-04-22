@@ -1983,39 +1983,44 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// Personal mode: sum execution time for flows authored by this user
 	s.stmtGetUsageThisMonthForUserID, err = db.PrepareNamed(`
 		SELECT
-			SUM(CASE
+			COALESCE(SUM(CASE
 				WHEN e.result->'duration' IS NULL THEN 0
 				ELSE CAST(e.result->>'duration' AS INT)
-			END) AS usage,
-		    50 * 1000 AS allowance
+			END), 0) AS usage,
+		    50 * 60 * 1000 AS allowance
 		FROM
 		    execution e
+		INNER JOIN flo f ON f.id = e.flo_id
 		WHERE
-			created_at > cast(date_trunc('month', current_date) as date)
+			e.created_at > cast(date_trunc('month', current_date) as date)
 		AND
-			owner_id = :owner_id
+			f.author_id = :owner_id
 		AND
-			organisation_id IS NULL;
+			e.organisation_id IS NULL;
 	`)
 	if err != nil {
 		return nil, err
 	}
 
+	// Organisation mode: sum execution time for flows this user triggered
 	s.stmtGetUsageThisMonthForOrgID, err = db.PrepareNamed(`
 		SELECT
-			SUM(CASE
+			COALESCE(SUM(CASE
 				WHEN e.result->'duration' IS NULL THEN 0
 				ELSE CAST(e.result->>'duration' AS INT)
-			END) AS usage,
-		    50 * 1000 AS allowance
+			END), 0) AS usage,
+		    50 * 60 * 1000 AS allowance
 		FROM
 		    execution e
 		WHERE
-			created_at > cast(date_trunc('month', current_date) as date)
+			e.created_at > cast(date_trunc('month', current_date) as date)
 		AND
-			organisation_id = :organisation_id;
+			e.owner_id = :owner_id
+		AND
+			e.organisation_id = :organisation_id;
 	`)
 	if err != nil {
 		return nil, err
@@ -4607,8 +4612,10 @@ func (s *Service) GetUsage(ownerID string, organisationID *string) (*api.UserDas
 
 	if organisationID != nil && *organisationID != "" {
 		err = s.stmtGetUsageThisMonthForOrgID.Get(&result, struct {
+			OwnerID        string `db:"owner_id"`
 			OrganisationID string `db:"organisation_id"`
 		}{
+			OwnerID:        ownerID,
 			OrganisationID: *organisationID,
 		})
 	} else {
