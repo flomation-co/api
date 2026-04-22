@@ -121,15 +121,34 @@ func (sp *SchedulePoller) processSchedule(sched *api.AgentSchedule) {
 		return
 	}
 
+	// Determine delivery channel: use source_channel if set, otherwise
+	// the task description may name a channel explicitly.
+	deliveryChannel := ""
+	if sched.SourceChannel != nil && *sched.SourceChannel != "" {
+		deliveryChannel = *sched.SourceChannel
+	}
+
+	channelInstruction := ""
+	if deliveryChannel != "" {
+		channelInstruction = fmt.Sprintf(
+			"Deliver the result on %s (the channel the user was on when they "+
+				"created this schedule). ONLY use a different channel if the task "+
+				"description explicitly names one (e.g. 'send me an email', "+
+				"'post to Slack'). Do NOT broadcast to multiple channels.",
+			deliveryChannel)
+	} else {
+		channelInstruction = "The task description should indicate where to deliver " +
+			"the result. If unclear, pick the single most appropriate channel. " +
+			"Do NOT broadcast to multiple channels."
+	}
+
 	content := fmt.Sprintf(
 		"[SCHEDULED TASK] You have a recurring schedule called %q. "+
 			"The task: %s. "+
-			"Use your tools to carry out this task — send emails, post messages, "+
-			"check calendars, etc. as the task requires. Do NOT attempt to reply "+
-			"on a messaging channel directly — this execution has no channel context. "+
-			"If the user asked you to 'tell them' or 'send them' something, use the "+
-			"appropriate tool (email_send, messaging/slack, messaging/telegram, etc.).",
-		sched.Name, sched.Description)
+			"Use your tools to carry out this task. %s "+
+			"Do NOT attempt to reply on a messaging channel directly — "+
+			"this execution has no channel context. You MUST use a tool.",
+		sched.Name, sched.Description, channelInstruction)
 
 	triggerData := map[string]interface{}{
 		"agent_id":       sched.AgentID,
@@ -153,12 +172,10 @@ func (sp *SchedulePoller) processSchedule(sched *api.AgentSchedule) {
 	systemPrompt += "\n\n━━━ Platform capabilities ━━━\n" +
 		"This execution was triggered by a recurring schedule you set up. " +
 		"There is NO active channel — you are not responding to a message. " +
-		"Use your tools to carry out the task: send emails (email_send), " +
-		"post to Slack (messaging/slack), send Telegram messages " +
-		"(messaging/telegram), etc. The user specified what they want " +
-		"in the task description — follow their instructions.\n" +
-		"Do NOT output a plain text response expecting it to reach the user — " +
-		"there is no channel to deliver it on. You MUST use a tool.\n\n" +
+		"You MUST use a tool to deliver the result (e.g. messaging/slack, " +
+		"messaging/telegram, email_send). Do NOT output a plain text response " +
+		"expecting it to reach the user — there is no channel to deliver it on.\n" +
+		"IMPORTANT: Send to ONE channel only. " + channelInstruction + "\n\n" +
 		"━━━ Current time ━━━\n" + time.Now().Format("Monday, 2 January 2006 15:04 MST")
 	triggerData["system_prompt"] = systemPrompt
 

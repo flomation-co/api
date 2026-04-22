@@ -22,6 +22,7 @@ type createAgentScheduleRequest struct {
 	TimeOfDay      *string `json:"time_of_day,omitempty"`
 	DaysOfWeek     *string `json:"days_of_week,omitempty"`
 	Timezone       string  `json:"timezone,omitempty"`
+	SourceChannel  *string `json:"source_channel,omitempty"`
 }
 
 func (s *Service) createAgentScheduleInternal(c *gin.Context) {
@@ -93,6 +94,7 @@ func (s *Service) createAgentScheduleInternal(c *gin.Context) {
 		TimeOfDay:      body.TimeOfDay,
 		DaysOfWeek:     body.DaysOfWeek,
 		Timezone:       tz,
+		SourceChannel:  body.SourceChannel,
 	})
 	if err != nil {
 		log.WithFields(log.Fields{
