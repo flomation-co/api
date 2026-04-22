@@ -40,8 +40,9 @@ type Service struct {
 	stmtGetUserByID    *sqlx.NamedStmt
 	stmtCreateUser     *sqlx.NamedStmt
 	stmtUpdateUser     *sqlx.NamedStmt
-	stmtAcceptEula     *sqlx.NamedStmt
-	stmtGetLatestEula  *sqlx.NamedStmt
+	stmtAcceptEula        *sqlx.NamedStmt
+	stmtGetLatestEula     *sqlx.NamedStmt
+	stmtUpdateOnboarding  *sqlx.NamedStmt
 
 	stmtGetMyFlos              *sqlx.NamedStmt
 	stmtGetMyFlosWithFilter    *sqlx.NamedStmt
@@ -458,7 +459,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    PGP_SYM_DECRYPT(email_address, :encrypt_key) AS email_address,
 		    marketing_opt_in,
 		    eula_version,
-		    eula_accepted_at
+		    eula_accepted_at,
+		    onboarding_step,
+		    onboarding_completed_at
 		FROM
 		    users
 		WHERE
@@ -513,6 +516,16 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM eula
 		ORDER BY version DESC
 		LIMIT 1
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtUpdateOnboarding, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET onboarding_step = :onboarding_step,
+		    onboarding_completed_at = :onboarding_completed_at
+		WHERE id = :id
 	`)
 	if err != nil {
 		return nil, err
@@ -3198,6 +3211,21 @@ func (s *Service) GetLatestEula() (*api.Eula, error) {
 		return nil, err
 	}
 	return &result, nil
+}
+
+func (s *Service) UpdateOnboardingProgress(userID string, step int, completedAt *time.Time) error {
+	if _, err := s.stmtUpdateOnboarding.Exec(struct {
+		ID                    string     `db:"id"`
+		OnboardingStep        int        `db:"onboarding_step"`
+		OnboardingCompletedAt *time.Time `db:"onboarding_completed_at"`
+	}{
+		userID,
+		step,
+		completedAt,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
