@@ -638,6 +638,7 @@ type AgentSchedule struct {
 	TimeOfDay      *string    `json:"time_of_day,omitempty" db:"time_of_day"`
 	DaysOfWeek     *string    `json:"days_of_week,omitempty" db:"days_of_week"`
 	Timezone       string     `json:"timezone" db:"timezone"`
+	SourceChannel  *string    `json:"source_channel,omitempty" db:"source_channel"`
 	Enabled        bool       `json:"enabled" db:"enabled"`
 	LastFiredAt    *time.Time `json:"last_fired_at,omitempty" db:"last_fired_at"`
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
