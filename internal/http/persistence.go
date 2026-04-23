@@ -88,6 +88,7 @@ type Persistence interface {
 	AcceptEula(userID string, version int) error
 	GetLatestEula() (*api.Eula, error)
 	UpdateOnboardingProgress(userID string, step int, completedAt *time.Time) error
+	SetChecklistFlag(userID string, flag int) error
 
 	// Favourites
 	GetFloFavourites(userID string) ([]string, error)

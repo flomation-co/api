@@ -56,6 +56,7 @@ type User struct {
 	EulaAcceptedAt        *time.Time     `json:"eula_accepted_at,omitempty" db:"eula_accepted_at"`
 	OnboardingStep        int            `json:"onboarding_step" db:"onboarding_step"`
 	OnboardingCompletedAt *time.Time     `json:"onboarding_completed_at,omitempty" db:"onboarding_completed_at"`
+	ChecklistFlags        int            `json:"checklist_flags" db:"checklist_flags"`
 	CreatedAt             time.Time      `json:"created_at" db:"created_at"`
 	Organisations  []Organisation `json:"organisations"`
 }
