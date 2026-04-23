@@ -461,7 +461,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    eula_version,
 		    eula_accepted_at,
 		    onboarding_step,
-		    onboarding_completed_at
+		    onboarding_completed_at,
+		    checklist_flags
 		FROM
 		    users
 		WHERE
@@ -3226,6 +3227,15 @@ func (s *Service) UpdateOnboardingProgress(userID string, step int, completedAt 
 		return err
 	}
 	return nil
+}
+
+// SetChecklistFlag sets a bitmask flag on the user's checklist_flags using bitwise OR.
+func (s *Service) SetChecklistFlag(userID string, flag int) error {
+	_, err := s.conn.Exec(
+		"UPDATE users SET checklist_flags = checklist_flags | $1 WHERE id = $2",
+		flag, userID,
+	)
+	return err
 }
 
 func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
