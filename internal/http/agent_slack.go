@@ -25,6 +25,7 @@ var requiredSlackScopes = []struct {
 	{"app_mentions:read", "Detect @mentions", "trigger/slack (Events API)"},
 	{"users:read", "List workspace members", "slack_users, slack_user_profile"},
 	{"users:read.email", "See member email addresses", "slack_user_profile"},
+	{"users:write", "Set bot presence (online/away)", "Socket Mode presence"},
 	{"search:read.public", "Search public channels (user token only)", "slack_search"},
 	{"search:read.private", "Search private channels (user token only)", "slack_search"},
 	{"search:read.im", "Search DMs (user token only)", "slack_search"},
