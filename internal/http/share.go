@@ -43,31 +43,72 @@ func (s *Service) sendShareEmail(c *gin.Context) {
 	personalMessage := ""
 	if req.Message != "" {
 		personalMessage = fmt.Sprintf(
-			"<p style=\"color:#d1d5db;font-size:14px;line-height:1.6;margin:0 0 20px;\"><em>\"%s\"</em></p>",
+			"<p style=\"font-size:15px;line-height:1.6;color:#6b7280;margin:0 0 25px;padding:16px;background:#f9fafb;border-left:3px solid #460070;border-radius:4px;\"><em>&ldquo;%s&rdquo;</em></p>",
 			html.EscapeString(req.Message),
 		)
 	}
 
 	body := fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<body style="margin:0;padding:0;background:#0a0a0f;font-family:'Inter',Arial,sans-serif;">
-<table width="100%%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 20px;">
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flomation</title>
+<style>
+body { margin: 0; padding: 0; background-color: #f4f4f7; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+table { border-spacing: 0; }
+td { padding: 0; }
+@media screen and (max-width: 600px) {
+    .content { width: 100%% !important; border-radius: 0 !important; }
+    .wrapper { padding: 10px !important; }
+}
+</style>
+</head>
+<body>
+<table width="100%%" border="0" cellspacing="0" cellpadding="0" bgcolor="#f4f4f7" class="wrapper" style="padding: 40px 0;">
 <tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#1a1a2e;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
-<tr><td style="padding:32px 40px 24px;">
-<h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#e5e7eb;">You've been invited to Flomation</h1>
-<p style="margin:0 0 24px;font-size:14px;color:rgba(255,255,255,0.4);">%s thinks you'd love Flomation</p>
-%s
-<p style="color:#d1d5db;font-size:14px;line-height:1.6;margin:0 0 28px;">
-Flomation is a powerful workflow automation platform that connects your tools, teams, and processes into seamless flows.
-With a drag-and-drop editor, 100+ connectors, and AI-powered agents, you can automate anything.
-</p>
-<a href="https://www.flomation.co" style="display:inline-block;padding:12px 28px;background:#00aa9c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Get Started</a>
+<table width="600" border="0" cellspacing="0" cellpadding="0" class="content" style="background-color: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+
+<tr><td style="padding: 40px 40px 20px 40px; text-align: left;">
+<a href="https://www.flomation.app"><img width="300" height="84" src="https://flomation-dev-static.s3.eu-west-2.amazonaws.com/flomation_logo_purple_300px.png" alt="Flomation" title="Flomation"/></a>
 </td></tr>
-<tr><td style="padding:20px 40px;border-top:1px solid rgba(255,255,255,0.04);">
-<p style="margin:0;font-size:11px;color:rgba(255,255,255,0.2);">Sent by %s via Flomation &middot; <a href="https://www.flomation.co" style="color:rgba(255,255,255,0.3);">www.flomation.co</a></p>
+
+<tr><td style="padding: 20px 40px 40px 40px;">
+<h1 style="font-size: 28px; color: #1a1a1a; margin: 0 0 20px 0; line-height: 1.2;">
+You've been invited to Flomation
+</h1>
+<p style="font-size: 16px; line-height: 1.6; color: #4b5563; margin: 0 0 25px 0;">
+Hello there,<br><br>
+%s thinks you'd love Flomation — a powerful workflow automation platform that connects your tools, teams, and processes into seamless flows. With a drag-and-drop editor, 100+ connectors, and AI-powered agents, you can automate anything.
+</p>
+%s
+<table border="0" cellspacing="0" cellpadding="0">
+<tr><td align="center" bgcolor="#460070" style="border-radius: 8px;">
+<a href="https://www.flomation.co" target="_blank" style="font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; padding: 14px 30px; display: inline-block;">
+Get Started
+</a>
 </td></tr>
 </table>
+</td></tr>
+
+<tr><td style="padding: 0 40px;">
+<hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 0;">
+</td></tr>
+
+<tr><td style="padding: 30px 40px 40px 40px; background-color: #fafafa;">
+<table width="100%%" border="0" cellspacing="0" cellpadding="0">
+<tr><td style="font-size: 10px; color: #9ca3af; line-height: 1.5;">
+<strong>Flomation Ltd</strong><br>
+33-34 High Street, Bridgnorth, Shropshire, England, WV16 4DB<br /><br />
+Sent by %s via Flomation<br/><br/>
+</td></tr>
+</table>
+</td></tr>
+
+</table>
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+© 2026 Flomation Ltd. All rights reserved.
+</p>
 </td></tr>
 </table>
 </body>
