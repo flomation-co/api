@@ -54,7 +54,8 @@ func (s *Service) updateOnboardingProgress(c *gin.Context) {
 }
 
 type updateChecklistRequest struct {
-	Flag int `json:"flag" binding:"required"`
+	Flag  int  `json:"flag" binding:"required"`
+	Clear bool `json:"clear,omitempty"`
 }
 
 func (s *Service) updateChecklist(c *gin.Context) {
@@ -76,7 +77,13 @@ func (s *Service) updateChecklist(c *gin.Context) {
 		return
 	}
 
-	if err := s.persistence.SetChecklistFlag(u.ID, req.Flag); err != nil {
+	var err error
+	if req.Clear {
+		err = s.persistence.ClearChecklistFlag(u.ID, req.Flag)
+	} else {
+		err = s.persistence.SetChecklistFlag(u.ID, req.Flag)
+	}
+	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err,
 			"user_id": u.ID,

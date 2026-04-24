@@ -3238,6 +3238,15 @@ func (s *Service) SetChecklistFlag(userID string, flag int) error {
 	return err
 }
 
+// ClearChecklistFlag removes a bitmask flag from the user's checklist_flags using bitwise AND NOT.
+func (s *Service) ClearChecklistFlag(userID string, flag int) error {
+	_, err := s.conn.Exec(
+		"UPDATE users SET checklist_flags = checklist_flags & ~$1 WHERE id = $2",
+		flag, userID,
+	)
+	return err
+}
+
 func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
 	var results []*api.Flo
 	var count int64
