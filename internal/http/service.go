@@ -373,6 +373,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	users.POST("/eula/accept", s.acceptEula)
 	users.POST("/onboarding", s.updateOnboardingProgress)
 	users.POST("/checklist", s.updateChecklist)
+	users.POST("/share", s.sendShareEmail)
 
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
