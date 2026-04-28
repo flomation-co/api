@@ -88,6 +88,10 @@ func (pap *PendingActionPoller) processAction(pa *api.AgentPendingAction) {
 		l.Warn("agent not found, skipping")
 		return
 	}
+	if agent.Status == api.AgentStatusPaused {
+		l.Debug("agent is paused, skipping pending action")
+		return
+	}
 	if agent.OrchestratorFlowID == nil || *agent.OrchestratorFlowID == "" {
 		l.Warn("agent has no orchestrator flow, skipping")
 		return

@@ -285,6 +285,9 @@ func (s *Service) getExecutions(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
+	if limitStr > 100 {
+		limitStr = 100
+	}
 
 	user := s.getUserFromContext(c)
 

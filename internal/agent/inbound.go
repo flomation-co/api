@@ -70,6 +70,11 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 		return nil, fmt.Errorf("agent %s not found", agentID)
 	}
 
+	if agent.Status == api.AgentStatusPaused {
+		log.WithField("agent_id", agentID).Info("ignoring inbound message — agent is paused")
+		return result, nil
+	}
+
 	// Step 1: resolve identity.
 	// Normalise channel sub-types to their base type for identity resolution.
 	// telegram_voice is the same user as telegram — they shouldn't get

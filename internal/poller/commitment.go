@@ -89,6 +89,11 @@ func (cp *CommitmentPoller) processCommitment(c *api.AgentCommitment) {
 		_ = cp.persistence.UpdateCommitmentStatus(c.ID, "expired")
 		return
 	}
+	if agent.Status == api.AgentStatusPaused {
+		l.Debug("agent is paused, skipping commitment")
+		_ = cp.persistence.UpdateCommitmentStatus(c.ID, "pending")
+		return
+	}
 	if agent.OrchestratorFlowID == nil || *agent.OrchestratorFlowID == "" {
 		l.Warn("agent has no orchestrator flow, expiring commitment")
 		_ = cp.persistence.UpdateCommitmentStatus(c.ID, "expired")
