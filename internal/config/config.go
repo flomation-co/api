@@ -2,6 +2,8 @@ package config
 
 import (
 	goconfig "github.com/flomation-co/go-config"
+
+	"flomation.app/automate/api/internal/mtls"
 )
 
 type HttpListenConfig struct {
@@ -27,9 +29,19 @@ type SecurityConfig struct {
 }
 
 type LaunchConfig struct {
-	URL       string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
-	PublicURL string `json:"public_url" env:"LAUNCH_PUBLIC_URL" arg:"launch-public-url"`
-	APIURL    string `json:"api_url" env:"API_PUBLIC_URL" arg:"api-public-url"`
+	URL         string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
+	InternalURL string `json:"internal_url,omitempty" env:"LAUNCH_INTERNAL_URL" arg:"launch-internal-url"`
+	PublicURL   string `json:"public_url" env:"LAUNCH_PUBLIC_URL" arg:"launch-public-url"`
+	APIURL      string `json:"api_url" env:"API_PUBLIC_URL" arg:"api-public-url"`
+}
+
+// InternalLaunchURL returns the internal mTLS URL for Launch if configured,
+// otherwise falls back to the public Launch URL.
+func (c *Config) InternalLaunchURL() string {
+	if c.Launch.InternalURL != "" {
+		return c.Launch.InternalURL
+	}
+	return c.Launch.URL
 }
 
 type SMTPConfig struct {
@@ -57,6 +69,7 @@ type Config struct {
 	Launch           LaunchConfig     `json:"launch"`
 	SMTP             SMTPConfig       `json:"smtp"`
 	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
+	TLS              *mtls.TLSConfig  `json:"tls,omitempty"`
 }
 
 func LoadConfig(path string) (*Config, error) {

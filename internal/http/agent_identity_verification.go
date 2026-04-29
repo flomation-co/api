@@ -162,7 +162,7 @@ func (s *Service) requestVerificationInternal(c *gin.Context) {
 // Launch's internal endpoint so it can fire the orchestrator flow on the
 // target channel. Runs in a goroutine — errors are logged, not returned.
 func (s *Service) dispatchVerificationToLaunch(agentID, sourceChannel, targetChannel, targetChannelID, targetExternal, targetUserID string) {
-	launchURL := s.config.Launch.URL
+	launchURL := s.config.InternalLaunchURL()
 	if launchURL == "" {
 		log.Warn("identity verification: Launch URL not configured, cannot dispatch")
 		return
@@ -177,7 +177,7 @@ func (s *Service) dispatchVerificationToLaunch(agentID, sourceChannel, targetCha
 	})
 
 	endpoint := fmt.Sprintf("%s/internal/agent/%s/verify-identity", launchURL, agentID)
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(payload)) // #nosec G107 — internal service-to-service call
+	resp, err := s.launch.Client().Post(endpoint, "application/json", bytes.NewReader(payload)) // #nosec G107 — internal service-to-service call
 	if err != nil {
 		log.WithFields(log.Fields{
 			"agent_id": agentID,

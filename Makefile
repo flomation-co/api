@@ -33,8 +33,12 @@ build:
 		arch=$$(echo $$platform | cut -d'/' -f2); \
 		echo "Building for $$os/$$arch"; \
 		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -ldflags "-s -X $(NAMESPACE)/internal/version.Version=$(VERSION) -X $(NAMESPACE)/internal/version.Hash=$(GITHASH) -X $(NAMESPACE)/internal/version.BuiltDate=$(DATE)" -o ./dist/flomation-${NAME}-$$arch-$$os-${VERSION} $(NAMESPACE)/cmd; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -ldflags "-s" -o ./dist/flomation-gencerts-$$arch-$$os-${VERSION} $(NAMESPACE)/tools/gencerts; \
 	done
 	cd dist && zip -r ../build.zip .
+
+dev-certs:
+	go run tools/gencerts/main.go -out certs/dev
 
 test:
 	go test ./... -coverprofile cover.out

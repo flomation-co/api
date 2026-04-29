@@ -22,8 +22,9 @@ import (
 // orchestration methods that aren't pure DB operations.
 type inboundPersistenceAdapter struct {
 	*apipersistence.Service
-	notifier  agent.ExecutionNotifier
-	launchURL string
+	notifier    agent.ExecutionNotifier
+	launchURL   string
+	launchClient *http.Client
 }
 
 func (a *inboundPersistenceAdapter) DispatchExtraction(
@@ -148,7 +149,7 @@ func (a *inboundPersistenceAdapter) RequestCrossChannelVerification(agentID, pen
 	})
 
 	endpoint := fmt.Sprintf("%s/internal/agent/%s/verify-identity", a.launchURL, agentID)
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(dispatchPayload)) // #nosec G107 — internal service-to-service call
+	resp, err := a.launchClient.Post(endpoint, "application/json", bytes.NewReader(dispatchPayload)) // #nosec G107 — internal service-to-service call
 	if err != nil {
 		log.WithError(err).Error("cross-channel verification: failed to dispatch to Launch")
 		return

@@ -11,6 +11,7 @@ import (
 	"flomation.app/automate/api/internal/agent"
 	"flomation.app/automate/api/internal/connector/identity"
 	"flomation.app/automate/api/internal/embedding"
+	"flomation.app/automate/api/internal/mtls"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"github.com/flomation-co/sentinel-client"
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ import (
 type Service struct {
 	config            *config.Config
 	engine            *gin.Engine
+	internalEngine    *gin.Engine // mTLS-only listener for internal routes
 	persistence       Persistence
 	identity          *identity.Connector
 	launch            *launchconnector.Connector
@@ -303,7 +305,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Phase 3+4: initialise inbound message handler with direct dispatch.
 	directDispatcher := agent.NewDirectFlowDispatcher(persistence, s.executionNotifier)
 	s.inboundHandler = agent.NewInboundHandler(
-		&inboundPersistenceAdapter{Service: persistence, notifier: s.executionNotifier, launchURL: config.Launch.URL},
+		&inboundPersistenceAdapter{Service: persistence, notifier: s.executionNotifier, launchURL: config.InternalLaunchURL(), launchClient: s.launch.Client()},
 		s.promptAssembler,
 		directDispatcher,
 	)
@@ -502,9 +504,16 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.GET("/:id/schedule", s.getAgentSchedules)
 	agents.GET("/:id/slack-permissions", s.checkSlackPermissions)
 
-	// Internal endpoints — no JWT, used by Launch service and executor actions.
-	// These are service-to-service calls on the internal network.
-	internal := v1.Group("internal")
+	// Internal endpoints — no JWT, service-to-service calls.
+	// When mTLS is enabled, these register on a separate Gin engine
+	// served on the internal port with client certificate verification.
+	internalRouter := v1 // default: same engine (backward compat)
+	if config.TLS != nil && config.TLS.Enabled {
+		gin.SetMode(gin.ReleaseMode)
+		s.internalEngine = gin.New()
+		internalRouter = s.internalEngine.Group("api/v1")
+	}
+	internal := internalRouter.Group("internal")
 	internal.POST("/agent/:id/message", s.createAgentMessageInternal)
 	internal.GET("/agent/:id/state/:key", s.getAgentStateInternal)
 	internal.POST("/agent/:id/state/:key", s.setAgentStateInternal)
@@ -613,8 +622,37 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 }
 
 func (s *Service) Listen() error {
+	if s.internalEngine != nil {
+		go s.listenInternal()
+	}
 	return s.engine.Run(fmt.Sprintf("%v:%v", s.config.HttpListenConfig.Address, s.config.HttpListenConfig.Port))
 }
+
+// listenInternal starts the mTLS-protected internal listener on a
+// separate port. Only clients presenting a valid certificate signed
+// by the platform CA are accepted.
+func (s *Service) listenInternal() {
+	tlsCfg, err := mtls.NewServerTLSConfig(s.config.TLS)
+	if err != nil {
+		log.WithError(err).Fatal("unable to configure mTLS server")
+	}
+
+	addr := fmt.Sprintf("%v:%d", s.config.HttpListenConfig.Address, s.config.TLS.InternalPort)
+	server := &http.Server{
+		Addr:      addr,
+		Handler:   s.internalEngine,
+		TLSConfig: tlsCfg,
+	}
+
+	log.WithFields(log.Fields{
+		"address": addr,
+	}).Info("starting mTLS internal listener")
+
+	if err := server.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+		log.WithError(err).Fatal("mTLS internal listener failed")
+	}
+}
+
 
 func (s *Service) getTokenFromContext(c *gin.Context) *string {
 	tkn, exists := c.Get("jwt")
