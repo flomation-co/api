@@ -1006,37 +1006,24 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtGetExecutions, err = s.conn.PrepareNamed(`
 		SELECT
-		    e.id,
-		    e.flo_id,
-		    f.name,
-		    e.owner_id,
-		    e.organisation_id,
-		    e.created_at,
-		    e.updated_at,
-		    e.completed_at,
-		    e.triggered_by,
-		    e.execution_status,
-		    e.completion_status,
-			e.runner_id,
-			r.name AS runner_name,
+		    e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+		    e.created_at, e.updated_at, e.completed_at, e.triggered_by,
+		    e.execution_status, e.completion_status,
+			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration,
 			e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
+			tt.name AS trigger_type,
 			e.agent_id
-		FROM
-		    execution e
-		INNER JOIN
-			flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
-		LEFT JOIN
-			runner r ON r.id = e.runner_id
-		WHERE
-		    e.owner_id = :user_id
-		    AND e.organisation_id IS NULL
-		ORDER BY
-		    e.created_at DESC
-		OFFSET :offset
-		LIMIT :limit
+		FROM execution e
+		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+		LEFT JOIN runner r ON r.id = e.runner_id
+		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
+		LEFT JOIN trigger t ON t.id = ti.trigger_id
+		LEFT JOIN trigger_type tt ON tt.id = t.type
+		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
+		ORDER BY e.created_at DESC
+		OFFSET :offset LIMIT :limit
 	`)
 	if err != nil {
 		return nil, err
@@ -1049,12 +1036,15 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.execution_status, e.completion_status,
 			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
+			tt.name AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
+		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
+		LEFT JOIN trigger t ON t.id = ti.trigger_id
+		LEFT JOIN trigger_type tt ON tt.id = t.type
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -1090,12 +1080,15 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.execution_status, e.completion_status,
 			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
+			tt.name AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
+		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
+		LEFT JOIN trigger t ON t.id = ti.trigger_id
+		LEFT JOIN trigger_type tt ON tt.id = t.type
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1111,12 +1104,15 @@ func NewService(config *config.Config) (*Service, error) {
 		    e.execution_status, e.completion_status,
 			e.runner_id, r.name AS runner_name,
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-    		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-			(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
+			tt.name AS trigger_type,
 			e.agent_id
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
+		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
+		LEFT JOIN trigger t ON t.id = ti.trigger_id
+		LEFT JOIN trigger_type tt ON tt.id = t.type
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -3630,11 +3626,14 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 		e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		e.execution_status, e.completion_status,
 		e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-		(SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
-		(SELECT tt.name FROM trigger_invocation ti JOIN trigger t ON t.id = ti.trigger_id JOIN trigger_type tt ON tt.id = t.type WHERE ti.id = e.triggered_by LIMIT 1) AS trigger_type,
+		ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
+		tt.name AS trigger_type,
 		e.agent_id
 	FROM execution e
 	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
+	LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
+	LEFT JOIN trigger t ON t.id = ti.trigger_id
+	LEFT JOIN trigger_type tt ON tt.id = t.type
 	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
 
 	baseCount := `SELECT COUNT(1) FROM execution e
