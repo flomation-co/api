@@ -75,7 +75,7 @@ type Config struct {
 func LoadConfig(path string) (*Config, error) {
 	var c Config
 	if err := goconfig.Load(&c, goconfig.String(path)); err != nil {
-		return &c, nil
+		return nil, err
 	}
 
 	return &c, nil
