@@ -330,6 +330,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	v1 := a.Group("v1")
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
+	v1.GET("quota", s.jwtMiddleware, s.getQuota)
 
 	// Organisations Group
 	orgs := v1.Group("organisation")
@@ -585,6 +586,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/agent/retention-policies", s.getAgentRetentionPoliciesInternal)
 	internal.POST("/memory/bulk-delete", s.bulkDeleteExpiredMemoriesInternal)
 	internal.POST("/audit-log", s.createAuditLogEntryInternal)
+
+	// Billing: entitlement sync (pushed from billing service).
+	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the

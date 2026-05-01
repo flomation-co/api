@@ -141,6 +141,14 @@ type Service struct {
 	stmtGetUsageThisMonthForUserID *sqlx.NamedStmt
 	stmtGetUsageThisMonthForOrgID  *sqlx.NamedStmt
 
+	// Subscription entitlement cache (pushed from billing service).
+	stmtUpsertEntitlement    *sqlx.NamedStmt
+	stmtGetEntitlement       *sqlx.NamedStmt
+	stmtGetAllEntitlements   *sqlx.NamedStmt
+	stmtDeleteEntitlements   *sqlx.NamedStmt
+	stmtGetAllowanceForOwner *sqlx.NamedStmt
+	stmtGetAllowanceForOrg   *sqlx.NamedStmt
+
 	stmtGetTriggers      *sqlx.NamedStmt
 	stmtGetTriggerByID   *sqlx.NamedStmt
 	stmtCreateTrigger    *sqlx.NamedStmt
@@ -2032,6 +2040,105 @@ func NewService(config *config.Config) (*Service, error) {
 		AND
 			e.organisation_id = :organisation_id;
 	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// ── Subscription entitlements ─────────────────────────────────────
+
+	s.stmtUpsertEntitlement, err = db.PrepareNamed(`
+		INSERT INTO subscription_entitlement (owner_id, organisation_id, plan_slug, entitlement_key, value_int, value_bool, value_json, subscription_status, period_end, updated_at)
+		VALUES (:owner_id, :organisation_id, :plan_slug, :entitlement_key, :value_int, :value_bool, :value_json, :subscription_status, :period_end, NOW())
+		ON CONFLICT (owner_id, organisation_id, entitlement_key)
+		DO UPDATE SET
+			plan_slug = EXCLUDED.plan_slug,
+			value_int = EXCLUDED.value_int,
+			value_bool = EXCLUDED.value_bool,
+			value_json = EXCLUDED.value_json,
+			subscription_status = EXCLUDED.subscription_status,
+			period_end = EXCLUDED.period_end,
+			updated_at = NOW()`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetEntitlement, err = db.PrepareNamed(`
+		SELECT * FROM subscription_entitlement
+		WHERE owner_id = :owner_id
+		  AND entitlement_key = :entitlement_key
+		  AND organisation_id IS NOT DISTINCT FROM CAST(:organisation_id AS VARCHAR)`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAllEntitlements, err = db.PrepareNamed(`
+		SELECT * FROM subscription_entitlement
+		WHERE owner_id = :owner_id
+		  AND organisation_id IS NOT DISTINCT FROM CAST(:organisation_id AS VARCHAR)
+		ORDER BY entitlement_key`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteEntitlements, err = db.PrepareNamed(`
+		DELETE FROM subscription_entitlement
+		WHERE owner_id = :owner_id
+		  AND organisation_id IS NOT DISTINCT FROM CAST(:organisation_id AS VARCHAR)`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Allowance queries: read execution_minutes entitlement, fall back to
+	// the hardcoded 50 minutes if no entitlement exists.
+	s.stmtGetAllowanceForOwner, err = db.PrepareNamed(`
+		SELECT
+			COALESCE(SUM(CASE
+				WHEN e.result->'duration' IS NULL THEN 0
+				ELSE CAST(e.result->>'duration' AS INT)
+			END), 0) AS usage,
+			COALESCE(
+				(SELECT se.value_int * 60 * 1000 FROM subscription_entitlement se
+				 WHERE se.owner_id = :owner_id
+				   AND se.organisation_id IS NULL
+				   AND se.entitlement_key = 'execution_minutes'
+				   AND se.subscription_status IN ('active', 'trialling', 'past_due')),
+				50 * 60 * 1000
+			) AS allowance
+		FROM
+			execution e
+		INNER JOIN flo f ON f.id = e.flo_id
+		WHERE
+			e.created_at > cast(date_trunc('month', current_date) as date)
+		AND
+			f.author_id = :owner_id
+		AND
+			e.organisation_id IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAllowanceForOrg, err = db.PrepareNamed(`
+		SELECT
+			COALESCE(SUM(CASE
+				WHEN e.result->'duration' IS NULL THEN 0
+				ELSE CAST(e.result->>'duration' AS INT)
+			END), 0) AS usage,
+			COALESCE(
+				(SELECT se.value_int * 60 * 1000 FROM subscription_entitlement se
+				 WHERE se.owner_id = :owner_id
+				   AND se.organisation_id = :organisation_id
+				   AND se.entitlement_key = 'execution_minutes'
+				   AND se.subscription_status IN ('active', 'trialling', 'past_due')),
+				50 * 60 * 1000
+			) AS allowance
+		FROM
+			execution e
+		WHERE
+			e.created_at > cast(date_trunc('month', current_date) as date)
+		AND
+			e.owner_id = :owner_id
+		AND
+			e.organisation_id = :organisation_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -4657,7 +4764,7 @@ func (s *Service) GetUsage(ownerID string, organisationID *string) (*api.UserDas
 	var err error
 
 	if organisationID != nil && *organisationID != "" {
-		err = s.stmtGetUsageThisMonthForOrgID.Get(&result, struct {
+		err = s.stmtGetAllowanceForOrg.Get(&result, struct {
 			OwnerID        string `db:"owner_id"`
 			OrganisationID string `db:"organisation_id"`
 		}{
@@ -4665,7 +4772,7 @@ func (s *Service) GetUsage(ownerID string, organisationID *string) (*api.UserDas
 			OrganisationID: *organisationID,
 		})
 	} else {
-		err = s.stmtGetUsageThisMonthForUserID.Get(&result, struct {
+		err = s.stmtGetAllowanceForOwner.Get(&result, struct {
 			OwnerID string `db:"owner_id"`
 		}{
 			OwnerID: ownerID,
@@ -4964,4 +5071,46 @@ func derefOrEmpty(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// ── Subscription entitlements ─────────────────────────────────────────
+
+// UpsertEntitlement creates or updates a single entitlement record.
+func (s *Service) UpsertEntitlement(ent *api.SubscriptionEntitlement) error {
+	_, err := s.stmtUpsertEntitlement.Exec(ent)
+	return err
+}
+
+// GetEntitlement returns a single entitlement by key for an owner.
+func (s *Service) GetEntitlement(ownerID string, orgID *string, key string) (*api.SubscriptionEntitlement, error) {
+	var ent api.SubscriptionEntitlement
+	if err := s.stmtGetEntitlement.Get(&ent, map[string]interface{}{
+		"owner_id":        ownerID,
+		"organisation_id": orgID,
+		"entitlement_key": key,
+	}); err != nil {
+		return nil, err
+	}
+	return &ent, nil
+}
+
+// GetAllEntitlements returns all entitlements for an owner.
+func (s *Service) GetAllEntitlements(ownerID string, orgID *string) ([]*api.SubscriptionEntitlement, error) {
+	var ents []*api.SubscriptionEntitlement
+	if err := s.stmtGetAllEntitlements.Select(&ents, map[string]interface{}{
+		"owner_id":        ownerID,
+		"organisation_id": orgID,
+	}); err != nil {
+		return nil, err
+	}
+	return ents, nil
+}
+
+// DeleteEntitlements removes all entitlements for an owner.
+func (s *Service) DeleteEntitlements(ownerID string, orgID *string) error {
+	_, err := s.stmtDeleteEntitlements.Exec(map[string]interface{}{
+		"owner_id":        ownerID,
+		"organisation_id": orgID,
+	})
+	return err
 }

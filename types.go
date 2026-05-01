@@ -342,6 +342,21 @@ type UserDashboard struct {
 	Allowance *int64 `json:"allowance" db:"allowance"`
 }
 
+// SubscriptionEntitlement is a cached entitlement pushed from the billing service.
+type SubscriptionEntitlement struct {
+	ID                 string           `json:"id" db:"id"`
+	OwnerID            string           `json:"owner_id" db:"owner_id"`
+	OrganisationID     *string          `json:"organisation_id,omitempty" db:"organisation_id"`
+	PlanSlug           string           `json:"plan_slug" db:"plan_slug"`
+	EntitlementKey     string           `json:"entitlement_key" db:"entitlement_key"`
+	ValueInt           *int64           `json:"value_int,omitempty" db:"value_int"`
+	ValueBool          *bool            `json:"value_bool,omitempty" db:"value_bool"`
+	ValueJSON          *json.RawMessage `json:"value_json,omitempty" db:"value_json"`
+	SubscriptionStatus string           `json:"subscription_status" db:"subscription_status"`
+	PeriodEnd          *time.Time       `json:"period_end,omitempty" db:"period_end"`
+	UpdatedAt          time.Time        `json:"updated_at" db:"updated_at"`
+}
+
 type Group struct {
 	ID             string    `json:"id" db:"id"`
 	OrganisationID string    `json:"organisation_id" db:"organisation_id"`
