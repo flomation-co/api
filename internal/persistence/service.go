@@ -2090,6 +2090,8 @@ func NewService(config *config.Config) (*Service, error) {
 
 	// Allowance queries: read execution_minutes entitlement, fall back to
 	// the hardcoded 50 minutes if no entitlement exists.
+	// Usage queries: calculate from the billing period start (period_end - 1 month),
+	// falling back to the calendar month if no subscription entitlement exists.
 	s.stmtGetAllowanceForOwner, err = db.PrepareNamed(`
 		SELECT
 			COALESCE(SUM(CASE
@@ -2108,7 +2110,15 @@ func NewService(config *config.Config) (*Service, error) {
 			execution e
 		INNER JOIN flo f ON f.id = e.flo_id
 		WHERE
-			e.created_at > cast(date_trunc('month', current_date) as date)
+			e.created_at > COALESCE(
+				(SELECT se.period_end - INTERVAL '1 month' FROM subscription_entitlement se
+				 WHERE se.owner_id = :owner_id
+				   AND se.organisation_id IS NULL
+				   AND se.entitlement_key = 'execution_minutes'
+				   AND se.subscription_status IN ('active', 'trialling', 'past_due')
+				 LIMIT 1),
+				cast(date_trunc('month', current_date) as date)
+			)
 		AND
 			f.author_id = :owner_id
 		AND
@@ -2134,7 +2144,15 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM
 			execution e
 		WHERE
-			e.created_at > cast(date_trunc('month', current_date) as date)
+			e.created_at > COALESCE(
+				(SELECT se.period_end - INTERVAL '1 month' FROM subscription_entitlement se
+				 WHERE se.owner_id = :owner_id
+				   AND se.organisation_id = :organisation_id
+				   AND se.entitlement_key = 'execution_minutes'
+				   AND se.subscription_status IN ('active', 'trialling', 'past_due')
+				 LIMIT 1),
+				cast(date_trunc('month', current_date) as date)
+			)
 		AND
 			e.owner_id = :owner_id
 		AND
