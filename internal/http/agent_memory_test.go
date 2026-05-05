@@ -500,10 +500,18 @@ func Test_ResolveAgentIdentityInternal_PersistenceError_Returns500(t *testing.T)
 }
 
 // Phase 5 stubs
-func (m *agentMemoryMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
-func (m *agentMemoryMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
-func (m *agentMemoryMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
-func (m *agentMemoryMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
+func (m *agentMemoryMock) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) {
+	return nil, nil, nil
+}
+func (m *agentMemoryMock) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error {
+	return nil
+}
+func (m *agentMemoryMock) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) {
+	return nil, nil
+}
 
 // Phase 4 stubs
 func (m *agentMemoryMock) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
@@ -517,27 +525,52 @@ func (m *agentMemoryMock) UpdateMemoryEmbedding(id string, embedding pgvector.Ve
 }
 
 // Phase 6 stubs
-func (m *agentMemoryMock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
-func (m *agentMemoryMock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *agentMemoryMock) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) {
+	return nil, nil
+}
 func (m *agentMemoryMock) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
-func (m *agentMemoryMock) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
-func (m *agentMemoryMock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
-func (m *agentMemoryMock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *agentMemoryMock) DeleteAllMemoriesForUser(agentUserID string) (int64, error)  { return 0, nil }
+func (m *agentMemoryMock) GetExpiredMemories(limit int) ([]*api.AgentMemory, error)    { return nil, nil }
+func (m *agentMemoryMock) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) {
+	return 0, nil
+}
 func (m *agentMemoryMock) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
-func (m *agentMemoryMock) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *agentMemoryMock) GetAgentsWithRetentionPolicy() ([]struct {
+	ID                  string `db:"id"`
+	MemoryRetentionDays int    `db:"memory_retention_days"`
+}, error) {
+	return nil, nil
+}
 func (m *agentMemoryMock) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
-func (m *agentMemoryMock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
-func (m *agentMemoryMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
-func (m *agentMemoryMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *agentMemoryMock) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) {
+	return nil, nil
+}
 func (m *agentMemoryMock) UnlinkAgentIdentity(identityID string) error { return nil }
-func (m *agentMemoryMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+func (m *agentMemoryMock) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) {
+	return nil, nil
+}
 
 // Phase 7 stubs
-func (m *agentMemoryMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
-func (m *agentMemoryMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
-func (m *agentMemoryMock) SupersedeMemory(oldID, newID string) error { return nil }
-func (m *agentMemoryMock) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *agentMemoryMock) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) SupersedeMemory(oldID, newID string) error           { return nil }
+func (m *agentMemoryMock) MergeMemory(duplicateID, canonicalID string) error   { return nil }
 func (m *agentMemoryMock) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
-func (m *agentMemoryMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
-func (m *agentMemoryMock) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *agentMemoryMock) UnpinOldestMemories(agentUserID string, count int) ([]string, error) {
+	return nil, nil
+}
+func (m *agentMemoryMock) GetMaxPinnedMemories(agentID string) (int, error)         { return 50, nil }
 func (m *agentMemoryMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

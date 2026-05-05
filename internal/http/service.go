@@ -10,9 +10,9 @@ import (
 	"flomation.app/automate/api/internal/actions"
 	"flomation.app/automate/api/internal/agent"
 	"flomation.app/automate/api/internal/connector/identity"
+	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"flomation.app/automate/api/internal/embedding"
 	"flomation.app/automate/api/internal/mtls"
-	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"github.com/flomation-co/sentinel-client"
 	"github.com/google/uuid"
 
@@ -639,10 +639,10 @@ func (s *Service) listenInternal() {
 
 	addr := fmt.Sprintf("%v:%d", s.config.HttpListenConfig.Address, s.config.TLS.InternalPort)
 	server := &http.Server{
-		Addr:               addr,
-		Handler:            s.internalEngine,
-		TLSConfig:          tlsCfg,
-		ReadHeaderTimeout:  10 * time.Second,
+		Addr:              addr,
+		Handler:           s.internalEngine,
+		TLSConfig:         tlsCfg,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	log.WithFields(log.Fields{
@@ -653,7 +653,6 @@ func (s *Service) listenInternal() {
 		log.WithError(err).Fatal("mTLS internal listener failed")
 	}
 }
-
 
 func (s *Service) getTokenFromContext(c *gin.Context) *string {
 	tkn, exists := c.Get("jwt")

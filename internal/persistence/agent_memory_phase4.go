@@ -42,11 +42,11 @@ func (s *Service) SearchMemoriesByEmbedding(
 
 	var results []*api.AgentMemory
 	if err := s.stmtSearchMemoriesByEmbedding.Select(&results, struct {
-		AgentID       string           `db:"agent_id"`
-		AgentUserID   string           `db:"agent_user_id"`
-		QueryEmbed    pgvector.Vector  `db:"query_embedding"`
-		TopK          int              `db:"top_k"`
-		ExcludePinned bool             `db:"exclude_pinned"`
+		AgentID       string          `db:"agent_id"`
+		AgentUserID   string          `db:"agent_user_id"`
+		QueryEmbed    pgvector.Vector `db:"query_embedding"`
+		TopK          int             `db:"top_k"`
+		ExcludePinned bool            `db:"exclude_pinned"`
 	}{
 		AgentID:       agentID,
 		AgentUserID:   agentUserID,

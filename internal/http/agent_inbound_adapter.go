@@ -22,8 +22,8 @@ import (
 // orchestration methods that aren't pure DB operations.
 type inboundPersistenceAdapter struct {
 	*apipersistence.Service
-	notifier    agent.ExecutionNotifier
-	launchURL   string
+	notifier     agent.ExecutionNotifier
+	launchURL    string
 	launchClient *http.Client
 }
 

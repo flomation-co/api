@@ -117,10 +117,10 @@ func (s *Service) requestVerificationInternal(c *gin.Context) {
 
 	// Create a pending action under the TARGET user for the other-side verification.
 	targetPayload, _ := json.Marshal(map[string]interface{}{
-		"source_user_id":   body.SourceUserID,
-		"target_user_id":   targetUser.ID,
-		"source_channel":   body.SourceChannel,
-		"original_pa_id":   body.PendingActionID,
+		"source_user_id": body.SourceUserID,
+		"target_user_id": targetUser.ID,
+		"source_channel": body.SourceChannel,
+		"original_pa_id": body.PendingActionID,
 	})
 
 	expires := time.Now().Add(24 * time.Hour)
@@ -189,9 +189,9 @@ func (s *Service) dispatchVerificationToLaunch(agentID, sourceChannel, targetCha
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		log.WithFields(log.Fields{
-			"agent_id":   agentID,
-			"status":     resp.StatusCode,
-			"target":     targetChannel,
+			"agent_id": agentID,
+			"status":   resp.StatusCode,
+			"target":   targetChannel,
 		}).Error("identity verification: Launch dispatch returned non-2xx")
 	}
 }
