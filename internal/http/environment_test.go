@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
-	pgvector "github.com/pgvector/pgvector-go"
 	"flomation.app/automate/api/internal/persistence"
 	. "github.com/onsi/gomega"
+	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/gin-gonic/gin"
 )
@@ -214,10 +214,10 @@ func (m *mockPersistence) UpdateTrigger(api.Trigger) error                      
 func (m *mockPersistence) GetTriggersByFloID(string) ([]*api.Trigger, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) LinkFloToTrigger(string, string) error { panic("not implemented") }
-func (m *mockPersistence) UpdateUser(*api.User) error            { panic("not implemented") }
-func (m *mockPersistence) AcceptEula(string, int) error          { return nil }
-func (m *mockPersistence) GetLatestEula() (*api.Eula, error)     { return nil, nil }
+func (m *mockPersistence) LinkFloToTrigger(string, string) error                  { panic("not implemented") }
+func (m *mockPersistence) UpdateUser(*api.User) error                             { panic("not implemented") }
+func (m *mockPersistence) AcceptEula(string, int) error                           { return nil }
+func (m *mockPersistence) GetLatestEula() (*api.Eula, error)                      { return nil, nil }
 func (m *mockPersistence) UpdateOnboardingProgress(string, int, *time.Time) error { return nil }
 func (m *mockPersistence) SetChecklistFlag(string, int) error                     { return nil }
 func (m *mockPersistence) ClearChecklistFlag(string, int) error                   { return nil }
@@ -356,8 +356,8 @@ func (m *mockPersistence) GetTriggerGoogleAccounts(string, ...string) ([]*api.Tr
 func (m *mockPersistence) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
 
 // Agent schedule stubs.
-func (m *mockPersistence) CreateAgentSchedule(api.AgentSchedule) (*string, error)  { return nil, nil }
-func (m *mockPersistence) GetAgentSchedules(string) ([]*api.AgentSchedule, error)  { return nil, nil }
+func (m *mockPersistence) CreateAgentSchedule(api.AgentSchedule) (*string, error) { return nil, nil }
+func (m *mockPersistence) GetAgentSchedules(string) ([]*api.AgentSchedule, error) { return nil, nil }
 func (m *mockPersistence) GetAgentSchedulesForUser(string, string) ([]*api.AgentSchedule, error) {
 	return nil, nil
 }
@@ -548,10 +548,18 @@ func Test_ExecutionEnvironmentSecret_MismatchedEnvironment_Returns403(t *testing
 }
 
 // Phase 5 stubs
-func (m *mockPersistence) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) { return nil, nil }
-func (m *mockPersistence) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) { return nil, nil, nil }
-func (m *mockPersistence) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error { return nil }
-func (m *mockPersistence) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) { return nil, nil }
+func (m *mockPersistence) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentIdentity, error) {
+	return nil, nil
+}
+func (m *mockPersistence) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) {
+	return nil, nil, nil
+}
+func (m *mockPersistence) MergeAgentUsers(agentID, sourceUserID, targetUserID string) error {
+	return nil
+}
+func (m *mockPersistence) GetPendingActionByUserAndType(agentUserID, actionType string) (*api.AgentPendingAction, error) {
+	return nil, nil
+}
 
 // Phase 4 stubs
 func (m *mockPersistence) SearchMemoriesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error) {
@@ -565,27 +573,52 @@ func (m *mockPersistence) UpdateMemoryEmbedding(id string, embedding pgvector.Ve
 }
 
 // Phase 6 stubs
-func (m *mockPersistence) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) { return nil, nil }
-func (m *mockPersistence) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) { return nil, nil }
+func (m *mockPersistence) GetAgentUserByEmail(agentID, email string) (*api.AgentUser, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAgentUsersByAgentID(agentID string, limit, offset int) ([]*api.AgentUser, error) {
+	return nil, nil
+}
 func (m *mockPersistence) UpdateAgentMemory(id, title, body string, pinned bool) error { return nil }
-func (m *mockPersistence) DeleteAllMemoriesForUser(agentUserID string) (int64, error) { return 0, nil }
-func (m *mockPersistence) GetExpiredMemories(limit int) ([]*api.AgentMemory, error) { return nil, nil }
-func (m *mockPersistence) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) { return 0, nil }
+func (m *mockPersistence) DeleteAllMemoriesForUser(agentUserID string) (int64, error)  { return 0, nil }
+func (m *mockPersistence) GetExpiredMemories(limit int) ([]*api.AgentMemory, error)    { return nil, nil }
+func (m *mockPersistence) DeleteMemoriesOlderThan(agentID string, olderThan time.Time, excludePinned bool) (int64, error) {
+	return 0, nil
+}
 func (m *mockPersistence) DeleteExpiredMemories(limit int) (int64, error) { return 0, nil }
-func (m *mockPersistence) GetAgentsWithRetentionPolicy() ([]struct{ ID string `db:"id"`; MemoryRetentionDays int `db:"memory_retention_days"` }, error) { return nil, nil }
+func (m *mockPersistence) GetAgentsWithRetentionPolicy() ([]struct {
+	ID                  string `db:"id"`
+	MemoryRetentionDays int    `db:"memory_retention_days"`
+}, error) {
+	return nil, nil
+}
 func (m *mockPersistence) UpdateAgentRetentionDays(agentID string, days *int) error { return nil }
-func (m *mockPersistence) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) { return nil, nil }
-func (m *mockPersistence) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
-func (m *mockPersistence) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) { return nil, nil }
+func (m *mockPersistence) CreateAuditLogEntry(entry api.AgentAuditLog) (*string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAuditLogForAgent(agentID string, limit, offset int) ([]*api.AgentAuditLog, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAuditLogForUser(agentUserID string, limit, offset int) ([]*api.AgentAuditLog, error) {
+	return nil, nil
+}
 func (m *mockPersistence) UnlinkAgentIdentity(identityID string) error { return nil }
-func (m *mockPersistence) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) { return nil, nil }
+func (m *mockPersistence) GetAllDataForUser(agentUserID string) (*api.AgentDataExport, error) {
+	return nil, nil
+}
 
 // Phase 7 stubs
-func (m *mockPersistence) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) { return nil, nil }
-func (m *mockPersistence) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) { return nil, nil }
-func (m *mockPersistence) SupersedeMemory(oldID, newID string) error { return nil }
-func (m *mockPersistence) MergeMemory(duplicateID, canonicalID string) error { return nil }
+func (m *mockPersistence) FindContradictionCandidates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *mockPersistence) FindNearDuplicates(agentUserID, memoryType string, embedding pgvector.Vector, threshold float64, excludeID string, limit int) ([]*api.AgentMemory, error) {
+	return nil, nil
+}
+func (m *mockPersistence) SupersedeMemory(oldID, newID string) error           { return nil }
+func (m *mockPersistence) MergeMemory(duplicateID, canonicalID string) error   { return nil }
 func (m *mockPersistence) CountPinnedMemories(agentUserID string) (int, error) { return 0, nil }
-func (m *mockPersistence) UnpinOldestMemories(agentUserID string, count int) ([]string, error) { return nil, nil }
-func (m *mockPersistence) GetMaxPinnedMemories(agentID string) (int, error) { return 50, nil }
+func (m *mockPersistence) UnpinOldestMemories(agentUserID string, count int) ([]string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetMaxPinnedMemories(agentID string) (int, error)         { return 50, nil }
 func (m *mockPersistence) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }

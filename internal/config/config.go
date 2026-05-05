@@ -2,6 +2,8 @@ package config
 
 import (
 	goconfig "github.com/flomation-co/go-config"
+
+	"flomation.app/automate/api/internal/mtls"
 )
 
 type HttpListenConfig struct {
@@ -27,9 +29,19 @@ type SecurityConfig struct {
 }
 
 type LaunchConfig struct {
-	URL       string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
-	PublicURL string `json:"public_url" env:"LAUNCH_PUBLIC_URL" arg:"launch-public-url"`
-	APIURL    string `json:"api_url" env:"API_PUBLIC_URL" arg:"api-public-url"`
+	URL         string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
+	InternalURL string `json:"internal_url,omitempty" env:"LAUNCH_INTERNAL_URL" arg:"launch-internal-url"`
+	PublicURL   string `json:"public_url" env:"LAUNCH_PUBLIC_URL" arg:"launch-public-url"`
+	APIURL      string `json:"api_url" env:"API_PUBLIC_URL" arg:"api-public-url"`
+}
+
+// InternalLaunchURL returns the internal mTLS URL for Launch if configured,
+// otherwise falls back to the public Launch URL.
+func (c *Config) InternalLaunchURL() string {
+	if c.Launch.InternalURL != "" {
+		return c.Launch.InternalURL
+	}
+	return c.Launch.URL
 }
 
 type SMTPConfig struct {
@@ -41,12 +53,12 @@ type SMTPConfig struct {
 }
 
 type EmbeddingConfig struct {
-	Enabled        bool   `json:"enabled" env:"EMBEDDING_ENABLED" arg:"embedding-enabled"`
-	Region         string `json:"region" env:"EMBEDDING_REGION" arg:"embedding-region"`
-	ModelID        string `json:"model_id" env:"EMBEDDING_MODEL_ID" arg:"embedding-model-id"`
-	Dimensions     int    `json:"dimensions" env:"EMBEDDING_DIMENSIONS" arg:"embedding-dimensions"`
-	TopK           int    `json:"top_k" env:"EMBEDDING_TOP_K" arg:"embedding-top-k"`
-	AccessKeyID    string `json:"access_key_id" env:"EMBEDDING_ACCESS_KEY_ID" arg:"embedding-access-key-id"`
+	Enabled         bool   `json:"enabled" env:"EMBEDDING_ENABLED" arg:"embedding-enabled"`
+	Region          string `json:"region" env:"EMBEDDING_REGION" arg:"embedding-region"`
+	ModelID         string `json:"model_id" env:"EMBEDDING_MODEL_ID" arg:"embedding-model-id"`
+	Dimensions      int    `json:"dimensions" env:"EMBEDDING_DIMENSIONS" arg:"embedding-dimensions"`
+	TopK            int    `json:"top_k" env:"EMBEDDING_TOP_K" arg:"embedding-top-k"`
+	AccessKeyID     string `json:"access_key_id" env:"EMBEDDING_ACCESS_KEY_ID" arg:"embedding-access-key-id"`
 	SecretAccessKey string `json:"secret_access_key" env:"EMBEDDING_SECRET_ACCESS_KEY" arg:"embedding-secret-access-key"`
 }
 
@@ -57,12 +69,13 @@ type Config struct {
 	Launch           LaunchConfig     `json:"launch"`
 	SMTP             SMTPConfig       `json:"smtp"`
 	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
+	TLS              *mtls.TLSConfig  `json:"tls,omitempty"`
 }
 
 func LoadConfig(path string) (*Config, error) {
 	var c Config
 	if err := goconfig.Load(&c, goconfig.String(path)); err != nil {
-		return &c, nil
+		return nil, err
 	}
 
 	return &c, nil

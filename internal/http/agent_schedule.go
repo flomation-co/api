@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	api "flomation.app/automate/api"
@@ -218,7 +220,8 @@ func (s *Service) deleteAgentScheduleInternal(c *gin.Context) {
 
 func (s *Service) deleteAgentScheduleByNameInternal(c *gin.Context) {
 	agentID := c.Param("id")
-	name := c.Param("name")
+	rawName := strings.TrimPrefix(c.Param("name"), "/")
+	name, _ := url.PathUnescape(rawName)
 
 	if err := s.persistence.DeleteAgentScheduleByName(agentID, name); err != nil {
 		log.WithFields(log.Fields{
