@@ -237,7 +237,7 @@ func generateCA(opts genOpts) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 }
 
 func loadCA(certFile, keyFile string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
-	certPEM, err := os.ReadFile(certFile)
+	certPEM, err := os.ReadFile(certFile) // #nosec G304 — CLI tool, paths from trusted args
 	if err != nil {
 		return nil, nil, fmt.Errorf("read CA cert: %w", err)
 	}
@@ -252,7 +252,7 @@ func loadCA(certFile, keyFile string) (*x509.Certificate, *ecdsa.PrivateKey, err
 		return nil, nil, fmt.Errorf("parse CA cert: %w", err)
 	}
 
-	keyPEM, err := os.ReadFile(keyFile)
+	keyPEM, err := os.ReadFile(keyFile) // #nosec G304 — CLI tool, paths from trusted args
 	if err != nil {
 		return nil, nil, fmt.Errorf("read CA key: %w", err)
 	}
