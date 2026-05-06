@@ -239,4 +239,10 @@ type Persistence interface {
 	FindAgentScheduleByName(agentID, name string) (*api.AgentSchedule, error)
 	GetEnabledAgentSchedules() ([]*api.AgentSchedule, error)
 	UpdateAgentScheduleLastFired(id string, firedAt time.Time) error
+
+	// Subscription entitlements (pushed from billing service).
+	UpsertEntitlement(ent *api.SubscriptionEntitlement) error
+	GetEntitlement(ownerID string, orgID *string, key string) (*api.SubscriptionEntitlement, error)
+	GetAllEntitlements(ownerID string, orgID *string) ([]*api.SubscriptionEntitlement, error)
+	DeleteEntitlements(ownerID string, orgID *string) error
 }

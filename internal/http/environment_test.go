@@ -622,3 +622,9 @@ func (m *mockPersistence) UnpinOldestMemories(agentUserID string, count int) ([]
 }
 func (m *mockPersistence) GetMaxPinnedMemories(agentID string) (int, error)         { return 50, nil }
 func (m *mockPersistence) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }
+
+// Subscription entitlements (billing service integration).
+func (m *mockPersistence) UpsertEntitlement(ent *api.SubscriptionEntitlement) error { return nil }
+func (m *mockPersistence) GetEntitlement(ownerID string, orgID *string, key string) (*api.SubscriptionEntitlement, error) { return nil, nil }
+func (m *mockPersistence) GetAllEntitlements(ownerID string, orgID *string) ([]*api.SubscriptionEntitlement, error) { return nil, nil }
+func (m *mockPersistence) DeleteEntitlements(ownerID string, orgID *string) error { return nil }
