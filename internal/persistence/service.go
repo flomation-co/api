@@ -1229,23 +1229,25 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtInsertFloExecution, err = s.conn.PrepareNamed(`
 		INSERT INTO execution (
-			flo_id, 
-			name, 
+			flo_id,
+			name,
 		    owner_id,
 			organisation_id,
 		   	triggered_by,
 			execution_status,
 		   	completion_status,
-			data
+			data,
+			agent_id
 		) VALUES (
-			:flo_id, 
-			:name, 
+			:flo_id,
+			:name,
 		    :owner_id,
 			:organisation_id,
 		   	:triggered_by,
 			:execution_status,
 		   	:completion_status,
-			:data
+			:data,
+			:agent_id
 		) RETURNING id;
 	`)
 	if err != nil {
@@ -3889,6 +3891,15 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 			Data:             invocation.Data,
 			ExecutionStatus:  "created",
 			CompletionStatus: "pending",
+		}
+
+		// Extract agent_id from trigger data so it's set atomically
+		// at INSERT time — prevents orphaned executions missing the
+		// agent tag when they fail before the post-creation UPDATE.
+		if dataMap, ok := data.(map[string]interface{}); ok {
+			if agentID, ok := dataMap["agent_id"].(string); ok && agentID != "" {
+				execution.AgentID = &agentID
+			}
 		}
 
 		if err = tx.NamedStmt(s.stmtInsertFloExecution).Get(&id, execution); err != nil {
