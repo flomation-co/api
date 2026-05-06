@@ -48,17 +48,17 @@ type OrganisationInvite struct {
 }
 
 type User struct {
-	ID             string         `json:"id" db:"id"`
-	Name           string         `json:"name" db:"name"`
-	EmailAddress   *string        `json:"email_address" db:"email_address"`
-	MarketingOptIn bool           `json:"marketing_opt_in" db:"marketing_opt_in"`
-	EulaVersion    int            `json:"eula_version" db:"eula_version"`
+	ID                    string         `json:"id" db:"id"`
+	Name                  string         `json:"name" db:"name"`
+	EmailAddress          *string        `json:"email_address" db:"email_address"`
+	MarketingOptIn        bool           `json:"marketing_opt_in" db:"marketing_opt_in"`
+	EulaVersion           int            `json:"eula_version" db:"eula_version"`
 	EulaAcceptedAt        *time.Time     `json:"eula_accepted_at,omitempty" db:"eula_accepted_at"`
 	OnboardingStep        int            `json:"onboarding_step" db:"onboarding_step"`
 	OnboardingCompletedAt *time.Time     `json:"onboarding_completed_at,omitempty" db:"onboarding_completed_at"`
 	ChecklistFlags        int            `json:"checklist_flags" db:"checklist_flags"`
 	CreatedAt             time.Time      `json:"created_at" db:"created_at"`
-	Organisations  []Organisation `json:"organisations"`
+	Organisations         []Organisation `json:"organisations"`
 }
 
 type Eula struct {
@@ -490,14 +490,14 @@ type AgentUser struct {
 // agent_user. Each user can connect multiple accounts (work + personal).
 // Tokens are encrypted at rest and scoped per-account.
 type AgentUserGoogleAccount struct {
-	ID            string    `json:"id" db:"id"`
-	AgentUserID   string    `json:"agent_user_id" db:"agent_user_id"`
-	GoogleEmail   string    `json:"google_email" db:"google_email"`
-	RefreshToken  []byte    `json:"-" db:"refresh_token"` // never serialised to JSON
-	Scopes        *string   `json:"scopes,omitempty" db:"scopes"`
-	Label         *string   `json:"label,omitempty" db:"label"`
-	Purpose       string    `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
-	ConnectedAt   time.Time `json:"connected_at" db:"connected_at"`
+	ID           string    `json:"id" db:"id"`
+	AgentUserID  string    `json:"agent_user_id" db:"agent_user_id"`
+	GoogleEmail  string    `json:"google_email" db:"google_email"`
+	RefreshToken []byte    `json:"-" db:"refresh_token"` // never serialised to JSON
+	Scopes       *string   `json:"scopes,omitempty" db:"scopes"`
+	Label        *string   `json:"label,omitempty" db:"label"`
+	Purpose      string    `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
+	ConnectedAt  time.Time `json:"connected_at" db:"connected_at"`
 }
 
 // TriggerGoogleAccount represents a Google account connected directly to
@@ -567,24 +567,24 @@ type AgentConversation struct {
 //
 // See plans/agent_memory.md §"Memory records" and migration 42.
 type AgentMemory struct {
-	ID                 string     `json:"id" db:"id"`
-	AgentID            string     `json:"agent_id" db:"agent_id"`
-	AgentUserID        *string    `json:"agent_user_id,omitempty" db:"agent_user_id"`
-	Scope              string     `json:"scope" db:"scope"`
-	MemoryType         string     `json:"memory_type" db:"memory_type"`
-	Title              string     `json:"title" db:"title"`
-	Body               string     `json:"body" db:"body"`
-	SourceConversation *string    `json:"source_conversation,omitempty" db:"source_conversation"`
-	SourceMessage      *string    `json:"source_message,omitempty" db:"source_message"`
-	Confidence         float64    `json:"confidence" db:"confidence"`
-	Pinned             bool       `json:"pinned" db:"pinned"`
+	ID                 string           `json:"id" db:"id"`
+	AgentID            string           `json:"agent_id" db:"agent_id"`
+	AgentUserID        *string          `json:"agent_user_id,omitempty" db:"agent_user_id"`
+	Scope              string           `json:"scope" db:"scope"`
+	MemoryType         string           `json:"memory_type" db:"memory_type"`
+	Title              string           `json:"title" db:"title"`
+	Body               string           `json:"body" db:"body"`
+	SourceConversation *string          `json:"source_conversation,omitempty" db:"source_conversation"`
+	SourceMessage      *string          `json:"source_message,omitempty" db:"source_message"`
+	Confidence         float64          `json:"confidence" db:"confidence"`
+	Pinned             bool             `json:"pinned" db:"pinned"`
 	Embedding          *pgvector.Vector `json:"embedding,omitempty" db:"embedding"`
-	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
-	LastUsedAt         *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
-	ExpiresAt          *time.Time `json:"expires_at,omitempty" db:"expires_at"`
-	ValidUntil         *time.Time `json:"valid_until,omitempty" db:"valid_until"`
-	Status             string     `json:"status" db:"status"`
-	SupersededBy       *string    `json:"superseded_by,omitempty" db:"superseded_by"`
+	CreatedAt          time.Time        `json:"created_at" db:"created_at"`
+	LastUsedAt         *time.Time       `json:"last_used_at,omitempty" db:"last_used_at"`
+	ExpiresAt          *time.Time       `json:"expires_at,omitempty" db:"expires_at"`
+	ValidUntil         *time.Time       `json:"valid_until,omitempty" db:"valid_until"`
+	Status             string           `json:"status" db:"status"`
+	SupersededBy       *string          `json:"superseded_by,omitempty" db:"superseded_by"`
 }
 
 // AgentPendingAction is an intent detected by the extraction pipeline
@@ -720,10 +720,10 @@ type AgentAuditLog struct {
 // AgentDataExport is the JSON payload returned by the "Export my data"
 // endpoint. Contains all data an agent holds about a specific user.
 type AgentDataExport struct {
-	User         *AgentUser         `json:"user"`
-	Identities   []*AgentIdentity   `json:"identities"`
-	Memories     []*AgentMemory     `json:"memories"`
-	Commitments  []*AgentCommitment `json:"commitments"`
-	AuditLog     []*AgentAuditLog   `json:"audit_log"`
-	ExportedAt   time.Time          `json:"exported_at"`
+	User        *AgentUser         `json:"user"`
+	Identities  []*AgentIdentity   `json:"identities"`
+	Memories    []*AgentMemory     `json:"memories"`
+	Commitments []*AgentCommitment `json:"commitments"`
+	AuditLog    []*AgentAuditLog   `json:"audit_log"`
+	ExportedAt  time.Time          `json:"exported_at"`
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api/internal/config"
+	"flomation.app/automate/api/internal/mtls"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,12 +24,22 @@ type Connector struct {
 	client *http.Client
 }
 
-func NewConnector(config *config.Config) *Connector {
+// Client returns the HTTP client used by this connector.
+// Other API components that need to call Launch can use this
+// to share the mTLS configuration.
+func (c *Connector) Client() *http.Client {
+	return c.client
+}
+
+func NewConnector(cfg *config.Config) *Connector {
+	client, err := mtls.ClientOrDefault(cfg.TLS, 10*time.Second)
+	if err != nil {
+		log.WithError(err).Fatal("launch connector: unable to create mTLS client")
+	}
+
 	return &Connector{
-		config: config,
-		client: &http.Client{
-			Timeout: time.Second * 10,
-		},
+		config: cfg,
+		client: client,
 	}
 }
 
@@ -49,7 +60,7 @@ func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID str
 		return fmt.Errorf("unable to marshal trigger payload: %w", err)
 	}
 
-	url := fmt.Sprintf("%v/trigger/%v", c.config.Launch.URL, id)
+	url := fmt.Sprintf("%v/trigger/%v", c.config.InternalLaunchURL(), id)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("unable to create request: %w", err)
@@ -79,7 +90,7 @@ func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID str
 }
 
 func (c *Connector) DisableTrigger(id string, authToken string) error {
-	url := fmt.Sprintf("%v/trigger/%v", c.config.Launch.URL, id)
+	url := fmt.Sprintf("%v/trigger/%v", c.config.InternalLaunchURL(), id)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return fmt.Errorf("unable to create request: %w", err)
@@ -149,7 +160,7 @@ func (c *Connector) RegisterAgent(agentID string, orchestratorFlowID *string, tr
 		return fmt.Errorf("unable to marshal agent payload: %w", err)
 	}
 
-	url := fmt.Sprintf("%v/agent/%v", c.config.Launch.URL, agentID)
+	url := fmt.Sprintf("%v/agent/%v", c.config.InternalLaunchURL(), agentID)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("unable to create request: %w", err)
@@ -191,7 +202,7 @@ func (c *Connector) ChannelAction(agentID, channelType, action, chatID string) e
 		return fmt.Errorf("unable to marshal channel action: %w", err)
 	}
 
-	url := fmt.Sprintf("%v/internal/agent/%v/channel-action", c.config.Launch.URL, agentID)
+	url := fmt.Sprintf("%v/internal/agent/%v/channel-action", c.config.InternalLaunchURL(), agentID)
 	resp, err := c.client.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("unable to send channel action: %w", err)
@@ -206,7 +217,7 @@ func (c *Connector) ChannelAction(agentID, channelType, action, chatID string) e
 
 // DeregisterAgent deregisters an agent from the Launch service.
 func (c *Connector) DeregisterAgent(agentID string) error {
-	url := fmt.Sprintf("%v/agent/%v", c.config.Launch.URL, agentID)
+	url := fmt.Sprintf("%v/agent/%v", c.config.InternalLaunchURL(), agentID)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return fmt.Errorf("unable to create request: %w", err)

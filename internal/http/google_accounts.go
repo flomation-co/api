@@ -53,7 +53,7 @@ func (s *Service) upsertGoogleAccountInternal(c *gin.Context) {
 func (s *Service) getGoogleTokensInternal(c *gin.Context) {
 	agentUserID := c.Param("id")
 
-	launchURL := s.config.Launch.URL
+	launchURL := s.config.InternalLaunchURL()
 	if launchURL == "" {
 		log.Error("Launch URL not configured — cannot proxy Google token request")
 		c.JSON(http.StatusOK, []interface{}{})
@@ -66,7 +66,7 @@ func (s *Service) getGoogleTokensInternal(c *gin.Context) {
 	if purpose != "" {
 		endpoint += "?purpose=" + purpose
 	}
-	resp, err := http.Get(endpoint) // #nosec G107 — internal service-to-service call
+	resp, err := s.launch.Client().Get(endpoint) // #nosec G107 — internal service-to-service call
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":         err,

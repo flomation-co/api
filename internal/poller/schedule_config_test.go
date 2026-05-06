@@ -170,11 +170,11 @@ func TestParseTimeOfDay(t *testing.T) {
 		{"23:59", 23, 59},
 		{"00:00", 0, 0},
 		{"12:30", 12, 30},
-		{"24:00", -1, -1},  // invalid hour
-		{"12:60", -1, -1},  // invalid minute
-		{"abc", -1, -1},    // no colon
-		{"12:ab", -1, -1},  // non-numeric
-		{"ab:00", -1, -1},  // non-numeric
+		{"24:00", -1, -1}, // invalid hour
+		{"12:60", -1, -1}, // invalid minute
+		{"abc", -1, -1},   // no colon
+		{"12:ab", -1, -1}, // non-numeric
+		{"ab:00", -1, -1}, // non-numeric
 	}
 
 	for _, tt := range tests {

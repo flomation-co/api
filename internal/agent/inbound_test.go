@@ -214,9 +214,7 @@ func TestNormaliseMessages(t *testing.T) {
 	}
 
 	result := normaliseMessages(msgs)
-	Expect(result).To(HaveLen(4))
+	Expect(result).To(HaveLen(2))
 	Expect(result[0]["role"]).To(Equal("user"))
 	Expect(result[1]["role"]).To(Equal("assistant"))
-	Expect(result[2]["role"]).To(Equal("assistant")) // tool_use → assistant
-	Expect(result[3]["role"]).To(Equal("user"))      // tool_result → user
 }

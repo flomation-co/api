@@ -1,0 +1,14 @@
+{
+  "http": {
+    "address": "0.0.0.0",
+    "port": 8080
+  },
+  "database": {
+    "hostname": "localhost",
+    "port": 5432,
+    "username": "test",
+    "password": "not-a-real-password",
+    "database": "test_db",
+    "encryption_key": "not-a-real-key-just-for-tests"
+  }
+}

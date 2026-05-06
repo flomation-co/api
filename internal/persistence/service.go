@@ -37,12 +37,12 @@ type Service struct {
 	stmtAcceptInvite               *sqlx.NamedStmt
 	stmtRevokeInvite               *sqlx.NamedStmt
 
-	stmtGetUserByID    *sqlx.NamedStmt
-	stmtCreateUser     *sqlx.NamedStmt
-	stmtUpdateUser     *sqlx.NamedStmt
-	stmtAcceptEula        *sqlx.NamedStmt
-	stmtGetLatestEula     *sqlx.NamedStmt
-	stmtUpdateOnboarding  *sqlx.NamedStmt
+	stmtGetUserByID      *sqlx.NamedStmt
+	stmtCreateUser       *sqlx.NamedStmt
+	stmtUpdateUser       *sqlx.NamedStmt
+	stmtAcceptEula       *sqlx.NamedStmt
+	stmtGetLatestEula    *sqlx.NamedStmt
+	stmtUpdateOnboarding *sqlx.NamedStmt
 
 	stmtGetMyFlos              *sqlx.NamedStmt
 	stmtGetMyFlosWithFilter    *sqlx.NamedStmt
@@ -241,9 +241,9 @@ type Service struct {
 
 	// Agent Memory Phase 4: semantic retrieval with pgvector.
 	// See internal/persistence/agent_memory_phase4.go.
-	stmtSearchMemoriesByEmbedding    *sqlx.NamedStmt
-	stmtGetMemoriesWithoutEmbedding  *sqlx.NamedStmt
-	stmtUpdateMemoryEmbedding        *sqlx.NamedStmt
+	stmtSearchMemoriesByEmbedding   *sqlx.NamedStmt
+	stmtGetMemoriesWithoutEmbedding *sqlx.NamedStmt
+	stmtUpdateMemoryEmbedding       *sqlx.NamedStmt
 
 	// Agent Memory Phase 5: identity linking.
 	stmtGetAgentIdentitiesByUserID    *sqlx.NamedStmt
