@@ -2103,7 +2103,8 @@ func NewService(config *config.Config) (*Service, error) {
 				 WHERE se.owner_id = :owner_id
 				   AND se.organisation_id IS NULL
 				   AND se.entitlement_key = 'execution_minutes'
-				   AND se.subscription_status IN ('active', 'trialling', 'past_due')),
+				   AND se.subscription_status IN ('active', 'trialling', 'past_due')
+				 LIMIT 1),
 				50 * 60 * 1000
 			) AS allowance
 		FROM
@@ -2138,7 +2139,8 @@ func NewService(config *config.Config) (*Service, error) {
 				 WHERE se.owner_id = :owner_id
 				   AND se.organisation_id = :organisation_id
 				   AND se.entitlement_key = 'execution_minutes'
-				   AND se.subscription_status IN ('active', 'trialling', 'past_due')),
+				   AND se.subscription_status IN ('active', 'trialling', 'past_due')
+				 LIMIT 1),
 				50 * 60 * 1000
 			) AS allowance
 		FROM
