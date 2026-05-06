@@ -507,6 +507,16 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	triggerID := c.Param("TriggerID")
 	floID := c.Param("FloID")
 
+	// Block execution if this flow belongs to a paused agent.
+	if s.persistence.IsFlowAgentPaused(floID) {
+		log.WithFields(log.Fields{
+			"flo_id":     floID,
+			"trigger_id": triggerID,
+		}).Info("trigger blocked — agent is paused")
+		c.JSON(http.StatusConflict, gin.H{"error": "agent is paused"})
+		return
+	}
+
 	var data interface{}
 	err := c.ShouldBindJSON(&data)
 	if err != nil {
@@ -534,6 +544,13 @@ func (s *Service) triggerFlo(c *gin.Context) {
 
 func (s *Service) executeFlo(c *gin.Context) {
 	floID := c.Param("FloID")
+
+	// Block execution if this flow belongs to a paused agent.
+	if s.persistence.IsFlowAgentPaused(floID) {
+		log.WithField("flo_id", floID).Info("execution blocked — agent is paused")
+		c.JSON(http.StatusConflict, gin.H{"error": "agent is paused"})
+		return
+	}
 
 	// Find the manual trigger for this flow
 	triggers, err := s.persistence.GetTriggersByFloID(floID)

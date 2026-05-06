@@ -73,6 +73,7 @@ type Persistence interface {
 	UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error
 	RemoveEnvironmentSecret(secretID string) error
 	TriggerExecution(floId string, triggerId string, data interface{}) (*string, error)
+	IsFlowAgentPaused(flowID string) bool
 	UpdateCompletionStatus(ID string, status string) error
 	UpdateEnvironmentProperty(environmentID string, environmentKey string, property api.EnvironmentProperty) error
 	UpdateExecutionResult(ID string, result interface{}) error

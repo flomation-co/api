@@ -45,6 +45,21 @@ func (s *Service) GetAgentByID(id string) (*api.Agent, error) {
 	return &agent, nil
 }
 
+// IsFlowAgentPaused checks if the given flow ID is the orchestrator or
+// extraction flow of a paused agent. Returns true if the agent exists
+// and is paused, false otherwise.
+func (s *Service) IsFlowAgentPaused(flowID string) bool {
+	var status string
+	err := s.conn.Get(&status, `
+		SELECT status FROM agents
+		WHERE (orchestrator_flow_id = $1 OR extraction_flow_id = $1)
+		LIMIT 1`, flowID)
+	if err != nil {
+		return false // No agent owns this flow, or query failed — allow execution.
+	}
+	return status == api.AgentStatusPaused
+}
+
 // CreateAgent creates a new agent and returns its ID.
 func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 	channelsJSON := agent.Channels
