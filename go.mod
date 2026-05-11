@@ -1,6 +1,6 @@
 module flomation.app/automate/api
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/flomation-co/go-config v0.0.0-20260116170906-0989aa9f4668
