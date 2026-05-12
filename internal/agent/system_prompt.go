@@ -511,6 +511,11 @@ func BuildSystemPrompt(
 		b.WriteString("━━━ Current channel ━━━\n")
 		b.WriteString(directive)
 		b.WriteString("\n")
+		b.WriteString("REPLY SCOPE: Only reply in the channel where the message originated. " +
+			"Do NOT broadcast, cross-post, or repeat your response to other channels unless " +
+			"the user explicitly asks you to (e.g. \"post this in #general too\"). " +
+			"If you use a messaging tool, the channel_id must match the inbound message's channel. " +
+			"Sending the same information to multiple channels unprompted is never appropriate.\n")
 		b.WriteString("CROSS-CHANNEL: You can interact with users across multiple channels " +
 			"(Slack, Telegram, email, etc.). If a user mentions their username, handle, or " +
 			"email address on another channel, you SHOULD offer to link their accounts so " +
