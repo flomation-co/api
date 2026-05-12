@@ -487,7 +487,10 @@ func BuildSystemPrompt(
 	}
 	if len(activeTasks) > 0 {
 		b.WriteString("━━━ Active tasks ━━━\n")
-		b.WriteString("These are tasks the user has asked about. If a task seems stale or you're unsure if it's still needed, ask the user: \"Did you still need help with [task]?\" Do NOT assume a task is complete just because the user changed topic.\n")
+		b.WriteString("These are tasks the user has previously asked about. " +
+			"Do NOT volunteer or mention these unless the user's current message is directly relevant to one. " +
+			"Never shoehorn task updates into unrelated replies. If a task seems stale, you may ask once: " +
+			"\"Did you still need help with [task]?\" — but only when the conversation naturally relates to it.\n")
 		for _, task := range activeTasks {
 			b.WriteString("• ")
 			if task.Title != "" {
