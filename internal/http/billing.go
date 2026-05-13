@@ -69,6 +69,35 @@ func (s *Service) syncEntitlementsInternal(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ── Internal: credit balance sync (called by billing service via mTLS) ──
+
+type creditBalanceSyncRequest struct {
+	OwnerID        string  `json:"owner_id" binding:"required"`
+	OrganisationID *string `json:"organisation_id"`
+	BalancePence   int64   `json:"balance_pence"`
+}
+
+func (s *Service) syncCreditBalanceInternal(c *gin.Context) {
+	var req creditBalanceSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := s.persistence.UpsertCreditBalance(req.OwnerID, req.OrganisationID, req.BalancePence); err != nil {
+		log.WithError(err).Error("failed to upsert credit balance")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to sync credit balance"})
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"owner_id": req.OwnerID,
+		"balance":  req.BalancePence,
+	}).Info("credit balance synced from billing service")
+
+	c.Status(http.StatusNoContent)
+}
+
 // ── Public: quota endpoint ────────────────────────────────────────────
 
 // getQuota returns the current entitlements and usage for the
@@ -120,6 +149,11 @@ func (s *Service) getQuota(c *gin.Context) {
 	if usage != nil {
 		response["usage_ms"] = usage.Usage
 		response["allowance_ms"] = usage.Allowance
+	}
+
+	// Include credit balance if available.
+	if credit, err := s.persistence.GetCreditBalance(user.ID, orgID); err == nil && credit != nil {
+		response["credit_balance_pence"] = credit.BalancePence
 	}
 
 	c.JSON(http.StatusOK, response)

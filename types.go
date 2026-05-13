@@ -150,6 +150,7 @@ type Execution struct {
 	ParentExecutionID *string          `json:"parent_execution_id,omitempty" db:"parent_execution_id"`
 	AgentID           *string          `json:"agent_id,omitempty" db:"agent_id"`
 	AgentSessionID    *string          `json:"agent_session_id,omitempty" db:"agent_session_id"`
+	CreditCostPence   *int64           `json:"credit_cost_pence,omitempty" db:"-"`
 }
 
 type Revision struct {
@@ -355,6 +356,30 @@ type SubscriptionEntitlement struct {
 	SubscriptionStatus string           `json:"subscription_status" db:"subscription_status"`
 	PeriodEnd          *time.Time       `json:"period_end,omitempty" db:"period_end"`
 	UpdatedAt          time.Time        `json:"updated_at" db:"updated_at"`
+}
+
+// CreditBalance is a local cache of the credit balance pushed from the billing service.
+// The API only needs the balance for quota checks — rate calculation stays in billing.
+type CreditBalance struct {
+	ID             string    `json:"id" db:"id"`
+	OwnerID        string    `json:"owner_id" db:"owner_id"`
+	OrganisationID *string   `json:"organisation_id,omitempty" db:"organisation_id"`
+	BalancePence   int64     `json:"balance_pence" db:"balance_pence"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// CreditDeduction records an execution overage for async sync back to billing.
+// The billing service calculates the actual cost using its dynamic rate schedule.
+// AmountPence is populated after the billing service processes the deduction.
+type CreditDeduction struct {
+	ID             string    `json:"id" db:"id"`
+	OwnerID        string    `json:"owner_id" db:"owner_id"`
+	OrganisationID *string   `json:"organisation_id,omitempty" db:"organisation_id"`
+	ExecutionID    string    `json:"execution_id" db:"execution_id"`
+	DurationMs     int64     `json:"duration_ms" db:"duration_ms"`
+	AmountPence    *int64    `json:"amount_pence,omitempty" db:"amount_pence"`
+	Synced         bool      `json:"synced" db:"synced"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
 }
 
 type Group struct {

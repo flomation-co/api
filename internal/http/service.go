@@ -605,6 +605,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)
+	internal.POST("/credit/sync", s.syncCreditBalanceInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the

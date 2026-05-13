@@ -38,6 +38,12 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 		poller.StartEmbeddingBackfillPoller(p, s.embeddingProvider)
 		log.Info("API-side embedding backfill poller registered")
 	}
+
+	// Credit deduction sync poller (30s) — pushes deductions to billing service.
+	if cfg.Billing.InternalURL != "" {
+		poller.StartCreditSyncPoller(p, cfg.Billing.InternalURL, s.launch.Client())
+		log.Info("API-side credit sync poller registered")
+	}
 }
 
 // pollerDispatcherAdapter wraps *agent.DirectFlowDispatcher to satisfy

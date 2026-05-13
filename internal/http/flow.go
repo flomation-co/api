@@ -517,6 +517,15 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		return
 	}
 
+	// Quota enforcement: block if subscription allowance exhausted and no credit.
+	if blocked, msg := s.checkQuota(floID); blocked {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error":   "quota_exhausted",
+			"message": msg,
+		})
+		return
+	}
+
 	var data interface{}
 	err := c.ShouldBindJSON(&data)
 	if err != nil {
@@ -549,6 +558,15 @@ func (s *Service) executeFlo(c *gin.Context) {
 	if s.persistence.IsFlowAgentPaused(floID) {
 		log.WithField("flo_id", floID).Info("execution blocked — agent is paused")
 		c.JSON(http.StatusConflict, gin.H{"error": "agent is paused"})
+		return
+	}
+
+	// Quota enforcement: block if subscription allowance exhausted and no credit.
+	if blocked, msg := s.checkQuota(floID); blocked {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error":   "quota_exhausted",
+			"message": msg,
+		})
 		return
 	}
 
