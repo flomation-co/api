@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	appmetrics "flomation.app/automate/api/internal/metrics"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -186,6 +187,8 @@ func (s *Service) updateExecution(c *gin.Context) {
 	} else if result.HasErrored {
 		completion = "fail"
 	}
+
+	appmetrics.ExecutionsTotal.WithLabelValues(completion).Inc()
 
 	if err := s.persistence.UpdateCompletionStatus(id, completion); err != nil {
 		log.WithFields(log.Fields{

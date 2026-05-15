@@ -1,8 +1,11 @@
 package main
 
 import (
+	"time"
+
 	"flomation.app/automate/api/internal/config"
 	"flomation.app/automate/api/internal/http"
+	"flomation.app/automate/api/internal/metrics"
 	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/version"
 	"github.com/gin-gonic/gin"
@@ -55,6 +58,10 @@ func main() {
 	// Background reaper for stuck/stale executions. Cancels zombies
 	// (running > 5 min) and stale system flow queue entries (created > 10 min).
 	db.StartExecutionReaper()
+
+	if cfg.Metrics.Enabled {
+		metrics.StartCollector(db.DB(), 30*time.Second)
+	}
 
 	httpService := http.NewService(cfg, db)
 

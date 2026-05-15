@@ -62,6 +62,12 @@ type EmbeddingConfig struct {
 	SecretAccessKey string `json:"secret_access_key" env:"EMBEDDING_SECRET_ACCESS_KEY" arg:"embedding-secret-access-key"`
 }
 
+// MetricsConfig controls the Prometheus /metrics endpoint.
+type MetricsConfig struct {
+	Enabled    bool     `json:"enabled" env:"METRICS_ENABLED" arg:"metrics-enabled"`
+	AllowedIPs []string `json:"allowed_ips"`
+}
+
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
@@ -70,6 +76,7 @@ type Config struct {
 	SMTP             SMTPConfig       `json:"smtp"`
 	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
 	TLS              *mtls.TLSConfig  `json:"tls,omitempty"`
+	Metrics          MetricsConfig    `json:"metrics"`
 }
 
 func LoadConfig(path string) (*Config, error) {
