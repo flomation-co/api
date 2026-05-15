@@ -250,6 +250,10 @@ type Service struct {
 	stmtGetPendingActionByUserAndType *sqlx.NamedStmt
 }
 
+// DB returns the underlying sqlx connection pool for use by metrics collectors
+// and other infrastructure code that needs direct database access.
+func (s *Service) DB() *sqlx.DB { return s.conn }
+
 func NewService(config *config.Config) (*Service, error) {
 	db, err := sqlx.Connect("postgres", fmt.Sprintf("postgres://%v:%v@%v:%d/%v?sslmode=%v",
 		config.Database.Username,

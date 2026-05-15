@@ -12,9 +12,11 @@ import (
 	"flomation.app/automate/api/internal/connector/identity"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
 	"flomation.app/automate/api/internal/embedding"
+	appmetrics "flomation.app/automate/api/internal/metrics"
 	"flomation.app/automate/api/internal/mtls"
 	"github.com/flomation-co/sentinel-client"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"flomation.app/automate/api/internal/version"
 
@@ -314,6 +316,11 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// These replace the pollers that previously ran in Launch and made
 	// HTTP calls back to the API — now they use direct DB access.
 	s.startPollers(config, persistence)
+
+	if config.Metrics.Enabled {
+		s.engine.Use(appmetrics.RequestMetricsMiddleware())
+		s.engine.GET("metrics", appmetrics.IPRestrictionMiddleware(config.Metrics.AllowedIPs), gin.WrapH(promhttp.Handler()))
+	}
 
 	// API Group
 	s.engine.Use(s.corsMiddleware, hstsMiddleware)
