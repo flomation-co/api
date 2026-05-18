@@ -254,4 +254,7 @@ type Persistence interface {
 	GetUnsyncedDeductions() ([]*api.CreditDeduction, error)
 	MarkDeductionSynced(id string, amountPence int64) error
 	GetCreditCostsForExecutions(executionIDs []string) (map[string]int64, error)
+
+	// User activity tracking.
+	TouchUserActivity(userID string)
 }

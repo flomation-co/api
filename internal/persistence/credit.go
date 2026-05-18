@@ -44,10 +44,10 @@ func (s *Service) GetCreditBalance(ownerID string, orgID *string) (*api.CreditBa
 // RecordCreditDeduction stores an overage record for async sync to the billing service.
 func (s *Service) RecordCreditDeduction(deduction *api.CreditDeduction) error {
 	_, err := s.conn.Exec(`
-		INSERT INTO credit_deduction (owner_id, organisation_id, execution_id, duration_ms)
-		VALUES ($1, $2, $3, $4)`,
+		INSERT INTO credit_deduction (owner_id, organisation_id, execution_id, execution_label, duration_ms)
+		VALUES ($1, $2, $3, $4, $5)`,
 		deduction.OwnerID, deduction.OrganisationID, deduction.ExecutionID,
-		deduction.DurationMs)
+		deduction.ExecutionLabel, deduction.DurationMs)
 	return err
 }
 

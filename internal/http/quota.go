@@ -1,6 +1,8 @@
 package http
 
 import (
+	"fmt"
+
 	"flomation.app/automate/api"
 	log "github.com/sirupsen/logrus"
 )
@@ -121,6 +123,13 @@ func (s *Service) processPostExecutionCredit(executionID string) {
 		overageMs = durationMs
 	}
 
+	// Build execution label (flow name + sequence) for billing line items.
+	var execLabel *string
+	if flo, err := s.persistence.GetFloByID(execution.FloID); err == nil && flo != nil {
+		label := fmt.Sprintf("%s #%d", flo.Name, execution.Sequence)
+		execLabel = &label
+	}
+
 	// Record the overage for async sync to the billing service.
 	// The billing service will calculate the actual cost using its
 	// dynamic rate schedule and deduct from the real balance.
@@ -128,6 +137,7 @@ func (s *Service) processPostExecutionCredit(executionID string) {
 		OwnerID:        ownerID,
 		OrganisationID: orgID,
 		ExecutionID:    executionID,
+		ExecutionLabel: execLabel,
 		DurationMs:     overageMs,
 	}
 	if err := s.persistence.RecordCreditDeduction(deduction); err != nil {

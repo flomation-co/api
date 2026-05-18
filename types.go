@@ -57,6 +57,7 @@ type User struct {
 	OnboardingStep        int            `json:"onboarding_step" db:"onboarding_step"`
 	OnboardingCompletedAt *time.Time     `json:"onboarding_completed_at,omitempty" db:"onboarding_completed_at"`
 	ChecklistFlags        int            `json:"checklist_flags" db:"checklist_flags"`
+	LastActivityAt        *time.Time     `json:"last_activity_at,omitempty" db:"last_activity_at"`
 	CreatedAt             time.Time      `json:"created_at" db:"created_at"`
 	Organisations         []Organisation `json:"organisations"`
 }
@@ -376,6 +377,7 @@ type CreditDeduction struct {
 	OwnerID        string    `json:"owner_id" db:"owner_id"`
 	OrganisationID *string   `json:"organisation_id,omitempty" db:"organisation_id"`
 	ExecutionID    string    `json:"execution_id" db:"execution_id"`
+	ExecutionLabel *string   `json:"execution_label,omitempty" db:"execution_label"`
 	DurationMs     int64     `json:"duration_ms" db:"duration_ms"`
 	AmountPence    *int64    `json:"amount_pence,omitempty" db:"amount_pence"`
 	Synced         bool      `json:"synced" db:"synced"`

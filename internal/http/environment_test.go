@@ -635,3 +635,4 @@ func (m *mockPersistence) RecordCreditDeduction(deduction *api.CreditDeduction) 
 func (m *mockPersistence) GetUnsyncedDeductions() ([]*api.CreditDeduction, error) { return nil, nil }
 func (m *mockPersistence) MarkDeductionSynced(id string, amountPence int64) error { return nil }
 func (m *mockPersistence) GetCreditCostsForExecutions(executionIDs []string) (map[string]int64, error) { return nil, nil }
+func (m *mockPersistence) TouchUserActivity(userID string) {}

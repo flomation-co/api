@@ -98,6 +98,7 @@ type creditDeductPayload struct {
 	OwnerID        string  `json:"owner_id"`
 	OrganisationID *string `json:"organisation_id,omitempty"`
 	ExecutionID    string  `json:"execution_id"`
+	ExecutionLabel *string `json:"execution_label,omitempty"`
 	DurationMs     int64   `json:"duration_ms"`
 }
 
@@ -106,6 +107,7 @@ func (cp *CreditSyncPoller) pushDeduction(d *api.CreditDeduction) (int64, error)
 		OwnerID:        d.OwnerID,
 		OrganisationID: d.OrganisationID,
 		ExecutionID:    d.ExecutionID,
+		ExecutionLabel: d.ExecutionLabel,
 		DurationMs:     d.DurationMs,
 	}
 

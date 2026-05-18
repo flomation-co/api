@@ -116,6 +116,8 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	c.Set("account_id", *userID)
 	c.Set("jwt", headerParts[1])
 
+	go s.persistence.TouchUserActivity(*userID)
+
 	organisationID := c.Query("organisation")
 	if organisationID != "" {
 		c.Set("organisation_id", organisationID)

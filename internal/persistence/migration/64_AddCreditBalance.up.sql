@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS credit_deduction (
     owner_id            VARCHAR(100) NOT NULL,
     organisation_id     VARCHAR(100),
     execution_id        UUID NOT NULL,
+    execution_label     VARCHAR(255),
     duration_ms         BIGINT NOT NULL,
     amount_pence        BIGINT,
     synced              BOOLEAN NOT NULL DEFAULT FALSE,
