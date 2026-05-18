@@ -68,6 +68,11 @@ type MetricsConfig struct {
 	AllowedIPs []string `json:"allowed_ips"`
 }
 
+type BillingConfig struct {
+	QuotaEnforcementEnabled bool   `json:"quota_enforcement_enabled" env:"QUOTA_ENFORCEMENT_ENABLED" arg:"quota-enforcement-enabled"`
+	InternalURL             string `json:"internal_url,omitempty" env:"BILLING_INTERNAL_URL" arg:"billing-internal-url"`
+}
+
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
@@ -77,6 +82,7 @@ type Config struct {
 	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
 	TLS              *mtls.TLSConfig  `json:"tls,omitempty"`
 	Metrics          MetricsConfig    `json:"metrics"`
+	Billing          BillingConfig    `json:"billing"`
 }
 
 func LoadConfig(path string) (*Config, error) {

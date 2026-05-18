@@ -116,6 +116,8 @@ func (s *Service) jwtMiddleware(c *gin.Context) {
 	c.Set("account_id", *userID)
 	c.Set("jwt", headerParts[1])
 
+	go s.persistence.TouchUserActivity(*userID)
+
 	organisationID := c.Query("organisation")
 	if organisationID != "" {
 		c.Set("organisation_id", organisationID)
@@ -605,6 +607,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)
+	internal.POST("/credit/sync", s.syncCreditBalanceInternal)
 
 	// Agent Memory Phase 2d-α: the extract-dispatch endpoint.
 	// Called by Launch after storing an inbound message and by the

@@ -246,4 +246,15 @@ type Persistence interface {
 	GetEntitlement(ownerID string, orgID *string, key string) (*api.SubscriptionEntitlement, error)
 	GetAllEntitlements(ownerID string, orgID *string) ([]*api.SubscriptionEntitlement, error)
 	DeleteEntitlements(ownerID string, orgID *string) error
+
+	// Credit balance (pushed from billing service).
+	UpsertCreditBalance(ownerID string, orgID *string, balancePence int64) error
+	GetCreditBalance(ownerID string, orgID *string) (*api.CreditBalance, error)
+	RecordCreditDeduction(deduction *api.CreditDeduction) error
+	GetUnsyncedDeductions() ([]*api.CreditDeduction, error)
+	MarkDeductionSynced(id string, amountPence int64) error
+	GetCreditCostsForExecutions(executionIDs []string) (map[string]int64, error)
+
+	// User activity tracking.
+	TouchUserActivity(userID string)
 }

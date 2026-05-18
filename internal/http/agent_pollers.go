@@ -1,8 +1,11 @@
 package http
 
 import (
+	"time"
+
 	"flomation.app/automate/api/internal/agent"
 	apiconfig "flomation.app/automate/api/internal/config"
+	"flomation.app/automate/api/internal/mtls"
 	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/poller"
 	log "github.com/sirupsen/logrus"
@@ -37,6 +40,17 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	if s.embeddingProvider != nil {
 		poller.StartEmbeddingBackfillPoller(p, s.embeddingProvider)
 		log.Info("API-side embedding backfill poller registered")
+	}
+
+	// Credit deduction sync poller (30s) — pushes deductions to billing service.
+	if cfg.Billing.InternalURL != "" {
+		billingClient, err := mtls.ClientOrDefault(cfg.TLS, 15*time.Second)
+		if err != nil {
+			log.WithError(err).Error("failed to create mTLS client for credit sync poller, using default")
+		} else {
+			poller.StartCreditSyncPoller(p, cfg.Billing.InternalURL, billingClient)
+			log.Info("API-side credit sync poller registered")
+		}
 	}
 }
 

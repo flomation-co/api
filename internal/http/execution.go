@@ -235,6 +235,9 @@ func (s *Service) updateExecution(c *gin.Context) {
 	// Send notification emails if configured
 	go s.sendExecutionNotification(execution.FloID, completion, execution)
 
+	// Deduct credit for overage if applicable.
+	go s.processPostExecutionCredit(id)
+
 	c.Status(http.StatusOK)
 }
 
@@ -313,6 +316,19 @@ func (s *Service) getExecutions(c *gin.Context) {
 	if len(executions) == 0 {
 		c.Status(http.StatusNoContent)
 		return
+	}
+
+	// Enrich with credit costs where applicable.
+	execIDs := make([]string, len(executions))
+	for i, e := range executions {
+		execIDs[i] = e.ID
+	}
+	if costs, err := s.persistence.GetCreditCostsForExecutions(execIDs); err == nil && len(costs) > 0 {
+		for _, e := range executions {
+			if cost, ok := costs[e.ID]; ok {
+				e.CreditCostPence = &cost
+			}
+		}
 	}
 
 	c.Writer.Header().Set("x-total-items", fmt.Sprintf("%v", count))
