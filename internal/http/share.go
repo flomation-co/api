@@ -99,7 +99,7 @@ Get Started
 <table width="100%%" border="0" cellspacing="0" cellpadding="0">
 <tr><td style="font-size: 10px; color: #9ca3af; line-height: 1.5;">
 <strong>Flomation Ltd</strong><br>
-33-34 High Street, Bridgnorth, Shropshire, England, WV16 4DB<br /><br />
+Ruscoe House, The Chequer, Whitchurch, Wrexham, Wales, SY13 2JJ<br /><br />
 Sent by %s via Flomation<br/><br/>
 </td></tr>
 </table>
