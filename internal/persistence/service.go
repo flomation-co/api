@@ -899,7 +899,8 @@ func NewService(config *config.Config) (*Service, error) {
 			queue_id = :queue_id,
 			notify_on_success = :notify_on_success,
 			notify_on_failure = :notify_on_failure,
-			notification_emails = :notification_emails
+			notification_emails = :notification_emails,
+			max_concurrent_executions = :max_concurrent_executions
 		WHERE
 		    id = :id
 	`)
@@ -1612,6 +1613,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    JOIN flo f ON f.id = e.flo_id
 		    WHERE e.organisation_id = :organisation_id
 		    AND e.execution_status = 'created'
+		    AND (e.updated_at IS NULL OR e.updated_at <= e.created_at OR e.updated_at < NOW() - INTERVAL '30 seconds')
 		    AND (
 		        f.system_flow = FALSE
 		        OR NOT EXISTS (
@@ -1620,6 +1622,15 @@ func NewService(config *config.Config) (*Service, error) {
 		            WHERE f2.system_flow = TRUE
 		            AND e2.execution_status = 'running'
 		        )
+		    )
+		    AND (
+		        f.max_concurrent_executions IS NULL
+		        OR f.max_concurrent_executions = 0
+		        OR (
+		            SELECT COUNT(1) FROM execution e3
+		            WHERE e3.flo_id = f.id
+		            AND e3.execution_status = 'running'
+		        ) < f.max_concurrent_executions
 		    )
 		    ORDER BY (CASE WHEN f.system_flow THEN 1 ELSE 0 END) ASC, e.created_at ASC
 		    LIMIT 1
@@ -1646,6 +1657,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    JOIN flo f ON f.id = e.flo_id
 		    LEFT JOIN organisation o ON e.organisation_id = o.id
 		    WHERE e.execution_status = 'created'
+		    AND (e.updated_at IS NULL OR e.updated_at <= e.created_at OR e.updated_at < NOW() - INTERVAL '30 seconds')
 		    AND (e.organisation_id IS NULL OR o.allow_public_runners = true)
 		    AND (
 		        f.system_flow = FALSE
@@ -1655,6 +1667,15 @@ func NewService(config *config.Config) (*Service, error) {
 		            WHERE f2.system_flow = TRUE
 		            AND e2.execution_status = 'running'
 		        )
+		    )
+		    AND (
+		        f.max_concurrent_executions IS NULL
+		        OR f.max_concurrent_executions = 0
+		        OR (
+		            SELECT COUNT(1) FROM execution e3
+		            WHERE e3.flo_id = f.id
+		            AND e3.execution_status = 'running'
+		        ) < f.max_concurrent_executions
 		    )
 		    ORDER BY (CASE WHEN f.system_flow THEN 1 ELSE 0 END) ASC, e.created_at ASC
 		    LIMIT 1
