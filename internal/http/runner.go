@@ -461,6 +461,30 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		}
 	}
 
+	// Agent pause check: if the flow belongs to a paused agent, hold the
+	// execution in the queue until the agent is resumed.
+	if s.persistence.IsFlowAgentPaused(execution.FloID) {
+		_ = s.persistence.UpdateExecutionStatus(execution.ID, "created")
+		log.WithFields(log.Fields{
+			"execution_id": execution.ID,
+			"flo_id":       execution.FloID,
+		}).Debug("execution returned to queue — agent is paused")
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	// Quota enforcement: if the flow's owner has exhausted their allowance
+	// and has no credit, release the execution back to the queue.
+	if blocked, _ := s.checkQuota(execution.FloID); blocked {
+		_ = s.persistence.UpdateExecutionStatus(execution.ID, "created")
+		log.WithFields(log.Fields{
+			"execution_id": execution.ID,
+			"flo_id":       execution.FloID,
+		}).Debug("execution returned to queue — quota exhausted")
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	flow, err := s.persistence.GetFloByID(execution.FloID)
 	if err != nil {
 		log.WithFields(log.Fields{

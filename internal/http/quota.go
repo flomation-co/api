@@ -57,7 +57,17 @@ func (s *Service) checkQuota(floID string) (bool, string) {
 		return false, ""
 	}
 
-	if credit != nil && credit.BalancePence > 0 {
+	if credit == nil {
+		// No cached credit record — the billing service may not have synced yet.
+		// Fail open to avoid blocking executions due to stale cache.
+		log.WithFields(log.Fields{
+			"owner_id":        ownerID,
+			"organisation_id": flo.OrganisationID,
+		}).Debug("quota: no cached credit balance, allowing execution")
+		return false, ""
+	}
+
+	if credit.BalancePence > 0 {
 		// Has credit — allow execution, it will be billed on completion.
 		return false, ""
 	}

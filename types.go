@@ -115,8 +115,9 @@ type Flo struct {
 	NotifyOnFailure     bool              `json:"notify_on_failure" db:"notify_on_failure"`
 	NotificationEmails  *string           `json:"notification_emails,omitempty" db:"notification_emails"`
 	SystemPrompt        *string           `json:"system_prompt,omitempty" db:"system_prompt"`
-	SystemFlow          bool              `json:"system_flow" db:"system_flow"`
-	SystemFlowPurpose   *string           `json:"system_flow_purpose,omitempty" db:"system_flow_purpose"`
+	SystemFlow              bool              `json:"system_flow" db:"system_flow"`
+	SystemFlowPurpose       *string           `json:"system_flow_purpose,omitempty" db:"system_flow_purpose"`
+	MaxConcurrentExecutions *int              `json:"max_concurrent_executions,omitempty" db:"max_concurrent_executions"`
 }
 
 type ExecutionStatus struct {
