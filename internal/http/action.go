@@ -38,6 +38,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"elevenlabs":  {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":     {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
 	"string":      {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
+	"social":      {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -46,8 +47,9 @@ var subCategoryMetadata = map[string]struct {
 	Icon        string
 	Description string
 }{
-	"aws/s3":  {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
-	"aws/ec2": {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+	"aws/s3":           {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
+	"aws/ec2":          {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+	"social/linkedin":  {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
