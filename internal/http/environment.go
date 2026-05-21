@@ -162,6 +162,32 @@ func (s *Service) getExecutionEnvironmentSecret(c *gin.Context) {
 	c.JSON(http.StatusOK, prop)
 }
 
+func (s *Service) getExecutionEnvironmentCredential(c *gin.Context) {
+	env := s.validateExecutionEnvironment(c)
+	if env == nil {
+		return
+	}
+
+	name := c.Param("name")
+
+	token, err := s.persistence.GetCredentialByName(env.ID, name, env.SecretKey)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"name":  name,
+		}).Error("unable to get environment credential")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if token == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"name": name, "value": *token})
+}
+
 func (s *Service) getEnvironments(c *gin.Context) {
 	user := s.getUserFromContext(c)
 	var organisation *string

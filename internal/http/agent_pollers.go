@@ -52,6 +52,9 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 			log.Info("API-side credit sync poller registered")
 		}
 	}
+
+	// Credential token refresh poller (60s) — proactively refreshes OAuth tokens.
+	poller.StartCredentialRefreshPoller(p)
 }
 
 // pollerDispatcherAdapter wraps *agent.DirectFlowDispatcher to satisfy

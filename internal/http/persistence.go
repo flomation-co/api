@@ -72,6 +72,20 @@ type Persistence interface {
 	RemoveEnvironmentProperty(propertyID string) error
 	UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error
 	RemoveEnvironmentSecret(secretID string) error
+
+	// Credentials
+	GetCredentialProviders() ([]api.CredentialProvider, error)
+	GetCredentialProvider(slug string) (*api.CredentialProvider, error)
+	GetCredentialsByEnvironmentID(environmentID string) ([]api.EnvironmentCredential, error)
+	GetCredentialByID(id string) (*api.EnvironmentCredential, error)
+	CreateCredential(cred *api.EnvironmentCredential, environmentKey string) (string, error)
+	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken string, expiresAt *time.Time) error
+	UpdateCredentialStatus(id, status string, lastError *string) error
+	DeleteCredential(id, environmentID string) error
+	GetDecryptedClientCredentials(credentialID, environmentKey string) (*string, *string, error)
+	GetCredentialByName(environmentID, name, environmentKey string) (*string, error)
+	GetCredentialsNeedingRefresh(within time.Duration) ([]persistence.CredentialRefreshRow, error)
+
 	TriggerExecution(floId string, triggerId string, data interface{}) (*string, error)
 	IsFlowAgentPaused(flowID string) bool
 	UpdateCompletionStatus(ID string, status string) error
