@@ -42,6 +42,7 @@ INSERT INTO credential_provider (slug, name, icon, auth_url, token_url, revoke_u
     ('microsoft', 'Microsoft', 'microsoft', 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize', 'https://login.microsoftonline.com/common/oauth2/v2.0/token', NULL, 'openid email profile offline_access'),
     ('github', 'GitHub', 'github', 'https://github.com/login/oauth/authorize', 'https://github.com/login/oauth/access_token', NULL, 'read:user user:email'),
     ('linkedin', 'LinkedIn', 'linkedin', 'https://www.linkedin.com/oauth/v2/authorization', 'https://www.linkedin.com/oauth/v2/accessToken', NULL, 'openid profile email w_member_social'),
+    ('linkedin_community', 'LinkedIn Community', 'linkedin', 'https://www.linkedin.com/oauth/v2/authorization', 'https://www.linkedin.com/oauth/v2/accessToken', NULL, 'r_member_social w_member_social r_organization_social w_organization_social rw_organization_admin'),
     ('facebook', 'Facebook', 'facebook', 'https://www.facebook.com/v19.0/dialog/oauth', 'https://graph.facebook.com/v19.0/oauth/access_token', NULL, 'pages_manage_posts pages_read_engagement'),
     ('twitter', 'X / Twitter', 'twitter', 'https://twitter.com/i/oauth2/authorize', 'https://api.twitter.com/2/oauth2/token', 'https://api.twitter.com/2/oauth2/revoke', 'tweet.read tweet.write users.read offline.access')
 ON CONFLICT (slug) DO NOTHING;

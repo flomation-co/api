@@ -50,6 +50,7 @@ var subCategoryMetadata = map[string]struct {
 	"aws/s3":           {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
 	"aws/ec2":          {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
 	"social/linkedin":  {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
+	"social/facebook":  {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
