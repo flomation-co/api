@@ -200,7 +200,7 @@ func (m *mockPersistence) GetCredentialProvider(string) (*api.CredentialProvider
 func (m *mockPersistence) GetCredentialsByEnvironmentID(string) ([]api.EnvironmentCredential, error) { return nil, nil }
 func (m *mockPersistence) GetCredentialByID(string) (*api.EnvironmentCredential, error) { return nil, nil }
 func (m *mockPersistence) CreateCredential(*api.EnvironmentCredential, string) (string, error) { return "", nil }
-func (m *mockPersistence) StoreCredentialTokens(string, string, string, string, *time.Time) error { return nil }
+func (m *mockPersistence) StoreCredentialTokens(string, string, string, string, string, string, *time.Time) error { return nil }
 func (m *mockPersistence) UpdateCredentialStatus(string, string, *string) error { return nil }
 func (m *mockPersistence) DeleteCredential(string, string) error { return nil }
 func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string, *string, error) { return nil, nil, nil }

@@ -289,10 +289,11 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 		expiresAt = &t
 	}
 
-	// Store tokens
+	// Store tokens (also persist client credentials so the refresh poller can use them)
 	if err := s.persistence.StoreCredentialTokens(
 		stateData.CredentialID, env.SecretKey,
-		tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt,
+		tokenResp.AccessToken, tokenResp.RefreshToken,
+		*clientID, *clientSecret, expiresAt,
 	); err != nil {
 		log.WithError(err).Error("unable to store credential tokens")
 		c.Data(http.StatusOK, "text/html", []byte(oauthResultPage("Storage Error", "Failed to save tokens.", true)))

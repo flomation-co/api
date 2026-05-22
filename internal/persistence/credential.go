@@ -117,18 +117,22 @@ func (s *Service) CreateCredential(cred *api.EnvironmentCredential, environmentK
 }
 
 // StoreCredentialTokens saves the OAuth tokens after a successful authorization.
-func (s *Service) StoreCredentialTokens(id, environmentKey, accessToken, refreshToken string, expiresAt *time.Time) error {
+// clientID/clientSecret are persisted so the background refresh poller can use them
+// without needing access to application config (supports config-default credentials).
+func (s *Service) StoreCredentialTokens(id, environmentKey, accessToken, refreshToken, clientID, clientSecret string, expiresAt *time.Time) error {
 	_, err := s.conn.Exec(`
 		UPDATE environment_credential
 		SET access_token = PGP_SYM_ENCRYPT($2, $3),
 		    refresh_token = CASE WHEN $4 = '' THEN refresh_token ELSE PGP_SYM_ENCRYPT($4, $3) END,
 		    token_expires_at = $5,
+		    client_id = CASE WHEN $6 = '' THEN client_id ELSE PGP_SYM_ENCRYPT($6, $3) END,
+		    client_secret = CASE WHEN $7 = '' THEN client_secret ELSE PGP_SYM_ENCRYPT($7, $3) END,
 		    status = 'active',
 		    last_refreshed_at = NOW(),
 		    last_error = NULL,
 		    updated_at = NOW()
 		WHERE id = $1`,
-		id, accessToken, environmentKey, refreshToken, expiresAt)
+		id, accessToken, environmentKey, refreshToken, expiresAt, clientID, clientSecret)
 	return err
 }
 

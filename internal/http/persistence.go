@@ -79,7 +79,7 @@ type Persistence interface {
 	GetCredentialsByEnvironmentID(environmentID string) ([]api.EnvironmentCredential, error)
 	GetCredentialByID(id string) (*api.EnvironmentCredential, error)
 	CreateCredential(cred *api.EnvironmentCredential, environmentKey string) (string, error)
-	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken string, expiresAt *time.Time) error
+	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken, clientID, clientSecret string, expiresAt *time.Time) error
 	UpdateCredentialStatus(id, status string, lastError *string) error
 	DeleteCredential(id, environmentID string) error
 	GetDecryptedClientCredentials(credentialID, environmentKey string) (*string, *string, error)

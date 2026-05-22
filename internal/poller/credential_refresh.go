@@ -15,7 +15,7 @@ import (
 // CredentialRefreshPersistence defines the DB methods the refresh poller needs.
 type CredentialRefreshPersistence interface {
 	GetCredentialsNeedingRefresh(within time.Duration) ([]persistence.CredentialRefreshRow, error)
-	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken string, expiresAt *time.Time) error
+	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken, clientID, clientSecret string, expiresAt *time.Time) error
 	UpdateCredentialStatus(id, status string, lastError *string) error
 }
 
@@ -133,7 +133,7 @@ func (rp *CredentialRefreshPoller) refreshToken(row persistence.CredentialRefres
 
 	if err := rp.persistence.StoreCredentialTokens(
 		row.ID, row.EnvironmentKey,
-		tokenResp.AccessToken, newRefresh, expiresAt,
+		tokenResp.AccessToken, newRefresh, clientID, clientSecret, expiresAt,
 	); err != nil {
 		return err
 	}
