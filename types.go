@@ -562,27 +562,35 @@ type AgentUser struct {
 // agent_user. Each user can connect multiple accounts (work + personal).
 // Tokens are encrypted at rest and scoped per-account.
 type AgentUserGoogleAccount struct {
-	ID           string    `json:"id" db:"id"`
-	AgentUserID  string    `json:"agent_user_id" db:"agent_user_id"`
-	GoogleEmail  string    `json:"google_email" db:"google_email"`
-	RefreshToken []byte    `json:"-" db:"refresh_token"` // never serialised to JSON
-	Scopes       *string   `json:"scopes,omitempty" db:"scopes"`
-	Label        *string   `json:"label,omitempty" db:"label"`
-	Purpose      string    `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
-	ConnectedAt  time.Time `json:"connected_at" db:"connected_at"`
+	ID             string     `json:"id" db:"id"`
+	AgentUserID    string     `json:"agent_user_id" db:"agent_user_id"`
+	GoogleEmail    string     `json:"google_email" db:"google_email"`
+	RefreshToken   []byte     `json:"-" db:"refresh_token"` // never serialised to JSON
+	AccessToken    []byte     `json:"-" db:"access_token"`  // cached, encrypted
+	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty" db:"token_expires_at"`
+	Scopes         *string    `json:"scopes,omitempty" db:"scopes"`
+	Label          *string    `json:"label,omitempty" db:"label"`
+	Purpose        string     `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
+	Status         string     `json:"status" db:"status"`
+	LastError      *string    `json:"last_error,omitempty" db:"last_error"`
+	ConnectedAt    time.Time  `json:"connected_at" db:"connected_at"`
 }
 
 // TriggerGoogleAccount represents a Google account connected directly to
 // a trigger (not an agent_user). Used by email triggers in standalone flows.
 type TriggerGoogleAccount struct {
-	ID           string    `json:"id" db:"id"`
-	TriggerID    string    `json:"trigger_id" db:"trigger_id"`
-	GoogleEmail  string    `json:"google_email" db:"google_email"`
-	RefreshToken []byte    `json:"-" db:"refresh_token"`
-	Scopes       *string   `json:"scopes,omitempty" db:"scopes"`
-	Label        *string   `json:"label,omitempty" db:"label"`
-	Purpose      string    `json:"purpose" db:"purpose"`
-	ConnectedAt  time.Time `json:"connected_at" db:"connected_at"`
+	ID             string     `json:"id" db:"id"`
+	TriggerID      string     `json:"trigger_id" db:"trigger_id"`
+	GoogleEmail    string     `json:"google_email" db:"google_email"`
+	RefreshToken   []byte     `json:"-" db:"refresh_token"`
+	AccessToken    []byte     `json:"-" db:"access_token"`
+	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty" db:"token_expires_at"`
+	Scopes         *string    `json:"scopes,omitempty" db:"scopes"`
+	Label          *string    `json:"label,omitempty" db:"label"`
+	Purpose        string     `json:"purpose" db:"purpose"`
+	Status         string     `json:"status" db:"status"`
+	LastError      *string    `json:"last_error,omitempty" db:"last_error"`
+	ConnectedAt    time.Time  `json:"connected_at" db:"connected_at"`
 }
 
 // GoogleTokenResponse is returned by the internal token endpoint.

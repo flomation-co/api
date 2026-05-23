@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"database/sql"
+	"time"
 
 	"flomation.app/automate/api"
 )
@@ -31,7 +32,8 @@ func (s *Service) GetTriggerGoogleAccounts(triggerID string, purpose ...string) 
 		err = s.conn.Select(&results, `
 			SELECT id, trigger_id, google_email,
 				PGP_SYM_DECRYPT(refresh_token, $2) AS refresh_token,
-				scopes, label, purpose, connected_at
+				scopes, label, purpose, status, last_error,
+				token_expires_at, connected_at
 			FROM trigger_google_account
 			WHERE trigger_id = $1 AND purpose = $3
 			ORDER BY connected_at ASC
@@ -40,7 +42,8 @@ func (s *Service) GetTriggerGoogleAccounts(triggerID string, purpose ...string) 
 		err = s.conn.Select(&results, `
 			SELECT id, trigger_id, google_email,
 				PGP_SYM_DECRYPT(refresh_token, $2) AS refresh_token,
-				scopes, label, purpose, connected_at
+				scopes, label, purpose, status, last_error,
+				token_expires_at, connected_at
 			FROM trigger_google_account
 			WHERE trigger_id = $1
 			ORDER BY connected_at ASC
@@ -78,4 +81,64 @@ func (s *Service) DeleteTriggerGoogleAccount(triggerID, email string, purpose ..
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// GetTriggerGoogleAccountsNeedingRefresh returns trigger-scoped accounts
+// whose cached access token is missing or expiring within the given window.
+func (s *Service) GetTriggerGoogleAccountsNeedingRefresh(within time.Duration) ([]GoogleAccountRefreshRow, error) {
+	var rows []GoogleAccountRefreshRow
+	if err := s.conn.Select(&rows, `
+		SELECT id, PGP_SYM_DECRYPT(refresh_token, $2) AS refresh_token,
+		       purpose, google_email
+		FROM trigger_google_account
+		WHERE status = 'active'
+		  AND refresh_token IS NOT NULL
+		  AND (
+		      access_token IS NULL
+		      OR token_expires_at IS NULL
+		      OR token_expires_at < NOW() + $1::INTERVAL
+		  )`,
+		within.String(), s.config.Database.EncryptionKey); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// StoreTriggerGoogleAccountAccessToken caches a fresh access token.
+func (s *Service) StoreTriggerGoogleAccountAccessToken(id, accessToken string, expiresAt *time.Time) error {
+	_, err := s.conn.Exec(`
+		UPDATE trigger_google_account
+		SET access_token = PGP_SYM_ENCRYPT($2, $3),
+		    token_expires_at = $4,
+		    status = 'active',
+		    last_error = NULL
+		WHERE id = $1`,
+		id, accessToken, s.config.Database.EncryptionKey, expiresAt)
+	return err
+}
+
+// UpdateTriggerGoogleAccountStatus sets the status and optional error message.
+func (s *Service) UpdateTriggerGoogleAccountStatus(id, status string, lastError *string) error {
+	_, err := s.conn.Exec(`
+		UPDATE trigger_google_account
+		SET status = $2, last_error = $3
+		WHERE id = $1`, id, status, lastError)
+	return err
+}
+
+// GetTriggerGoogleAccountAccessToken returns the cached decrypted access token.
+func (s *Service) GetTriggerGoogleAccountAccessToken(id string) (string, error) {
+	var token string
+	err := s.conn.Get(&token, `
+		SELECT COALESCE(PGP_SYM_DECRYPT(access_token, $2), '')
+		FROM trigger_google_account
+		WHERE id = $1
+		  AND access_token IS NOT NULL
+		  AND token_expires_at > NOW()
+		  AND status = 'active'`,
+		id, s.config.Database.EncryptionKey)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }

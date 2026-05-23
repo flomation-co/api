@@ -360,6 +360,7 @@ func (m *mockPersistence) GetGoogleAccounts(string, ...string) ([]*api.AgentUser
 	return nil, nil
 }
 func (m *mockPersistence) DeleteGoogleAccount(string, string, ...string) error { return nil }
+func (m *mockPersistence) GetGoogleAccountAccessToken(string) (string, error) { return "", nil }
 
 func (m *mockPersistence) UpsertTriggerGoogleAccount(string, string, string, string, string) error {
 	return nil
@@ -368,6 +369,7 @@ func (m *mockPersistence) GetTriggerGoogleAccounts(string, ...string) ([]*api.Tr
 	return nil, nil
 }
 func (m *mockPersistence) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
+func (m *mockPersistence) GetTriggerGoogleAccountAccessToken(string) (string, error) { return "", nil }
 
 // Agent schedule stubs.
 func (m *mockPersistence) CreateAgentSchedule(api.AgentSchedule) (*string, error) { return nil, nil }

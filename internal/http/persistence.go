@@ -237,11 +237,13 @@ type Persistence interface {
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error
 	GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)
 	DeleteGoogleAccount(agentUserID, email string, purpose ...string) error
+	GetGoogleAccountAccessToken(id string) (string, error)
 
 	// Google account connections — trigger scoped (standalone flows)
 	UpsertTriggerGoogleAccount(triggerID, email, refreshToken, label, purpose string) error
 	GetTriggerGoogleAccounts(triggerID string, purpose ...string) ([]*api.TriggerGoogleAccount, error)
 	DeleteTriggerGoogleAccount(triggerID, email string, purpose ...string) error
+	GetTriggerGoogleAccountAccessToken(id string) (string, error)
 
 	// Agent schedules — AI-managed recurring flow execution.
 	CreateAgentSchedule(s api.AgentSchedule) (*string, error)

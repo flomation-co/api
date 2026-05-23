@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"flomation.app/automate/api"
 
@@ -82,8 +83,9 @@ func (s *Service) getGoogleTokensInternal(c *gin.Context) {
 }
 
 // getGoogleRefreshTokensInternal handles GET /api/v1/internal/agent-user/:id/google-refresh-tokens.
-// Returns raw decrypted refresh tokens. Called ONLY by Launch (service-to-service)
-// for the actual token exchange. Not exposed to runners or executors.
+// Returns decrypted tokens. If a cached access_token is still valid, it is
+// included so Launch can skip the token exchange. Called ONLY by Launch
+// (service-to-service). Not exposed to runners or executors.
 func (s *Service) getGoogleRefreshTokensInternal(c *gin.Context) {
 	agentUserID := c.Param("id")
 	purpose := c.Query("purpose")
@@ -108,6 +110,7 @@ func (s *Service) getGoogleRefreshTokensInternal(c *gin.Context) {
 		Email        string `json:"email"`
 		Label        string `json:"label,omitempty"`
 		RefreshToken string `json:"refresh_token"`
+		AccessToken  string `json:"access_token,omitempty"`
 	}
 
 	var responses []accountResponse
@@ -116,10 +119,18 @@ func (s *Service) getGoogleRefreshTokensInternal(c *gin.Context) {
 		if acct.Label != nil {
 			label = *acct.Label
 		}
+
+		// Include cached access token if still valid
+		var cachedToken string
+		if acct.TokenExpiresAt != nil && acct.TokenExpiresAt.After(time.Now().Add(30*time.Second)) && acct.Status == "active" {
+			cachedToken, _ = s.persistence.GetGoogleAccountAccessToken(acct.ID)
+		}
+
 		responses = append(responses, accountResponse{
 			Email:        acct.GoogleEmail,
 			Label:        label,
 			RefreshToken: string(acct.RefreshToken),
+			AccessToken:  cachedToken,
 		})
 	}
 

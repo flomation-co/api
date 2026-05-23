@@ -524,6 +524,11 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.GET("/:id/schedule", s.getAgentSchedules)
 	agents.GET("/:id/slack-permissions", s.checkSlackPermissions)
 
+	// Google account management (browser-accessible, JWT-auth'd).
+	// Uses agent ID as the trigger_google_account scope key.
+	agents.GET("/:id/google-accounts", s.getAgentGoogleAccounts)
+	agents.DELETE("/:id/google-account/:email", s.deleteAgentGoogleAccount)
+
 	// Internal endpoints — no JWT, service-to-service calls.
 	// When mTLS is enabled, these register on a separate Gin engine
 	// served on the internal port with client certificate verification.
