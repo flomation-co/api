@@ -430,6 +430,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	executions.GET("/:id/environment/:environment", s.executionMiddleware, s.getExecutionEnvironment)
 	executions.GET("/:id/environment/:environment/property/:name", s.executionMiddleware, s.getExecutionEnvironmentProperty)
 	executions.GET("/:id/environment/:environment/secret/:name", s.executionMiddleware, s.getExecutionEnvironmentSecret)
+	executions.GET("/:id/environment/:environment/credential/:name", s.executionMiddleware, s.getExecutionEnvironmentCredential)
 
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)
@@ -466,6 +467,11 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.POST("/:environment/property/:id", s.jwtMiddleware, s.updateEnvironmentPropertyByID)
 	environment.DELETE("/:environment/property/:id", s.jwtMiddleware, s.deleteEnvironmentPropertyByID)
 
+	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
+	environment.POST("/:environment/credential", s.jwtMiddleware, s.createEnvironmentCredential)
+	environment.POST("/:environment/credential/:id/reauthorise", s.jwtMiddleware, s.reauthoriseCredential)
+	environment.DELETE("/:environment/credential/:id", s.jwtMiddleware, s.deleteEnvironmentCredential)
+
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)
 	environment.GET("/:environment/secret/:name", s.jwtMiddleware, s.getEnvironmentSecretByName)
 	environment.POST("/:environment/secret", s.jwtMiddleware, s.createEnvironmentSecret)
@@ -476,6 +482,10 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	v1.POST("auth/stream-token", s.jwtMiddleware, s.issueStreamToken)
 
 	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
+
+	// Credentials
+	v1.GET("credential/providers", s.jwtMiddleware, s.getCredentialProviders)
+	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
 
 	// Agents
 	agents := v1.Group("agent")
@@ -513,6 +523,11 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.PATCH("/:id/max-pinned-memories", s.updateMaxPinnedMemories)
 	agents.GET("/:id/schedule", s.getAgentSchedules)
 	agents.GET("/:id/slack-permissions", s.checkSlackPermissions)
+
+	// Google account management (browser-accessible, JWT-auth'd).
+	// Uses agent ID as the trigger_google_account scope key.
+	agents.GET("/:id/google-accounts", s.getAgentGoogleAccounts)
+	agents.DELETE("/:id/google-account/:email", s.deleteAgentGoogleAccount)
 
 	// Internal endpoints — no JWT, service-to-service calls.
 	// When mTLS is enabled, these register on a separate Gin engine

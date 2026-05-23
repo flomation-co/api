@@ -329,6 +329,50 @@ type EnvironmentSecret struct {
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
 }
 
+// CredentialProvider represents an OAuth provider configuration.
+type CredentialProvider struct {
+	Slug          string     `json:"slug" db:"slug"`
+	Name          string     `json:"name" db:"name"`
+	Icon          string     `json:"icon" db:"icon"`
+	AuthURL       string     `json:"auth_url" db:"auth_url"`
+	TokenURL      string     `json:"token_url" db:"token_url"`
+	RevokeURL     *string    `json:"revoke_url,omitempty" db:"revoke_url"`
+	DefaultScopes *string    `json:"default_scopes,omitempty" db:"default_scopes"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+}
+
+// EnvironmentCredential represents an OAuth credential stored in an environment.
+type EnvironmentCredential struct {
+	ID              string           `json:"id" db:"id"`
+	EnvironmentID   string           `json:"environment_id" db:"environment_id"`
+	ProviderSlug    string           `json:"provider_slug" db:"provider_slug"`
+	Name            string           `json:"name" db:"name"`
+	ClientID        *string          `json:"-" db:"client_id"`
+	ClientSecret    *string          `json:"-" db:"client_secret"`
+	AccessToken     *string          `json:"-" db:"access_token"`
+	RefreshToken    *string          `json:"-" db:"refresh_token"`
+	TokenExpiresAt  *time.Time       `json:"token_expires_at,omitempty" db:"token_expires_at"`
+	Scopes          *string          `json:"scopes,omitempty" db:"scopes"`
+	Status          string           `json:"status" db:"status"`
+	LastRefreshedAt *time.Time       `json:"last_refreshed_at,omitempty" db:"last_refreshed_at"`
+	LastError       *string          `json:"last_error,omitempty" db:"last_error"`
+	Metadata        *json.RawMessage `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at" db:"updated_at"`
+
+	// Non-persisted: provider details joined for API responses
+	ProviderName *string `json:"provider_name,omitempty" db:"provider_name"`
+	ProviderIcon *string `json:"provider_icon,omitempty" db:"provider_icon"`
+}
+
+const (
+	CredentialStatusPending = "pending"
+	CredentialStatusActive  = "active"
+	CredentialStatusExpired = "expired"
+	CredentialStatusRevoked = "revoked"
+	CredentialStatusError   = "error"
+)
+
 type Feedback struct {
 	ID        string  `json:"id" db:"id"`
 	UserID    *string `json:"user_id,omitempty" db:"user_id"`
@@ -518,27 +562,35 @@ type AgentUser struct {
 // agent_user. Each user can connect multiple accounts (work + personal).
 // Tokens are encrypted at rest and scoped per-account.
 type AgentUserGoogleAccount struct {
-	ID           string    `json:"id" db:"id"`
-	AgentUserID  string    `json:"agent_user_id" db:"agent_user_id"`
-	GoogleEmail  string    `json:"google_email" db:"google_email"`
-	RefreshToken []byte    `json:"-" db:"refresh_token"` // never serialised to JSON
-	Scopes       *string   `json:"scopes,omitempty" db:"scopes"`
-	Label        *string   `json:"label,omitempty" db:"label"`
-	Purpose      string    `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
-	ConnectedAt  time.Time `json:"connected_at" db:"connected_at"`
+	ID             string     `json:"id" db:"id"`
+	AgentUserID    string     `json:"agent_user_id" db:"agent_user_id"`
+	GoogleEmail    string     `json:"google_email" db:"google_email"`
+	RefreshToken   []byte     `json:"-" db:"refresh_token"` // never serialised to JSON
+	AccessToken    []byte     `json:"-" db:"access_token"`  // cached, encrypted
+	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty" db:"token_expires_at"`
+	Scopes         *string    `json:"scopes,omitempty" db:"scopes"`
+	Label          *string    `json:"label,omitempty" db:"label"`
+	Purpose        string     `json:"purpose" db:"purpose"` // "calendar", "email_read", "email_send"
+	Status         string     `json:"status" db:"status"`
+	LastError      *string    `json:"last_error,omitempty" db:"last_error"`
+	ConnectedAt    time.Time  `json:"connected_at" db:"connected_at"`
 }
 
 // TriggerGoogleAccount represents a Google account connected directly to
 // a trigger (not an agent_user). Used by email triggers in standalone flows.
 type TriggerGoogleAccount struct {
-	ID           string    `json:"id" db:"id"`
-	TriggerID    string    `json:"trigger_id" db:"trigger_id"`
-	GoogleEmail  string    `json:"google_email" db:"google_email"`
-	RefreshToken []byte    `json:"-" db:"refresh_token"`
-	Scopes       *string   `json:"scopes,omitempty" db:"scopes"`
-	Label        *string   `json:"label,omitempty" db:"label"`
-	Purpose      string    `json:"purpose" db:"purpose"`
-	ConnectedAt  time.Time `json:"connected_at" db:"connected_at"`
+	ID             string     `json:"id" db:"id"`
+	TriggerID      string     `json:"trigger_id" db:"trigger_id"`
+	GoogleEmail    string     `json:"google_email" db:"google_email"`
+	RefreshToken   []byte     `json:"-" db:"refresh_token"`
+	AccessToken    []byte     `json:"-" db:"access_token"`
+	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty" db:"token_expires_at"`
+	Scopes         *string    `json:"scopes,omitempty" db:"scopes"`
+	Label          *string    `json:"label,omitempty" db:"label"`
+	Purpose        string     `json:"purpose" db:"purpose"`
+	Status         string     `json:"status" db:"status"`
+	LastError      *string    `json:"last_error,omitempty" db:"last_error"`
+	ConnectedAt    time.Time  `json:"connected_at" db:"connected_at"`
 }
 
 // GoogleTokenResponse is returned by the internal token endpoint.

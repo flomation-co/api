@@ -73,6 +73,12 @@ type BillingConfig struct {
 	InternalURL             string `json:"internal_url,omitempty" env:"BILLING_INTERNAL_URL" arg:"billing-internal-url"`
 }
 
+// OAuthProviderConfig holds client credentials for a default OAuth provider.
+type OAuthProviderConfig struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
 type Config struct {
 	HttpListenConfig HttpListenConfig `json:"http"`
 	Database         DatabaseConfig   `json:"database"`
@@ -83,6 +89,7 @@ type Config struct {
 	TLS              *mtls.TLSConfig  `json:"tls,omitempty"`
 	Metrics          MetricsConfig    `json:"metrics"`
 	Billing          BillingConfig    `json:"billing"`
+	OAuth            map[string]OAuthProviderConfig `json:"oauth,omitempty"`
 }
 
 func LoadConfig(path string) (*Config, error) {

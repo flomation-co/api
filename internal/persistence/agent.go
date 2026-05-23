@@ -52,7 +52,7 @@ func (s *Service) GetAgentByID(id string) (*api.Agent, error) {
 func (s *Service) IsFlowAgentPaused(flowID string) bool {
 	var status string
 	err := s.conn.Get(&status, `
-		SELECT status FROM agents
+		SELECT status FROM agent
 		WHERE (orchestrator_flow_id = $1 OR extraction_flow_id = $1)
 		LIMIT 1`, flowID)
 	if err != nil {

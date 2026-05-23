@@ -194,6 +194,19 @@ func (m *mockPersistence) UpdateEnvironmentSecret(string, string, string, string
 	panic("not implemented")
 }
 func (m *mockPersistence) RemoveEnvironmentSecret(string) error { panic("not implemented") }
+
+func (m *mockPersistence) GetCredentialProviders() ([]api.CredentialProvider, error) { return nil, nil }
+func (m *mockPersistence) GetCredentialProvider(string) (*api.CredentialProvider, error) { return nil, nil }
+func (m *mockPersistence) GetCredentialsByEnvironmentID(string) ([]api.EnvironmentCredential, error) { return nil, nil }
+func (m *mockPersistence) GetCredentialByID(string) (*api.EnvironmentCredential, error) { return nil, nil }
+func (m *mockPersistence) CreateCredential(*api.EnvironmentCredential, string) (string, error) { return "", nil }
+func (m *mockPersistence) StoreCredentialTokens(string, string, string, string, string, string, *time.Time) error { return nil }
+func (m *mockPersistence) UpdateCredentialStatus(string, string, *string) error { return nil }
+func (m *mockPersistence) DeleteCredential(string, string) error { return nil }
+func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string, *string, error) { return nil, nil, nil }
+func (m *mockPersistence) GetCredentialByName(string, string, string) (*string, error) { return nil, nil }
+func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persistence.CredentialRefreshRow, error) { return nil, nil }
+
 func (m *mockPersistence) TriggerExecution(string, string, interface{}) (*string, error) {
 	panic("not implemented")
 }
@@ -347,6 +360,7 @@ func (m *mockPersistence) GetGoogleAccounts(string, ...string) ([]*api.AgentUser
 	return nil, nil
 }
 func (m *mockPersistence) DeleteGoogleAccount(string, string, ...string) error { return nil }
+func (m *mockPersistence) GetGoogleAccountAccessToken(string) (string, error) { return "", nil }
 
 func (m *mockPersistence) UpsertTriggerGoogleAccount(string, string, string, string, string) error {
 	return nil
@@ -355,6 +369,7 @@ func (m *mockPersistence) GetTriggerGoogleAccounts(string, ...string) ([]*api.Tr
 	return nil, nil
 }
 func (m *mockPersistence) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
+func (m *mockPersistence) GetTriggerGoogleAccountAccessToken(string) (string, error) { return "", nil }
 
 // Agent schedule stubs.
 func (m *mockPersistence) CreateAgentSchedule(api.AgentSchedule) (*string, error) { return nil, nil }

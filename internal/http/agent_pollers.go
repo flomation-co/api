@@ -52,6 +52,16 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 			log.Info("API-side credit sync poller registered")
 		}
 	}
+
+	// Credential token refresh poller (60s) — proactively refreshes OAuth tokens.
+	poller.StartCredentialRefreshPoller(p)
+
+	// Google account refresh poller (60s) — proactively refreshes agent Google account tokens.
+	if cfg.OAuth != nil {
+		if google, ok := cfg.OAuth["google"]; ok {
+			poller.StartGoogleAccountRefreshPoller(p, google.ClientID, google.ClientSecret)
+		}
+	}
 }
 
 // pollerDispatcherAdapter wraps *agent.DirectFlowDispatcher to satisfy

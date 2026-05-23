@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"flomation.app/automate/api"
 
@@ -146,6 +147,7 @@ func (s *Service) getTriggerGoogleRefreshTokensInternal(c *gin.Context) {
 		Email        string `json:"email"`
 		Label        string `json:"label,omitempty"`
 		RefreshToken string `json:"refresh_token"`
+		AccessToken  string `json:"access_token,omitempty"`
 	}
 
 	var responses []accountResponse
@@ -154,10 +156,18 @@ func (s *Service) getTriggerGoogleRefreshTokensInternal(c *gin.Context) {
 		if acct.Label != nil {
 			label = *acct.Label
 		}
+
+		// Include cached access token if still valid
+		var cachedToken string
+		if acct.TokenExpiresAt != nil && acct.TokenExpiresAt.After(time.Now().Add(30*time.Second)) && acct.Status == "active" {
+			cachedToken, _ = s.persistence.GetTriggerGoogleAccountAccessToken(acct.ID)
+		}
+
 		responses = append(responses, accountResponse{
 			Email:        acct.GoogleEmail,
 			Label:        label,
 			RefreshToken: string(acct.RefreshToken),
+			AccessToken:  cachedToken,
 		})
 	}
 
