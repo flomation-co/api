@@ -230,18 +230,31 @@ func (s *Service) resolveTriggerVariables(c *gin.Context) {
 
 	resolved := make(map[string]string)
 	for _, v := range request.Variables {
-		if strings.HasPrefix(v, "secrets.") || strings.HasPrefix(v, "secret.") {
-			name := strings.TrimPrefix(v, "secrets.")
+		// Strip ${...} wrapper if present — callers may pass either
+		// "secrets.name" or "${secrets.name}"
+		inner := v
+		if strings.HasPrefix(inner, "${") && strings.HasSuffix(inner, "}") {
+			inner = inner[2 : len(inner)-1]
+		}
+
+		if strings.HasPrefix(inner, "secrets.") || strings.HasPrefix(inner, "secret.") {
+			name := strings.TrimPrefix(inner, "secrets.")
 			name = strings.TrimPrefix(name, "secret.")
 			sec, err := s.persistence.GetEnvironmentSecretByName(env.ID, env.SecretKey, name)
 			if err == nil && sec != nil {
 				resolved[v] = sec.Value
 			}
-		} else if strings.HasPrefix(v, "env.") {
-			name := strings.TrimPrefix(v, "env.")
+		} else if strings.HasPrefix(inner, "env.") {
+			name := strings.TrimPrefix(inner, "env.")
 			prop, err := s.persistence.GetEnvironmentPropertyByName(env.ID, env.SecretKey, name)
 			if err == nil && prop != nil {
 				resolved[v] = prop.Value
+			}
+		} else if strings.HasPrefix(inner, "credentials.") {
+			name := strings.TrimPrefix(inner, "credentials.")
+			token, err := s.persistence.GetCredentialByName(env.ID, name, env.SecretKey)
+			if err == nil && token != nil {
+				resolved[v] = *token
 			}
 		}
 	}

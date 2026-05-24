@@ -467,6 +467,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.POST("/:environment/property/:id", s.jwtMiddleware, s.updateEnvironmentPropertyByID)
 	environment.DELETE("/:environment/property/:id", s.jwtMiddleware, s.deleteEnvironmentPropertyByID)
 
+	environment.GET("/:environment/facebook-pages/:credentialName", s.jwtMiddleware, s.getFacebookPages)
+	environment.GET("/:environment/facebook-webhook-check/:credentialName/:pageId", s.jwtMiddleware, s.checkFacebookWebhook)
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
 	environment.POST("/:environment/credential", s.jwtMiddleware, s.createEnvironmentCredential)
 	environment.POST("/:environment/credential/:id/reauthorise", s.jwtMiddleware, s.reauthoriseCredential)
@@ -538,6 +540,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		s.internalEngine = gin.New()
 		internalRouter = s.internalEngine.Group("api/v1")
 	}
+	// Trigger variable resolution (called by Launch for ${secrets.X}, ${credentials.X})
+	internalRouter.POST("/trigger/:id/resolve", s.resolveTriggerVariables)
+
 	internal := internalRouter.Group("internal")
 	internal.POST("/agent/:id/message", s.createAgentMessageInternal)
 	internal.GET("/agent/:id/state/:key", s.getAgentStateInternal)
