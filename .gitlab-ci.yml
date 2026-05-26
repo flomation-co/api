@@ -455,7 +455,7 @@ Deploy to Sandbox:
     - mkdir -p ~/.ssh && echo "${OVH_DEPLOY_KEY}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
     - ssh -o StrictHostKeyChecking=no ubuntu@${OVH_HOST} "sudo apt update && sudo apt install -y ${PACKAGE} && sudo systemctl restart ${SERVICE}"
 
-Deploy to Live:
+Deploy to Live (AWS):
   stage: Production
   when: manual
   variables:
@@ -466,6 +466,19 @@ Deploy to Live:
     - aws s3 cp s3://${DEPLOY_BUCKET}/deploy-application-aws.sh .
     - chmod +x deploy-application-aws.sh
     - ENVIRONMENT=${ENVIRONMENT} APPLICATION=${NAME} ./deploy-application-aws.sh
+
+Deploy to Live:
+  stage: Production
+  variables:
+    OVH_HOST: "${OVH_LIVE_HOST}"
+    PACKAGE: "flomation-${NAME}"
+    SERVICE: "flomation-${NAME}"
+  only:
+    - main
+  when: manual
+  script:
+    - mkdir -p ~/.ssh && echo "${OVH_DEPLOY_KEY}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+    - ssh -o StrictHostKeyChecking=no ubuntu@${OVH_HOST} "sudo apt update && sudo apt install -y ${PACKAGE} && sudo systemctl restart ${SERVICE}"
 
 test-suite:
   extends: .test-suite-template
