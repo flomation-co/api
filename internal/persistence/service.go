@@ -2132,7 +2132,7 @@ func NewService(config *config.Config) (*Service, error) {
 				   AND se.entitlement_key = 'execution_minutes'
 				   AND se.subscription_status IN ('active', 'trialling', 'past_due')
 				 LIMIT 1),
-				5 * 60 * 1000
+				50 * 60 * 1000
 			) AS allowance
 		FROM
 			execution e
@@ -2168,7 +2168,7 @@ func NewService(config *config.Config) (*Service, error) {
 				   AND se.entitlement_key = 'execution_minutes'
 				   AND se.subscription_status IN ('active', 'trialling', 'past_due')
 				 LIMIT 1),
-				5 * 60 * 1000
+				50 * 60 * 1000
 			) AS allowance
 		FROM
 			execution e
