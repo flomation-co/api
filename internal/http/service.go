@@ -509,6 +509,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.GET("/:id/message", s.getAgentMessages)
 	agents.POST("/:id/message", s.createAgentMessage)
 	agents.GET("/:id/execution", s.getAgentExecutions)
+	agents.GET("/:id/session/:sessionId/stream", s.streamAgentSession)
 
 	// Agent Memory Phase 6: user-facing memory management.
 	agents.GET("/:id/my-memories", s.getMyAgentMemories)
