@@ -53,8 +53,47 @@ func (s *Service) checkPermission(c *gin.Context, required rbac.Permission) bool
 	return true
 }
 
+// checkAnyPermission verifies the user has at least one of the required permissions.
+func (s *Service) checkAnyPermission(c *gin.Context, required ...rbac.Permission) bool {
+	user := s.getUserFromContext(c)
+	if user == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return false
+	}
+
+	if len(user.Organisations) == 0 {
+		return true
+	}
+
+	orgID := user.Organisations[0].ID
+
+	role, err := s.persistence.GetUserRoleInOrganisation(orgID, user.ID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to check user role")
+		c.AbortWithStatus(http.StatusForbidden)
+		return false
+	}
+
+	if role != nil && *role == "admin" {
+		return true
+	}
+
+	perms := s.getEffectivePermissions(orgID, user.ID)
+
+	if !rbac.HasAnyPermission(perms, required...) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": "insufficient_permissions",
+		})
+		return false
+	}
+
+	return true
+}
+
 // getEffectivePermissions returns the user's effective permissions in the org.
-// Members not assigned to any team have no permissions.
+// When no groups are configured at all, members receive DefaultMemberPermissions.
+// When groups exist but the user is not in any, they receive no permissions
+// (the admin has intentionally not assigned them).
 func (s *Service) getEffectivePermissions(orgID, userID string) []string {
 	count, err := s.persistence.CountUserGroupsInOrganisation(orgID, userID)
 	if err != nil {
@@ -62,8 +101,20 @@ func (s *Service) getEffectivePermissions(orgID, userID string) []string {
 		return nil
 	}
 
-	// User is not in any team — no permissions
 	if count == 0 {
+		// Check whether the org has any groups configured at all
+		groups, err := s.persistence.GetGroupsByOrganisationID(orgID)
+		if err != nil {
+			log.WithFields(log.Fields{"error": err}).Error("unable to get org groups")
+			return nil
+		}
+
+		if len(groups) == 0 {
+			// No groups configured — grant default member permissions
+			return rbac.DefaultMemberPermissions
+		}
+
+		// Groups exist but user is not in any — intentionally no permissions
 		return nil
 	}
 
@@ -112,10 +163,47 @@ func (s *Service) getMyPermissions(c *gin.Context) {
 	}
 
 	perms := s.getEffectivePermissions(orgID, user.ID)
+	if perms == nil {
+		perms = []string{}
+	}
 
 	c.JSON(http.StatusOK, api.UserPermissions{
 		Role:        *role,
 		Permissions: perms,
 		IsAdmin:     false,
 	})
+}
+
+// getAgentEffectivePermissions returns an agent's effective permissions in the org.
+// Agents not assigned to any group receive no permissions.
+func (s *Service) getAgentEffectivePermissions(orgID, agentID string) []string {
+	count, err := s.persistence.CountAgentGroupsInOrganisation(orgID, agentID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to count agent groups")
+		return nil
+	}
+
+	if count == 0 {
+		return nil
+	}
+
+	perms, err := s.persistence.GetAgentPermissionsInOrganisation(orgID, agentID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get agent permissions")
+		return nil
+	}
+
+	return perms
+}
+
+// checkAgentPermission verifies that an agent has the required permission.
+// Returns true if the agent has access. Agents in personal mode (no org) are
+// granted all permissions.
+func (s *Service) checkAgentPermission(agentID string, orgID *string, required rbac.Permission) bool {
+	if orgID == nil {
+		return true
+	}
+
+	perms := s.getAgentEffectivePermissions(*orgID, agentID)
+	return rbac.HasPermission(perms, required)
 }

@@ -170,6 +170,12 @@ type Service struct {
 	stmtGetUserPermissionsInOrg *sqlx.NamedStmt
 	stmtGetDefaultGroups        *sqlx.NamedStmt
 	stmtCountUserGroupsInOrg    *sqlx.NamedStmt
+	stmtAddAgentToGroup         *sqlx.NamedStmt
+	stmtRemoveAgentFromGroup    *sqlx.NamedStmt
+	stmtGetAgentGroupMembers    *sqlx.NamedStmt
+	stmtGetAgentPermissionsInOrg *sqlx.NamedStmt
+	stmtCountAgentGroupsInOrg   *sqlx.NamedStmt
+	stmtGetOrgAgents            *sqlx.NamedStmt
 	stmtCreateFeedback          *sqlx.NamedStmt
 
 	stmtGetFloFavourites   *sqlx.NamedStmt
@@ -2412,6 +2418,68 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM organisation_group_member gm
 		INNER JOIN organisation_group g ON g.id = gm.group_id
 		WHERE g.organisation_id = :organisation_id AND gm.user_id = :user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Agent group membership statements
+	s.stmtAddAgentToGroup, err = s.conn.PrepareNamed(`
+		INSERT INTO organisation_group_agent (group_id, agent_id)
+		VALUES (:group_id, :agent_id)
+		ON CONFLICT (group_id, agent_id) DO NOTHING
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtRemoveAgentFromGroup, err = s.conn.PrepareNamed(`
+		DELETE FROM organisation_group_agent
+		WHERE group_id = :group_id AND agent_id = :agent_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentGroupMembers, err = s.conn.PrepareNamed(`
+		SELECT a.id AS agent_id, a.name, a.description, a.status, ga.added_at
+		FROM organisation_group_agent ga
+		INNER JOIN agent a ON a.id = ga.agent_id
+		WHERE ga.group_id = :group_id AND a.archived_at IS NULL
+		ORDER BY a.name
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetAgentPermissionsInOrg, err = s.conn.PrepareNamed(`
+		SELECT DISTINCT gp.permission
+		FROM organisation_group_permission gp
+		INNER JOIN organisation_group_agent ga ON ga.group_id = gp.group_id
+		INNER JOIN organisation_group g ON g.id = gp.group_id
+		WHERE g.organisation_id = :organisation_id AND ga.agent_id = :agent_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtCountAgentGroupsInOrg, err = s.conn.PrepareNamed(`
+		SELECT COUNT(*)
+		FROM organisation_group_agent ga
+		INNER JOIN organisation_group g ON g.id = ga.group_id
+		WHERE g.organisation_id = :organisation_id AND ga.agent_id = :agent_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetOrgAgents, err = s.conn.PrepareNamed(`
+		SELECT a.id, a.name, a.description, a.status, a.owner_id,
+			COALESCE(u.name, 'Unknown') AS owner_name, a.created_at
+		FROM agent a
+		LEFT JOIN users u ON u.id = a.owner_id
+		WHERE a.organisation_id = :organisation_id AND a.archived_at IS NULL
+		ORDER BY a.name
 	`)
 	if err != nil {
 		return nil, err
@@ -5067,6 +5135,100 @@ func (s *Service) CountUserGroupsInOrganisation(orgID, userID string) (int, erro
 	}
 
 	return count, nil
+}
+
+// Agent group membership
+
+func (s *Service) AddAgentToGroup(groupID, agentID string) error {
+	_, err := s.stmtAddAgentToGroup.Exec(struct {
+		GroupID string `db:"group_id"`
+		AgentID string `db:"agent_id"`
+	}{
+		GroupID: groupID,
+		AgentID: agentID,
+	})
+	return err
+}
+
+func (s *Service) RemoveAgentFromGroup(groupID, agentID string) error {
+	_, err := s.stmtRemoveAgentFromGroup.Exec(struct {
+		GroupID string `db:"group_id"`
+		AgentID string `db:"agent_id"`
+	}{
+		GroupID: groupID,
+		AgentID: agentID,
+	})
+	return err
+}
+
+func (s *Service) GetAgentGroupMembers(groupID string) ([]*api.AgentGroupMember, error) {
+	var results []*api.AgentGroupMember
+
+	if err := s.stmtGetAgentGroupMembers.Select(&results, struct {
+		GroupID string `db:"group_id"`
+	}{
+		GroupID: groupID,
+	}); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (s *Service) GetAgentPermissionsInOrganisation(orgID, agentID string) ([]string, error) {
+	var results []string
+
+	rows, err := s.stmtGetAgentPermissionsInOrg.Queryx(struct {
+		OrganisationID string `db:"organisation_id"`
+		AgentID        string `db:"agent_id"`
+	}{
+		OrganisationID: orgID,
+		AgentID:        agentID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var perm string
+		if err := rows.Scan(&perm); err != nil {
+			return nil, err
+		}
+		results = append(results, perm)
+	}
+
+	return results, nil
+}
+
+func (s *Service) CountAgentGroupsInOrganisation(orgID, agentID string) (int, error) {
+	var count int
+
+	if err := s.stmtCountAgentGroupsInOrg.Get(&count, struct {
+		OrganisationID string `db:"organisation_id"`
+		AgentID        string `db:"agent_id"`
+	}{
+		OrganisationID: orgID,
+		AgentID:        agentID,
+	}); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (s *Service) GetOrganisationAgents(orgID string) ([]*api.OrganisationAgentMember, error) {
+	var results []*api.OrganisationAgentMember
+
+	if err := s.stmtGetOrgAgents.Select(&results, struct {
+		OrganisationID string `db:"organisation_id"`
+	}{
+		OrganisationID: orgID,
+	}); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 // Flo favourites

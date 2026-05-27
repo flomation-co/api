@@ -125,6 +125,14 @@ type Persistence interface {
 	GetDefaultGroupsForOrganisation(orgID string) ([]string, error)
 	CountUserGroupsInOrganisation(orgID, userID string) (int, error)
 
+	// Agent RBAC
+	AddAgentToGroup(groupID, agentID string) error
+	RemoveAgentFromGroup(groupID, agentID string) error
+	GetAgentGroupMembers(groupID string) ([]*api.AgentGroupMember, error)
+	GetAgentPermissionsInOrganisation(orgID, agentID string) ([]string, error)
+	CountAgentGroupsInOrganisation(orgID, agentID string) (int, error)
+	GetOrganisationAgents(orgID string) ([]*api.OrganisationAgentMember, error)
+
 	// Feedback
 	CreateFeedback(feedback api.Feedback) error
 

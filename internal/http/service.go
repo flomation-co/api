@@ -367,6 +367,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	orgs.GET("/:ID/group/:groupID/member", s.getGroupMembers)
 	orgs.POST("/:ID/group/:groupID/member", s.addGroupMember)
 	orgs.DELETE("/:ID/group/:groupID/member/:userID", s.removeGroupMember)
+	orgs.POST("/:ID/group/:groupID/agent", s.addAgentToGroup)
+	orgs.DELETE("/:ID/group/:groupID/agent/:agentID", s.removeAgentFromGroup)
 	orgs.POST("/:ID/group/:groupID/permission", s.setGroupPermissions)
 	orgs.GET("/:ID/permissions", s.getMyPermissions)
 

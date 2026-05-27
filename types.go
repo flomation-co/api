@@ -446,6 +446,24 @@ type GroupMember struct {
 	AddedAt *time.Time `json:"added_at,omitempty" db:"added_at"`
 }
 
+type AgentGroupMember struct {
+	AgentID     string     `json:"agent_id" db:"agent_id"`
+	Name        string     `json:"name" db:"name"`
+	Description *string    `json:"description,omitempty" db:"description"`
+	Status      string     `json:"status" db:"status"`
+	AddedAt     *time.Time `json:"added_at,omitempty" db:"added_at"`
+}
+
+type OrganisationAgentMember struct {
+	AgentID     string    `json:"agent_id" db:"id"`
+	Name        string    `json:"name" db:"name"`
+	Description *string   `json:"description,omitempty" db:"description"`
+	Status      string    `json:"status" db:"status"`
+	OwnerID     string    `json:"owner_id" db:"owner_id"`
+	OwnerName   string    `json:"owner_name" db:"owner_name"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+}
+
 type UserPermissions struct {
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`

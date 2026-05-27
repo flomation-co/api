@@ -15,6 +15,7 @@ import (
 
 	"flomation.app/automate/api"
 	appmetrics "flomation.app/automate/api/internal/metrics"
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -242,6 +243,10 @@ func (s *Service) updateExecution(c *gin.Context) {
 }
 
 func (s *Service) getExecutionByID(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowExecute) {
+		return
+	}
+
 	id := c.Param("id")
 	user := s.getUserFromContext(c)
 
@@ -269,6 +274,10 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 }
 
 func (s *Service) getExecutions(c *gin.Context) {
+	if !s.checkPermission(c, rbac.FlowExecute) {
+		return
+	}
+
 	search := c.DefaultQuery("search", "")
 
 	offset := c.DefaultQuery("offset", "0")

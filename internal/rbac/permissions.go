@@ -74,6 +74,16 @@ func HasPermission(userPerms []string, required Permission) bool {
 	return false
 }
 
+// HasAnyPermission checks whether any of the required permissions exist in the given set.
+func HasAnyPermission(userPerms []string, required ...Permission) bool {
+	for _, r := range required {
+		if HasPermission(userPerms, r) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsValidPermission checks whether a string is a valid permission.
 func IsValidPermission(perm string) bool {
 	for _, p := range ValidPermissions {
