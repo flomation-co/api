@@ -571,6 +571,21 @@ func (s *Service) executeFlo(c *gin.Context) {
 	var data map[string]interface{}
 	_ = c.ShouldBindJSON(&data)
 
+	// Check agent RBAC permissions when the execution is agent-dispatched
+	if agentID, ok := data["agent_id"].(string); ok && agentID != "" {
+		agent, err := s.persistence.GetAgentByID(agentID)
+		if err == nil && agent != nil && agent.OrganisationID != nil {
+			if !s.checkAgentPermission(agentID, agent.OrganisationID, rbac.FlowExecute) {
+				log.WithFields(log.Fields{
+					"agent_id": agentID,
+					"flo_id":   floID,
+				}).Warn("agent lacks flow.execute permission")
+				c.JSON(http.StatusForbidden, gin.H{"error": "agent lacks flow.execute permission"})
+				return
+			}
+		}
+	}
+
 	// Determine channel type from trigger data (if agent-dispatched)
 	channelType, _ := data["channel_type"].(string)
 

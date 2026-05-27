@@ -173,3 +173,37 @@ func (s *Service) getMyPermissions(c *gin.Context) {
 		IsAdmin:     false,
 	})
 }
+
+// getAgentEffectivePermissions returns an agent's effective permissions in the org.
+// Agents not assigned to any group receive no permissions.
+func (s *Service) getAgentEffectivePermissions(orgID, agentID string) []string {
+	count, err := s.persistence.CountAgentGroupsInOrganisation(orgID, agentID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to count agent groups")
+		return nil
+	}
+
+	if count == 0 {
+		return nil
+	}
+
+	perms, err := s.persistence.GetAgentPermissionsInOrganisation(orgID, agentID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get agent permissions")
+		return nil
+	}
+
+	return perms
+}
+
+// checkAgentPermission verifies that an agent has the required permission.
+// Returns true if the agent has access. Agents in personal mode (no org) are
+// granted all permissions.
+func (s *Service) checkAgentPermission(agentID string, orgID *string, required rbac.Permission) bool {
+	if orgID == nil {
+		return true
+	}
+
+	perms := s.getAgentEffectivePermissions(*orgID, agentID)
+	return rbac.HasPermission(perms, required)
+}

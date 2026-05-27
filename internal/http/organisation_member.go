@@ -30,12 +30,20 @@ func (s *Service) getOrganisationMembers(c *gin.Context) {
 		return
 	}
 
-	if len(members) == 0 {
+	agents, err := s.persistence.GetOrganisationAgents(orgID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Warn("unable to get organisation agents")
+	}
+
+	if len(members) == 0 && len(agents) == 0 {
 		c.Status(http.StatusNoContent)
 		return
 	}
 
-	c.JSON(http.StatusOK, members)
+	c.JSON(http.StatusOK, gin.H{
+		"members": members,
+		"agents":  agents,
+	})
 }
 
 func (s *Service) removeOrganisationMember(c *gin.Context) {

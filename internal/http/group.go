@@ -171,12 +171,21 @@ func (s *Service) getGroupMembers(c *gin.Context) {
 		return
 	}
 
-	if len(members) == 0 {
+	agents, err := s.persistence.GetAgentGroupMembers(groupID)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get agent group members")
+		agents = []*api.AgentGroupMember{}
+	}
+
+	if len(members) == 0 && len(agents) == 0 {
 		c.Status(http.StatusNoContent)
 		return
 	}
 
-	c.JSON(http.StatusOK, members)
+	c.JSON(http.StatusOK, gin.H{
+		"users":  members,
+		"agents": agents,
+	})
 }
 
 type AddGroupMemberRequest struct {
@@ -263,4 +272,47 @@ func (s *Service) setGroupPermissions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, group)
+}
+
+type AddAgentToGroupRequest struct {
+	AgentID string `json:"agent_id"`
+}
+
+func (s *Service) addAgentToGroup(c *gin.Context) {
+	if !s.checkPermission(c, rbac.OrganisationManage) {
+		return
+	}
+
+	groupID := c.Param("groupID")
+
+	var req AddAgentToGroupRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if err := s.persistence.AddAgentToGroup(groupID, req.AgentID); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to add agent to group")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
+func (s *Service) removeAgentFromGroup(c *gin.Context) {
+	if !s.checkPermission(c, rbac.OrganisationManage) {
+		return
+	}
+
+	groupID := c.Param("groupID")
+	agentID := c.Param("agentID")
+
+	if err := s.persistence.RemoveAgentFromGroup(groupID, agentID); err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to remove agent from group")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	c.Status(http.StatusOK)
 }

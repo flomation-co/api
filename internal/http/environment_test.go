@@ -258,7 +258,19 @@ func (m *mockPersistence) GetUserPermissionsInOrganisation(string, string) ([]st
 }
 func (m *mockPersistence) GetDefaultGroupsForOrganisation(string) ([]string, error)  { return nil, nil }
 func (m *mockPersistence) CountUserGroupsInOrganisation(string, string) (int, error) { return 0, nil }
-func (m *mockPersistence) CreateFeedback(api.Feedback) error                         { return nil }
+func (m *mockPersistence) AddAgentToGroup(string, string) error                      { return nil }
+func (m *mockPersistence) RemoveAgentFromGroup(string, string) error                 { return nil }
+func (m *mockPersistence) GetAgentGroupMembers(string) ([]*api.AgentGroupMember, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAgentPermissionsInOrganisation(string, string) ([]string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) CountAgentGroupsInOrganisation(string, string) (int, error) { return 0, nil }
+func (m *mockPersistence) GetOrganisationAgents(string) ([]*api.OrganisationAgentMember, error) {
+	return nil, nil
+}
+func (m *mockPersistence) CreateFeedback(api.Feedback) error { return nil }
 
 // Agent stubs
 func (m *mockPersistence) GetAgents(string) ([]*api.Agent, error)                         { return nil, nil }
