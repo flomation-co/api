@@ -189,6 +189,10 @@ func (s *Service) getExecutionEnvironmentCredential(c *gin.Context) {
 }
 
 func (s *Service) getEnvironments(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return
+	}
+
 	user := s.getUserFromContext(c)
 	var organisation *string
 	if len(user.Organisations) > 0 {
@@ -213,6 +217,10 @@ func (s *Service) getEnvironments(c *gin.Context) {
 }
 
 func (s *Service) getEnvironmentByID(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return
+	}
+
 	id := c.Param("environment")
 	user := s.getUserFromContext(c)
 	if user == nil {
@@ -342,6 +350,10 @@ func (s *Service) deleteEnvironment(c *gin.Context) {
 }
 
 func (s *Service) getEnvironmentSecrets(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -381,6 +393,10 @@ func (s *Service) getEnvironmentSecrets(c *gin.Context) {
 }
 
 func (s *Service) getEnvironmentProperties(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -420,6 +436,10 @@ func (s *Service) getEnvironmentProperties(c *gin.Context) {
 }
 
 func (s *Service) getEnvironmentSecretByName(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string
@@ -476,6 +496,10 @@ func (s *Service) getEnvironmentSecretByName(c *gin.Context) {
 }
 
 func (s *Service) getEnvironmentPropertyByName(c *gin.Context) {
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return
+	}
+
 	environmentID := c.Param("environment")
 	user := s.getUserFromContext(c)
 	var organisation *string

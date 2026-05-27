@@ -74,6 +74,24 @@ func (s *Service) createOrganisation(c *gin.Context) {
 		return
 	}
 
+	// Create a default "Members" group with standard permissions so that
+	// new members invited to this organisation get a sensible set of
+	// permissions out of the box.
+	defaultGroupDesc := "Default group for organisation members"
+	groupID, err := s.persistence.CreateGroup(api.Group{
+		OrganisationID: *id,
+		Name:           "Members",
+		Description:    &defaultGroupDesc,
+		IsDefault:      true,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Warn("unable to create default group")
+	} else if groupID != nil {
+		if err := s.persistence.SetGroupPermissions(*groupID, rbac.DefaultMemberPermissions); err != nil {
+			log.WithFields(log.Fields{"error": err}).Warn("unable to set default group permissions")
+		}
+	}
+
 	o, err := s.persistence.GetOrganisationByID(*id)
 	if err != nil {
 		log.WithFields(log.Fields{

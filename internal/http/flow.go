@@ -17,6 +17,10 @@ import (
 )
 
 func (s *Service) getMyFlos(c *gin.Context) {
+	if !s.checkAnyPermission(c, rbac.FlowCreate, rbac.FlowEdit, rbac.FlowExecute) {
+		return
+	}
+
 	user := s.getUserFromContext(c)
 
 	offsetQuery := c.DefaultQuery("offset", "0")
@@ -76,6 +80,10 @@ func (s *Service) getMyFlos(c *gin.Context) {
 }
 
 func (s *Service) getFloByID(c *gin.Context) {
+	if !s.checkAnyPermission(c, rbac.FlowCreate, rbac.FlowEdit, rbac.FlowExecute) {
+		return
+	}
+
 	ID := c.Param("FloID")
 	user := s.getUserFromContext(c)
 

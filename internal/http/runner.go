@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -226,6 +227,10 @@ func (s *Service) unregisterRunner(c *gin.Context) {
 }
 
 func (s *Service) getRunners(c *gin.Context) {
+	if !s.checkPermission(c, rbac.RunnerView) {
+		return
+	}
+
 	user := s.getUserFromContext(c)
 	if user == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
