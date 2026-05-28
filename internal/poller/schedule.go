@@ -145,6 +145,10 @@ func (sp *SchedulePoller) processSchedule(sched *api.AgentSchedule) {
 	content := fmt.Sprintf(
 		"[SCHEDULED TASK] You have a recurring schedule called %q. "+
 			"The task: %s. "+
+			"Execute ONLY this specific task — nothing else. "+
+			"Do NOT add extra content such as briefings, ticket summaries, "+
+			"calendar checks, or email summaries unless the task description "+
+			"explicitly asks for them. "+
 			"Use your tools to carry out this task. %s "+
 			"Do NOT attempt to reply on a messaging channel directly — "+
 			"this execution has no channel context. You MUST use a tool.",
@@ -169,13 +173,18 @@ func (sp *SchedulePoller) processSchedule(sched *api.AgentSchedule) {
 	if agent.SystemPrompt != nil {
 		systemPrompt = *agent.SystemPrompt
 	}
-	systemPrompt += "\n\n━━━ Platform capabilities ━━━\n" +
-		"This execution was triggered by a recurring schedule you set up. " +
+	systemPrompt += "\n\n━━━ Schedule execution constraints ━━━\n" +
+		"This execution was triggered by a recurring schedule, NOT a user message. " +
+		"You are executing a single, specific task — the one described above. " +
+		"Do NOT proactively check calendars, emails, Linear tickets, or any other " +
+		"data source unless the task description explicitly requires it. " +
+		"Do NOT produce a daily briefing or summary unless the task says to. " +
+		"Deliver ONLY what the task asks for — nothing more.\n\n" +
 		"There is NO active channel — you are not responding to a message. " +
 		"You MUST use a tool to deliver the result (e.g. messaging/slack, " +
 		"messaging/telegram, email_send). Do NOT output a plain text response " +
 		"expecting it to reach the user — there is no channel to deliver it on.\n" +
-		"IMPORTANT: Send to ONE channel only. " + channelInstruction + "\n\n" +
+		"Send to ONE channel only. " + channelInstruction + "\n\n" +
 		"━━━ Current time ━━━\n" + time.Now().Format("Monday, 2 January 2006 15:04 MST")
 	triggerData["system_prompt"] = systemPrompt
 
