@@ -469,6 +469,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	environment.POST("/:environment/property/:id", s.jwtMiddleware, s.updateEnvironmentPropertyByID)
 	environment.DELETE("/:environment/property/:id", s.jwtMiddleware, s.deleteEnvironmentPropertyByID)
 
+	environment.GET("/:environment/elevenlabs-voices/:credential", s.jwtMiddleware, s.getElevenLabsVoices)
+	environment.GET("/:environment/elevenlabs-models/:credential", s.jwtMiddleware, s.getElevenLabsModels)
 	environment.GET("/:environment/facebook-pages/:credentialName", s.jwtMiddleware, s.getFacebookPages)
 	environment.GET("/:environment/facebook-webhook-check/:credentialName/:pageId", s.jwtMiddleware, s.checkFacebookWebhook)
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
@@ -528,6 +530,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	agents.PATCH("/:id/max-pinned-memories", s.updateMaxPinnedMemories)
 	agents.GET("/:id/schedule", s.getAgentSchedules)
 	agents.GET("/:id/slack-permissions", s.checkSlackPermissions)
+	agents.GET("/:id/twilio-verify", s.checkTwilioCredentials)
 
 	// Google account management (browser-accessible, JWT-auth'd).
 	// Uses agent ID as the trigger_google_account scope key.
@@ -654,6 +657,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/trigger/:id/google-tokens", s.getTriggerGoogleTokensInternal)
 	internal.GET("/trigger/:id/google-refresh-tokens", s.getTriggerGoogleRefreshTokensInternal)
 	internal.DELETE("/trigger/:id/google-account/:email", s.deleteTriggerGoogleAccountInternal)
+
+	// Voice session WebSocket proxy (executor ↔ Launch)
+	internal.GET("/voice-session/:session_id", s.handleVoiceSessionProxy)
 
 	return s
 }
