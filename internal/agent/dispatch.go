@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	api "flomation.app/automate/api"
 	log "github.com/sirupsen/logrus"
@@ -51,9 +52,14 @@ func (d *DirectFlowDispatcher) DispatchFlow(flowID string, triggerID *string, da
 
 		channelType, _ := data["channel_type"].(string)
 		if channelType != "" {
+			// Trigger type names use hyphens (e.g. "twilio-voice") while
+			// channel types use underscores (e.g. "twilio_voice"). Normalise
+			// for matching.
+			triggerTypeName := strings.ReplaceAll(channelType, "_", "-")
+
 			// Exact match first.
 			for _, t := range triggers {
-				if t.TypeName == channelType {
+				if t.TypeName == channelType || t.TypeName == triggerTypeName {
 					tid = t.ID
 					break
 				}

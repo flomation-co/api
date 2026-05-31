@@ -1,0 +1,1 @@
+DELETE FROM trigger_type WHERE name IN ('twilio-sms', 'twilio-voice');

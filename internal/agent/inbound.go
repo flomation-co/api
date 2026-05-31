@@ -398,6 +398,8 @@ func normaliseChannelType(channelType string) string {
 	switch channelType {
 	case "telegram_voice":
 		return "telegram"
+	case "twilio_voice":
+		return "twilio"
 	default:
 		return channelType
 	}
@@ -433,6 +435,11 @@ func DeriveExternalID(msg InboundMessage) (externalID, displayName string) {
 			externalID = extractBareEmail(v)
 			displayName = v
 		}
+	case "twilio_sms", "twilio_voice":
+		if v, ok := msg.Metadata["user_id"].(string); ok && v != "" {
+			externalID = v
+		}
+		displayName = externalID
 	}
 	if externalID == "" {
 		externalID = msg.Sender
@@ -463,6 +470,18 @@ func DeriveChannelScope(msg InboundMessage) (channelID string, threadID *string)
 			channelID = v
 		}
 		if v, ok := msg.Metadata["thread_id"].(string); ok && v != "" {
+			t := v
+			threadID = &t
+		}
+	case "twilio_sms":
+		if v, ok := msg.Metadata["user_id"].(string); ok {
+			channelID = v
+		}
+	case "twilio_voice":
+		if v, ok := msg.Metadata["user_id"].(string); ok {
+			channelID = v
+		}
+		if v, ok := msg.Metadata["call_sid"].(string); ok && v != "" {
 			t := v
 			threadID = &t
 		}
