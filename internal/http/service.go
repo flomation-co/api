@@ -660,6 +660,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	// Voice session WebSocket proxy (executor ↔ Launch)
 	internal.GET("/voice-session/:session_id", s.handleVoiceSessionProxy)
+	internal.POST("/voice-session/:session_id/register", s.handleVoiceSessionRegister)
 
 	return s
 }

@@ -3,7 +3,9 @@ package http
 // Voice session WebSocket proxy — bridges executor ↔ Launch for
 // Twilio voice call audio streaming.
 //
-// Route: GET /api/v1/internal/voice-session/:session_id
+// Routes:
+//   GET  /api/v1/internal/voice-session/:session_id          — WebSocket proxy
+//   POST /api/v1/internal/voice-session/:session_id/register — Pre-register outbound session
 //
 // The executor connects here via mTLS. The API proxies the WebSocket
 // to Launch's internal voice-session endpoint. This keeps executors
@@ -11,6 +13,7 @@ package http
 
 import (
 	"fmt"
+	"io"
 	gohttp "net/http"
 	"strings"
 
@@ -103,6 +106,54 @@ func (s *Service) handleVoiceSessionProxy(c *gin.Context) {
 	<-done
 
 	log.WithField("session_id", sessionID).Info("voice session proxy closed")
+}
+
+// handleVoiceSessionRegister handles POST /api/v1/internal/voice-session/:session_id/register
+// Proxies session pre-registration to Launch for outbound calls.
+func (s *Service) handleVoiceSessionRegister(c *gin.Context) {
+	sessionID := c.Param("session_id")
+	if sessionID == "" {
+		c.AbortWithStatus(gohttp.StatusBadRequest)
+		return
+	}
+
+	launchURL := s.config.InternalLaunchURL()
+	if launchURL == "" {
+		log.Error("voice session register: Launch URL not configured")
+		c.AbortWithStatus(gohttp.StatusInternalServerError)
+		return
+	}
+
+	endpoint := fmt.Sprintf("%s/internal/voice-session/%s/register", launchURL, sessionID)
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.AbortWithStatus(gohttp.StatusBadRequest)
+		return
+	}
+
+	req, err := gohttp.NewRequest(gohttp.MethodPost, endpoint, strings.NewReader(string(body)))
+	if err != nil {
+		log.WithError(err).Error("voice session register: failed to create request")
+		c.AbortWithStatus(gohttp.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.launch.Client().Do(req)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"session_id": sessionID,
+			"error":      err,
+		}).Error("voice session register: failed to forward to Launch")
+		c.AbortWithStatus(gohttp.StatusBadGateway)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Forward the response body (contains ws_url for the TwiML)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	c.Data(resp.StatusCode, "application/json", respBody)
 }
 
 // buildLaunchVoiceWSURL constructs the WebSocket URL for Launch's internal
