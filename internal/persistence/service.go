@@ -5332,3 +5332,58 @@ func (s *Service) DeleteEntitlements(ownerID string, orgID *string) error {
 	})
 	return err
 }
+
+// --- Suspend/Resume persistence methods ---
+
+func (s *Service) SaveExecutionCheckpoint(id string, checkpoint interface{}) error {
+	_, err := s.DB().Exec("UPDATE execution SET checkpoint = $1 WHERE id = $2", checkpoint, id)
+	return err
+}
+
+func (s *Service) SetExecutionResumeAt(id string, resumeAt time.Time) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_at = $1 WHERE id = $2", resumeAt, id)
+	return err
+}
+
+func (s *Service) ClearResumeAt(id string) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_at = NULL, resume_trigger_type = NULL, resume_trigger_match = NULL WHERE id = $1", id)
+	return err
+}
+
+func (s *Service) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_trigger_type = $1, resume_trigger_match = $2 WHERE id = $3",
+		triggerType, matchConfig, id)
+	return err
+}
+
+func (s *Service) IncrementSuspendCount(id string) error {
+	_, err := s.DB().Exec("UPDATE execution SET suspend_count = suspend_count + 1 WHERE id = $1", id)
+	return err
+}
+
+func (s *Service) AccumulateBillingDuration(id string, additionalMs int64) error {
+	_, err := s.DB().Exec("UPDATE execution SET billing_duration = COALESCE(billing_duration, 0) + $1 WHERE id = $2",
+		additionalMs, id)
+	return err
+}
+
+func (s *Service) AppendExecutionSegment(id string, segmentJSON []byte) error {
+	_, err := s.DB().Exec(
+		"UPDATE execution SET segments = COALESCE(segments, '[]'::jsonb) || $1::jsonb WHERE id = $2",
+		segmentJSON, id)
+	return err
+}
+
+func (s *Service) GetSuspendedExecutionsForResume(now time.Time, limit int) ([]*api.Execution, error) {
+	var executions []*api.Execution
+	err := s.DB().Select(&executions,
+		`SELECT id, flo_id, execution_status, completion_status, checkpoint, resume_at
+		 FROM execution
+		 WHERE execution_status = 'suspended'
+		   AND resume_at IS NOT NULL
+		   AND resume_at <= $1
+		 ORDER BY resume_at ASC
+		 LIMIT $2
+		 FOR UPDATE SKIP LOCKED`, now, limit)
+	return executions, err
+}

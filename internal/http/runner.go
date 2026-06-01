@@ -616,9 +616,10 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 	}
 
 	pe := api.PendingExecution{
-		Flow:      *flow,
-		Execution: *execution,
-		Data:      rev.Data,
+		Flow:       *flow,
+		Execution:  *execution,
+		Data:       rev.Data,
+		Checkpoint: execution.Checkpoint,
 	}
 
 	c.JSON(http.StatusOK, pe)

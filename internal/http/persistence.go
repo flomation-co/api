@@ -91,6 +91,13 @@ type Persistence interface {
 	UpdateCompletionStatus(ID string, status string) error
 	UpdateEnvironmentProperty(environmentID string, environmentKey string, property api.EnvironmentProperty) error
 	UpdateExecutionResult(ID string, result interface{}) error
+	SaveExecutionCheckpoint(id string, checkpoint interface{}) error
+	SetExecutionResumeAt(id string, resumeAt time.Time) error
+	ClearResumeAt(id string) error
+	SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error
+	IncrementSuspendCount(id string) error
+	AccumulateBillingDuration(id string, additionalMs int64) error
+	AppendExecutionSegment(id string, segmentJSON []byte) error
 	UpdateExecutionRunnerID(ID string, runnerID string) error
 	UpdateExecutionStatus(ID string, status string) error
 	UpdateFlo(flo api.Flo) error
