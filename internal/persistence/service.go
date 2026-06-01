@@ -1650,6 +1650,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
 		    result->'billingDuration' AS billing_duration,
+		    checkpoint, suspend_count,
 		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
@@ -1695,6 +1696,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
 		    result->'billingDuration' AS billing_duration,
+		    checkpoint, suspend_count,
 		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
