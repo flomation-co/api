@@ -13,7 +13,3 @@ ALTER TABLE execution ADD COLUMN IF NOT EXISTS suspend_count INT DEFAULT 0;
 
 -- Execution segments: timing for each run/resume cycle
 ALTER TABLE execution ADD COLUMN IF NOT EXISTS segments JSONB DEFAULT '[]'::jsonb;
-
--- Index for timed resume polling
-CREATE INDEX IF NOT EXISTS idx_execution_resume_at ON execution(resume_at)
-    WHERE execution_status = 'suspended' AND resume_at IS NOT NULL;
