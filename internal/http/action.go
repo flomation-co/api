@@ -39,6 +39,9 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"subflow":     {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
 	"string":      {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
 	"social":      {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
+	"google":      {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
+	"makefile":    {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
+	"twilio":      {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -51,6 +54,10 @@ var subCategoryMetadata = map[string]struct {
 	"aws/ec2":          {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
 	"social/linkedin":  {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
 	"social/facebook":  {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
+	"google/drive":     {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
+	"google/sheets":    {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
+	"google/docs":      {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
+	"google/slides":    {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
