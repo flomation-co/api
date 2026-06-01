@@ -888,7 +888,7 @@ func (s *Service) resumeExecution(c *gin.Context) {
 
 	// Optionally accept resume data (for event-based resumes)
 	var resumeData map[string]interface{}
-	_ = c.BindJSON(&resumeData)
+	_ = c.ShouldBindJSON(&resumeData)
 
 	// Re-queue: set status back to created so runner picks it up
 	if err := s.persistence.UpdateExecutionStatus(id, "created"); err != nil {
