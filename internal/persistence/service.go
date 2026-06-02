@@ -2526,7 +2526,7 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM agent a
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
-		WHERE a.owner_id = :owner_id AND a.archived_at IS NULL
+		WHERE a.owner_id = :owner_id AND a.organisation_id IS NULL AND a.archived_at IS NULL
 		ORDER BY a.updated_at DESC
 	`)
 	if err != nil {
