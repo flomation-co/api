@@ -36,6 +36,14 @@ var (
 		Name: "flomation_users_active_daily",
 		Help: "Users active in the last 24 hours.",
 	})
+	executionMinutesMonth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "flomation_execution_minutes_month",
+		Help: "Total execution minutes in the current calendar month.",
+	})
+	organisationsTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "flomation_organisations_total",
+		Help: "Total number of organisations on the platform.",
+	})
 )
 
 // StartCollector launches a background goroutine that periodically
@@ -71,5 +79,20 @@ func collect(db *sqlx.DB) {
 
 	if err := db.Get(&count, `SELECT COUNT(*) FROM users WHERE last_activity_at > NOW() - INTERVAL '24 hours'`); err == nil {
 		usersActiveDaily.Set(float64(count))
+	}
+
+	// Total execution minutes in the current calendar month (from billing_duration).
+	var totalMs int64
+	if err := db.Get(&totalMs, `
+		SELECT COALESCE(SUM(billing_duration), 0)
+		FROM execution
+		WHERE created_at >= date_trunc('month', NOW())
+		  AND billing_duration IS NOT NULL`); err == nil {
+		executionMinutesMonth.Set(float64(totalMs) / 60000.0)
+	}
+
+	// Total organisations.
+	if err := db.Get(&count, `SELECT COUNT(*) FROM organisation`); err == nil {
+		organisationsTotal.Set(float64(count))
 	}
 }
