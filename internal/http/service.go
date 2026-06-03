@@ -422,6 +422,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	executions.POST("/:id/state", s.executionMiddleware, s.updateExecutionState)
 	executions.POST("/:id/logs", s.executionMiddleware, s.appendExecutionLogs)
 	executions.POST("/:id/cancel", s.jwtMiddleware, s.cancelExecution)
+	executions.POST("/:id/resume", s.jwtMiddleware, s.resumeExecution)
 	executions.POST("/:id", s.executionMiddleware, s.updateExecution)
 
 	executions.GET("", s.jwtMiddleware, s.getExecutions)

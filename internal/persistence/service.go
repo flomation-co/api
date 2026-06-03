@@ -1650,6 +1650,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
 		    result->'billingDuration' AS billing_duration,
+		    checkpoint, suspend_count,
 		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
@@ -1695,6 +1696,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    execution_status, completion_status, data, runner_id, result,
 		    result->'duration' AS duration,
 		    result->'billingDuration' AS billing_duration,
+		    checkpoint, suspend_count,
 		    (SELECT COUNT(1) FROM execution e2 WHERE e2.flo_id = execution.flo_id AND e2.created_at <= execution.created_at) AS sequence
 	`)
 	if err != nil {
@@ -2524,7 +2526,7 @@ func NewService(config *config.Config) (*Service, error) {
 		FROM agent a
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_message WHERE agent_id = a.id) mc ON true
 		LEFT JOIN LATERAL (SELECT COUNT(1) AS cnt FROM agent_execution WHERE agent_id = a.id) ec ON true
-		WHERE a.owner_id = :owner_id AND a.archived_at IS NULL
+		WHERE a.owner_id = :owner_id AND a.organisation_id IS NULL AND a.archived_at IS NULL
 		ORDER BY a.updated_at DESC
 	`)
 	if err != nil {
@@ -5331,4 +5333,59 @@ func (s *Service) DeleteEntitlements(ownerID string, orgID *string) error {
 		"organisation_id": orgID,
 	})
 	return err
+}
+
+// --- Suspend/Resume persistence methods ---
+
+func (s *Service) SaveExecutionCheckpoint(id string, checkpoint interface{}) error {
+	_, err := s.DB().Exec("UPDATE execution SET checkpoint = $1 WHERE id = $2", checkpoint, id)
+	return err
+}
+
+func (s *Service) SetExecutionResumeAt(id string, resumeAt time.Time) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_at = $1 WHERE id = $2", resumeAt, id)
+	return err
+}
+
+func (s *Service) ClearResumeAt(id string) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_at = NULL, resume_trigger_type = NULL, resume_trigger_match = NULL WHERE id = $1", id)
+	return err
+}
+
+func (s *Service) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_trigger_type = $1, resume_trigger_match = $2 WHERE id = $3",
+		triggerType, matchConfig, id)
+	return err
+}
+
+func (s *Service) IncrementSuspendCount(id string) error {
+	_, err := s.DB().Exec("UPDATE execution SET suspend_count = suspend_count + 1 WHERE id = $1", id)
+	return err
+}
+
+func (s *Service) AccumulateBillingDuration(id string, additionalMs int64) error {
+	_, err := s.DB().Exec("UPDATE execution SET billing_duration = COALESCE(billing_duration, 0) + $1 WHERE id = $2",
+		additionalMs, id)
+	return err
+}
+
+func (s *Service) AppendExecutionSegment(id string, segmentJSON []byte) error {
+	_, err := s.DB().Exec(
+		"UPDATE execution SET segments = COALESCE(segments, '[]'::jsonb) || $1::jsonb WHERE id = $2",
+		segmentJSON, id)
+	return err
+}
+
+func (s *Service) GetSuspendedExecutionsForResume(now time.Time, limit int) ([]*api.Execution, error) {
+	var executions []*api.Execution
+	err := s.DB().Select(&executions,
+		`SELECT id, flo_id, execution_status, completion_status, checkpoint, resume_at
+		 FROM execution
+		 WHERE execution_status = 'suspended'
+		   AND resume_at IS NOT NULL
+		   AND resume_at <= $1
+		 ORDER BY resume_at ASC
+		 LIMIT $2
+		 FOR UPDATE SKIP LOCKED`, now, limit)
+	return executions, err
 }

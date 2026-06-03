@@ -174,6 +174,12 @@ func (s *Service) updateExecution(c *gin.Context) {
 		return
 	}
 
+	// Handle suspended executions — store checkpoint and update status
+	if result.Suspended {
+		s.handleSuspendedExecution(c, id, execution, result)
+		return
+	}
+
 	if err := s.persistence.UpdateExecutionStatus(id, "executed"); err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -763,4 +769,156 @@ func renderNotificationEmail(header, message, executionID string) string {
 		return message
 	}
 	return buf.String()
+}
+
+// handleSuspendedExecution processes a suspended execution result from the runner.
+// Stores the checkpoint, records the execution segment, and updates status.
+func (s *Service) handleSuspendedExecution(c *gin.Context, id string, execution *api.Execution, result api.ExecutionResult) {
+	// Extract checkpoint and suspend info from state
+	stateMap, ok := result.State.(map[string]interface{})
+	if !ok {
+		// Try to unmarshal if it's raw JSON bytes
+		if raw, ok := result.State.(json.RawMessage); ok {
+			_ = json.Unmarshal(raw, &stateMap)
+		}
+	}
+
+	// Store checkpoint from state
+	var checkpoint json.RawMessage
+	if stateMap != nil {
+		if cp, ok := stateMap["checkpoint"]; ok {
+			checkpoint, _ = json.Marshal(cp)
+		}
+	}
+
+	// Record execution segment
+	var durationMs int64
+	if stateMap != nil {
+		if d, ok := stateMap["duration"].(float64); ok {
+			durationMs = int64(d)
+		}
+	}
+	segment := api.ExecutionSegment{
+		StartedAt:  execution.CreatedAt.Format(time.RFC3339),
+		EndedAt:    time.Now().UTC().Format(time.RFC3339),
+		DurationMs: durationMs,
+		Status:     "suspended",
+	}
+	if execution.RunnerID != nil {
+		segment.RunnerID = *execution.RunnerID
+	}
+
+	s.appendExecutionSegment(id, segment)
+
+	// Store checkpoint
+	if len(checkpoint) > 0 {
+		if err := s.persistence.SaveExecutionCheckpoint(id, checkpoint); err != nil {
+			log.WithError(err).Error("unable to save checkpoint")
+		}
+	}
+
+	// Extract resume_at from suspend info
+	if stateMap != nil {
+		if cp, ok := stateMap["checkpoint"].(map[string]interface{}); ok {
+			if si, ok := cp["suspend_info"].(map[string]interface{}); ok {
+				if resumeAt, ok := si["resume_at"].(string); ok {
+					if t, err := time.Parse(time.RFC3339, resumeAt); err == nil {
+						if err := s.persistence.SetExecutionResumeAt(id, t); err != nil {
+							log.WithError(err).Error("unable to set resume_at")
+						}
+					}
+				}
+				if triggerType, ok := si["resume_trigger_type"].(string); ok && triggerType != "" {
+					matchJSON, _ := json.Marshal(si["resume_trigger_match"])
+					if err := s.persistence.SetExecutionResumeTrigger(id, triggerType, matchJSON); err != nil {
+						log.WithError(err).Error("unable to set resume trigger")
+					}
+				}
+			}
+		}
+	}
+
+	// Update status to suspended
+	if err := s.persistence.UpdateExecutionStatus(id, "suspended"); err != nil {
+		log.WithError(err).Error("unable to update execution status to suspended")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if err := s.persistence.UpdateCompletionStatus(id, "suspended"); err != nil {
+		log.WithError(err).Error("unable to update completion status to suspended")
+	}
+	if err := s.persistence.IncrementSuspendCount(id); err != nil {
+		log.WithError(err).Error("unable to increment suspend count")
+	}
+
+	// Store the result (without checkpoint, to keep the result column lean)
+	j, _ := json.Marshal(result.State)
+	_ = s.persistence.UpdateExecutionResult(id, j)
+
+	// Accumulate billing duration (don't overwrite previous segments)
+	if durationMs > 0 {
+		_ = s.persistence.AccumulateBillingDuration(id, durationMs)
+	}
+
+	// Notify SSE subscribers
+	s.logHub.Publish(id, []string{"__STATUS__:suspended"})
+
+	log.WithFields(log.Fields{
+		"execution_id": id,
+		"duration_ms":  durationMs,
+	}).Info("execution suspended")
+
+	c.Status(http.StatusOK)
+}
+
+// resumeExecution handles POST /execution/:id/resume
+func (s *Service) resumeExecution(c *gin.Context) {
+	id := c.Param("id")
+
+	execution, err := s.persistence.GetExecutionByID(id)
+	if err != nil || execution == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	if execution.ExecutionStatus != "suspended" {
+		c.JSON(http.StatusConflict, gin.H{"error": "execution is not suspended"})
+		return
+	}
+
+	// Optionally accept resume data (for event-based resumes)
+	var resumeData map[string]interface{}
+	_ = c.ShouldBindJSON(&resumeData)
+
+	// Re-queue: set status back to created so runner picks it up
+	if err := s.persistence.UpdateExecutionStatus(id, "created"); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if err := s.persistence.UpdateCompletionStatus(id, "pending"); err != nil {
+		log.WithError(err).Error("unable to update completion status")
+	}
+
+	// Clear resume_at (it's being resumed now)
+	_ = s.persistence.ClearResumeAt(id)
+
+	// Notify long-polling runners that work is available
+	s.executionNotifier.Notify("")
+
+	// Notify SSE subscribers
+	s.logHub.Publish(id, []string{"__STATUS__:resuming"})
+
+	log.WithFields(log.Fields{
+		"execution_id": id,
+	}).Info("execution resumed")
+
+	c.Status(http.StatusOK)
+}
+
+// appendExecutionSegment adds a timing segment to the execution's segments array.
+func (s *Service) appendExecutionSegment(id string, segment api.ExecutionSegment) {
+	segJSON, _ := json.Marshal(segment)
+	if err := s.persistence.AppendExecutionSegment(id, segJSON); err != nil {
+		log.WithError(err).Error("unable to append execution segment")
+	}
 }

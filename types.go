@@ -153,6 +153,10 @@ type Execution struct {
 	AgentID           *string          `json:"agent_id,omitempty" db:"agent_id"`
 	AgentSessionID    *string          `json:"agent_session_id,omitempty" db:"agent_session_id"`
 	CreditCostPence   *int64           `json:"credit_cost_pence,omitempty" db:"-"`
+	Checkpoint        *json.RawMessage `json:"checkpoint,omitempty" db:"checkpoint"`
+	ResumeAt          *time.Time       `json:"resume_at,omitempty" db:"resume_at"`
+	SuspendCount      int              `json:"suspend_count" db:"suspend_count"`
+	Segments          *json.RawMessage `json:"segments,omitempty" db:"segments"`
 }
 
 type Revision struct {
@@ -164,9 +168,10 @@ type Revision struct {
 }
 
 type PendingExecution struct {
-	Flow      Flo         `json:"flo"`
-	Execution Execution   `json:"execution"`
-	Data      interface{} `json:"data"`
+	Flow       Flo              `json:"flo"`
+	Execution  Execution        `json:"execution"`
+	Data       interface{}      `json:"data"`
+	Checkpoint *json.RawMessage `json:"checkpoint,omitempty"`
 }
 
 type Node struct {
@@ -290,7 +295,17 @@ type Runner struct {
 type ExecutionResult struct {
 	HasErrored bool        `json:"has_errored"`
 	Cancelled  bool        `json:"cancelled,omitempty"`
+	Suspended  bool        `json:"suspended,omitempty"`
 	State      interface{} `json:"state"`
+}
+
+// ExecutionSegment records timing for one run/resume cycle of an execution.
+type ExecutionSegment struct {
+	StartedAt  string `json:"started_at"`
+	EndedAt    string `json:"ended_at"`
+	DurationMs int64  `json:"duration_ms"`
+	Status     string `json:"status"` // "suspended", "success", "fail", "cancel"
+	RunnerID   string `json:"runner_id,omitempty"`
 }
 
 type Environment struct {
