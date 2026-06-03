@@ -663,3 +663,10 @@ func (m *mockPersistence) GetUnsyncedDeductions() ([]*api.CreditDeduction, error
 func (m *mockPersistence) MarkDeductionSynced(id string, amountPence int64) error { return nil }
 func (m *mockPersistence) GetCreditCostsForExecutions(executionIDs []string) (map[string]int64, error) { return nil, nil }
 func (m *mockPersistence) TouchUserActivity(userID string) {}
+func (m *mockPersistence) IncrementSuspendCount(id string) error { return nil }
+func (m *mockPersistence) AccumulateBillingDuration(id string, additionalMs int64) error { return nil }
+func (m *mockPersistence) AppendExecutionSegment(id string, segmentJSON []byte) error { return nil }
+func (m *mockPersistence) ClearResumeAt(id string) error                              { return nil }
+func (m *mockPersistence) SaveExecutionCheckpoint(id string, checkpoint interface{}) error { return nil }
+func (m *mockPersistence) SetExecutionResumeAt(id string, resumeAt time.Time) error    { return nil }
+func (m *mockPersistence) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error { return nil }
