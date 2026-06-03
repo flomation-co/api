@@ -8,13 +8,7 @@ CI_PIPELINE_ID 		?= dev
 VERSION 			?= 1.0.${CI_PIPELINE_ID}
 REGISTRY 			?= local
 
-OS_ARCHS := \
-	linux/amd64 \
-	linux/arm64 \
-	linux/arm \
-	darwin/amd64 \
-	darwin/arm64 \
-	windows/amd64
+OS_ARCHS ?= linux/amd64
 
 lint:
 	go mod tidy
