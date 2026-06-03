@@ -857,11 +857,11 @@ func (s *Service) handleSuspendedExecution(c *gin.Context, id string, execution 
 
 	// Accumulate billing duration (don't overwrite previous segments)
 	if durationMs > 0 {
-		s.persistence.AccumulateBillingDuration(id, durationMs)
+		_ = s.persistence.AccumulateBillingDuration(id, durationMs)
 	}
 
 	// Notify SSE subscribers
-	s.logHub.Publish(id, []string{fmt.Sprintf("__STATUS__:suspended")})
+	s.logHub.Publish(id, []string{"__STATUS__:suspended"})
 
 	log.WithFields(log.Fields{
 		"execution_id": id,
