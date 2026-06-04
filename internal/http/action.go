@@ -63,6 +63,7 @@ var subCategoryMetadata = map[string]struct {
 	"microsoft/outlook":      {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
 	"microsoft/teams":        {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
 	"microsoft/calendar":     {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
+	"microsoft/excel":        {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
 	"microsoft/onedrive":     {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
 	"microsoft/sharepoint":   {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
 	"microsoft/word":         {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
