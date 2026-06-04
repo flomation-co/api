@@ -44,6 +44,14 @@ var (
 		Name: "flomation_organisations_total",
 		Help: "Total number of organisations on the platform.",
 	})
+	executionsAllTime = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "flomation_executions_all_time",
+		Help: "Total number of executions ever run.",
+	})
+	executionMinutesAllTime = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "flomation_execution_minutes_all_time",
+		Help: "Total execution minutes across all time.",
+	})
 )
 
 // StartCollector launches a background goroutine that periodically
@@ -94,5 +102,16 @@ func collect(db *sqlx.DB) {
 	// Total organisations.
 	if err := db.Get(&count, `SELECT COUNT(*) FROM organisation`); err == nil {
 		organisationsTotal.Set(float64(count))
+	}
+
+	// All-time execution count.
+	if err := db.Get(&count, `SELECT COUNT(*) FROM execution`); err == nil {
+		executionsAllTime.Set(float64(count))
+	}
+
+	// All-time execution minutes.
+	var allTimeMs int64
+	if err := db.Get(&allTimeMs, `SELECT COALESCE(SUM(billing_duration), 0) FROM execution WHERE billing_duration IS NOT NULL`); err == nil {
+		executionMinutesAllTime.Set(float64(allTimeMs) / 60000.0)
 	}
 }
