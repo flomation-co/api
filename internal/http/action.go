@@ -22,7 +22,6 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"git":         {Key: "git", Name: "Git", Icon: "code-branch", Description: "Version control operations"},
 	"github":      {Key: "github", Name: "GitHub", Icon: "github", Description: "Manage pull requests, workflows, and issues in GitHub"},
 	"gitlab":      {Key: "gitlab", Name: "GitLab", Icon: "gitlab", Description: "Manage merge requests, pipelines, and issues in GitLab"},
-	"http":        {Key: "http", Name: "HTTP", Icon: "globe", Description: "HTTP request operations"},
 	"output":      {Key: "output", Name: "Output", Icon: "location-arrow", Description: "Send data to external destinations"},
 	"security":    {Key: "security", Name: "Security", Icon: "shield-halved", Description: "Security scanning and compliance"},
 	"nosql":       {Key: "nosql", Name: "NoSQL", Icon: "layer-group", Description: "NoSQL database operations"},
@@ -33,7 +32,8 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"agent":       {Key: "agent", Name: "Agent", Icon: "robot", Description: "Interact with Flomation Agents"},
 	"messaging":   {Key: "messaging", Name: "Messaging", Icon: "comments", Description: "Send messages via various channels"},
 	"notion":      {Key: "notion", Name: "Notion", Icon: "notion", Description: "Search, create, and manage pages, databases, and content in Notion"},
-	"tools":       {Key: "tools", Name: "Tools", Icon: "wrench", Description: "AI tool implementations for function calling"},
+	"slack":       {Key: "slack", Name: "Slack", Icon: "slack", Description: "Slack workspace messaging, channels, and integrations"},
+	"web":         {Key: "web", Name: "Web", Icon: "globe", Description: "Web browsing, search, and HTTP request operations"},
 	"linear":      {Key: "linear", Name: "Linear", Icon: "linear", Description: "Manage issues, projects, and teams in Linear"},
 	"elevenlabs":  {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":     {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
@@ -60,7 +60,11 @@ var subCategoryMetadata = map[string]struct {
 	"google/sheets":    {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
 	"google/docs":      {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
 	"google/slides":       {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
-	"microsoft/outlook":   {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
+	"microsoft/outlook":      {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
+	"google/gmail":           {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
+	"google/calendar":        {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
+	"messaging/telegram":     {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
+	"messaging/discord":      {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {

@@ -1,0 +1,2 @@
+-- This migration is not reversible — action IDs in flow revisions have been updated.
+-- To revert, restore from a database backup taken before this migration.
