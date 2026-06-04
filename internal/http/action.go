@@ -61,6 +61,8 @@ var subCategoryMetadata = map[string]struct {
 	"google/docs":      {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
 	"google/slides":       {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
 	"microsoft/outlook":      {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
+	"microsoft/teams":        {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
+	"microsoft/calendar":     {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
 	"google/gmail":           {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
 	"google/calendar":        {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
 	"messaging/telegram":     {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
