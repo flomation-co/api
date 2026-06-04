@@ -42,6 +42,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"google":      {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
 	"makefile":    {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
 	"twilio":      {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
+	"microsoft":   {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -57,7 +58,8 @@ var subCategoryMetadata = map[string]struct {
 	"google/drive":     {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
 	"google/sheets":    {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
 	"google/docs":      {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
-	"google/slides":    {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
+	"google/slides":       {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
+	"microsoft/outlook":   {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
