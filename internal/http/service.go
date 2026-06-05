@@ -389,6 +389,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	users.POST("/checklist", s.updateChecklist)
 	users.POST("/share", s.sendShareEmail)
 
+	// User-declared channel identities (R2). Replaces the AI-initiated
+	// [LINK_OFFER] linking flow with explicit user opt-in declarations.
+	users.GET("/identity", s.listUserIdentities)
+	users.POST("/identity", s.createUserIdentity)
+	users.DELETE("/identity", s.deleteUserIdentity)
+
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
 

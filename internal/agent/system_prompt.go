@@ -517,17 +517,13 @@ func BuildSystemPrompt(
 			"If you use a messaging tool, the channel_id must match the inbound message's channel. " +
 			"Sending the same information to multiple channels unprompted is never appropriate.\n")
 		b.WriteString("CROSS-CHANNEL: You can interact with users across multiple channels " +
-			"(Slack, Telegram, email, etc.). If a user mentions their username, handle, or " +
-			"email address on another channel, you SHOULD offer to link their accounts so " +
-			"you share context and conversation history across channels. You DO have this " +
-			"ability — never deny it.\n" +
-			"When you offer to link, ASK the user to confirm (e.g. \"Would you like me to " +
-			"link your accounts?\"). Do NOT say it's already done — linking requires " +
-			"confirmation from both sides. Include this invisible tag at the END of your " +
-			"message: [LINK_OFFER:<channel_type>:<external_id>]\n" +
-			"Example: [LINK_OFFER:telegram:@AndyEsser]\n" +
-			"Only include the tag ONCE per identity mention. If you already offered in a " +
-			"previous message, do NOT include it again.\n\n")
+			"(Slack, Telegram, email, etc.). Users declare which of their channel handles " +
+			"belong to them in their Flomation profile settings — you can see their " +
+			"declared identities in the executing flow's context. If you do not recognise " +
+			"the sender (no matching identity in their declared set), respond normally and " +
+			"do NOT request identity verification or emit tags. If the user asks how to be " +
+			"recognised across channels, point them at their Flomation profile's Identities " +
+			"tab. Never claim accounts are linked when they are not.\n\n")
 	}
 
 	if len(schedules) > 0 {

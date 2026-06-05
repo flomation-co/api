@@ -69,6 +69,12 @@ type Persistence interface {
 	GetTriggers(ownerID string) ([]*api.Trigger, error)
 	GetUsage(ownerID string, organisationID *string) (*api.UserDashboard, error)
 	GetUserByID(ID string) (*api.User, error)
+	CreateUserIdentity(in api.CreateUserIdentity) (*api.UserIdentity, error)
+	GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity, error)
+	GetUserIdentitiesByUserAndOrg(userID, organisationID string) ([]*api.UserIdentity, error)
+	LookupUserIdentityByChannel(organisationID, channelType, externalID string) (*api.UserIdentity, error)
+	DeleteUserIdentity(userID, organisationID, channelType, externalID string) error
+	UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error)
 	RemoveEnvironmentProperty(propertyID string) error
 	UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error
 	RemoveEnvironmentSecret(secretID string) error

@@ -212,6 +212,15 @@ type Service struct {
 	stmtUpdateAgentExecutionStatus *sqlx.NamedStmt
 	stmtCountAgentExecutionsInHour *sqlx.NamedStmt
 
+	// User-declared channel identities (migration 83). Methods live in
+	// internal/persistence/user_identity.go.
+	stmtCreateUserIdentity              *sqlx.NamedStmt
+	stmtGetUserIdentitiesByUserID       *sqlx.NamedStmt
+	stmtGetUserIdentitiesByUserAndOrg   *sqlx.NamedStmt
+	stmtLookupUserIdentityByChannel     *sqlx.NamedStmt
+	stmtDeleteUserIdentity              *sqlx.NamedStmt
+	stmtUpsertAnonymousUser             *sqlx.NamedStmt
+
 	// Agent Memory Phase 1: identity + conversation scoping.
 	// See plans/agent_memory.md for the design and
 	// internal/persistence/agent_memory.go for the corresponding methods.
@@ -2753,6 +2762,76 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtCountAgentExecutionsInHour, err = s.conn.PrepareNamed(`
 		SELECT COUNT(1) FROM agent_execution WHERE agent_id = :agent_id AND created_at > NOW() - INTERVAL '1 hour'
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// User-declared channel identity statements (migration 83).
+	// Methods live in internal/persistence/user_identity.go.
+
+	s.stmtCreateUserIdentity, err = s.conn.PrepareNamed(`
+		INSERT INTO user_identity (user_id, organisation_id, channel_type, external_id, display_name)
+		VALUES (:user_id, :organisation_id, :channel_type, :external_id, :display_name)
+		RETURNING user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUserIdentitiesByUserID, err = s.conn.PrepareNamed(`
+		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
+		FROM user_identity
+		WHERE user_id = :user_id
+		ORDER BY organisation_id, channel_type, external_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtGetUserIdentitiesByUserAndOrg, err = s.conn.PrepareNamed(`
+		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
+		FROM user_identity
+		WHERE user_id = :user_id AND organisation_id = :organisation_id
+		ORDER BY channel_type, external_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtLookupUserIdentityByChannel, err = s.conn.PrepareNamed(`
+		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
+		FROM user_identity
+		WHERE organisation_id = :organisation_id
+		  AND channel_type    = :channel_type
+		  AND external_id     = :external_id
+		LIMIT 1
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtDeleteUserIdentity, err = s.conn.PrepareNamed(`
+		DELETE FROM user_identity
+		WHERE user_id         = :user_id
+		  AND organisation_id = :organisation_id
+		  AND channel_type    = :channel_type
+		  AND external_id     = :external_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Anonymous-user upsert: a single channel external_id messaging two
+	// different orgs creates two distinct rows (per-org partial unique
+	// index in migration 83). Idempotent via ON CONFLICT.
+	s.stmtUpsertAnonymousUser, err = s.conn.PrepareNamed(`
+		INSERT INTO users (name, is_anonymous, organisation_id, channel_type, channel_external_id)
+		VALUES (:name, true, :organisation_id, :channel_type, :channel_external_id)
+		ON CONFLICT (organisation_id, channel_type, channel_external_id)
+		    WHERE is_anonymous = true
+		DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), users.name)
+		RETURNING id
 	`)
 	if err != nil {
 		return nil, err
