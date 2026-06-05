@@ -636,6 +636,32 @@ type GoogleTokenResponse struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// UserIdentity is a declared mapping from a Flomation platform user to a
+// channel handle, scoped per-organisation. Replaces the AI-initiated
+// [LINK_OFFER] linking flow: users declare their identities directly
+// from their profile, and the webhook ingestion path resolves an incoming
+// sender by looking up (organisation_id, channel_type, external_id) here.
+// On miss, an anonymous users row is upserted instead (see migration 83).
+type UserIdentity struct {
+	UserID         string     `json:"user_id"          db:"user_id"`
+	OrganisationID string     `json:"organisation_id"  db:"organisation_id"`
+	ChannelType    string     `json:"channel_type"     db:"channel_type"`
+	ExternalID     string     `json:"external_id"      db:"external_id"`
+	DisplayName    *string    `json:"display_name,omitempty" db:"display_name"`
+	VerifiedAt     *time.Time `json:"verified_at,omitempty"  db:"verified_at"`
+	CreatedAt      time.Time  `json:"created_at"       db:"created_at"`
+}
+
+// CreateUserIdentity is the input shape for declaring a new identity from
+// the editor profile UI.
+type CreateUserIdentity struct {
+	UserID         string  `json:"user_id"          db:"user_id"`
+	OrganisationID string  `json:"organisation_id"  db:"organisation_id"`
+	ChannelType    string  `json:"channel_type"     db:"channel_type"`
+	ExternalID     string  `json:"external_id"      db:"external_id"`
+	DisplayName    *string `json:"display_name,omitempty" db:"display_name"`
+}
+
 // AgentIdentity maps a per-channel external identifier (Slack user_id,
 // Telegram sender_id, email address, etc.) to an AgentUser. A single
 // AgentUser may accumulate multiple identities over time via the
