@@ -23,6 +23,7 @@ type InboundMessage struct {
 // InboundResult is returned by HandleInboundMessage.
 type InboundResult struct {
 	AgentUserID    *string `json:"agent_user_id,omitempty"`
+	PlatformUserID *string `json:"user_id,omitempty"`
 	ConversationID *string `json:"conversation_id,omitempty"`
 	MessageID      *string `json:"message_id,omitempty"`
 	ExecutionID    *string `json:"execution_id,omitempty"`
@@ -37,6 +38,13 @@ type InboundPersistence interface {
 	persistence.ExtractionDispatcher
 	persistence.PendingActionChecker
 	GetAgentByID(id string) (*api.Agent, error)
+
+	// User-declared identity resolution (R2). When the agent runs in an
+	// organisation, the inbound pipeline resolves the platform user_id
+	// either via a declared user_identity or by upserting an anonymous
+	// stub user keyed per-(org, channel, external_id).
+	LookupUserIdentityByChannel(organisationID, channelType, externalID string) (*api.UserIdentity, error)
+	UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error)
 }
 
 // FlowDispatcher triggers orchestrator flow executions.
@@ -94,6 +102,45 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 		} else if identity != nil && user != nil {
 			agentUserID = &user.ID
 			result.AgentUserID = agentUserID
+		}
+	}
+
+	// Step 1.5 (R2): resolve the platform user_id alongside the
+	// agent_user_id. The agent_user_id remains the canonical memory
+	// scope for now; the platform user_id is exposed to flows via
+	// ${flow.user_id} so declared identities and per-org anonymous
+	// users become visible to orchestrator logic. Only runs when the
+	// agent is org-scoped — anonymous and declared users are both
+	// keyed by (organisation_id, channel_type, external_id).
+	var platformUserID *string
+	if externalID != "" && agent.OrganisationID != nil && *agent.OrganisationID != "" {
+		orgID := *agent.OrganisationID
+		declared, err := h.persistence.LookupUserIdentityByChannel(orgID, identityChannelType, externalID)
+		switch {
+		case err != nil:
+			log.WithFields(log.Fields{
+				"agent_id":     agentID,
+				"channel_type": identityChannelType,
+				"error":        err,
+			}).Warn("user_identity lookup failed; falling through to anonymous upsert")
+			fallthrough
+		case declared == nil:
+			anonID, upsertErr := h.persistence.UpsertAnonymousUser(orgID, identityChannelType, externalID, displayName)
+			if upsertErr != nil {
+				log.WithFields(log.Fields{
+					"agent_id":     agentID,
+					"channel_type": identityChannelType,
+					"error":        upsertErr,
+				}).Warn("anonymous user upsert failed; continuing without platform user scoping")
+			} else if anonID != "" {
+				platformUserID = &anonID
+			}
+		default:
+			id := declared.UserID
+			platformUserID = &id
+		}
+		if platformUserID != nil {
+			result.PlatformUserID = platformUserID
 		}
 	}
 
@@ -158,7 +205,7 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 
 	// Step 5: dispatch orchestrator flow.
 	if agent.OrchestratorFlowID != nil && *agent.OrchestratorFlowID != "" {
-		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, conversationID, conversationHistory)
+		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, conversationID, conversationHistory)
 		if err := h.dispatcher.DispatchFlow(*agent.OrchestratorFlowID, nil, triggerData); err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -184,6 +231,7 @@ func (h *InboundHandler) buildTriggerData(
 	msg InboundMessage,
 	msgID *string,
 	agentUserID *string,
+	platformUserID *string,
 	conversationID *string,
 	history []map[string]interface{},
 ) map[string]interface{} {
@@ -222,6 +270,12 @@ func (h *InboundHandler) buildTriggerData(
 	}
 	if agentUserID != nil {
 		data["agent_user_id"] = *agentUserID
+	}
+	if platformUserID != nil {
+		data["user_id"] = *platformUserID
+		if agent.OrganisationID != nil {
+			data["organisation_id"] = *agent.OrganisationID
+		}
 	}
 	if conversationID != nil {
 		data["conversation_id"] = *conversationID
