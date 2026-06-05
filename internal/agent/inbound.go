@@ -42,9 +42,12 @@ type InboundPersistence interface {
 	// User-declared identity resolution (R2). When the agent runs in an
 	// organisation, the inbound pipeline resolves the platform user_id
 	// either via a declared user_identity or by upserting an anonymous
-	// stub user keyed per-(org, channel, external_id).
+	// stub user keyed per-(org, channel, external_id). After resolution
+	// the full declared-identity set for the resolved user is snapshot
+	// onto triggerData so flows can read ${flow.identities}.
 	LookupUserIdentityByChannel(organisationID, channelType, externalID string) (*api.UserIdentity, error)
 	UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error)
+	GetUserIdentitiesByUserAndOrg(userID, organisationID string) ([]*api.UserIdentity, error)
 }
 
 // FlowDispatcher triggers orchestrator flow executions.
@@ -205,7 +208,23 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 
 	// Step 5: dispatch orchestrator flow.
 	if agent.OrchestratorFlowID != nil && *agent.OrchestratorFlowID != "" {
-		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, conversationID, conversationHistory)
+		// Snapshot the user's declared identities for ${flow.identities}.
+		// Empty for anonymous users (no rows in user_identity) — that's
+		// the correct read of "this person has nothing declared".
+		var identities []*api.UserIdentity
+		if platformUserID != nil && agent.OrganisationID != nil && *agent.OrganisationID != "" {
+			ids, idErr := h.persistence.GetUserIdentitiesByUserAndOrg(*platformUserID, *agent.OrganisationID)
+			if idErr != nil {
+				log.WithFields(log.Fields{
+					"agent_id":         agentID,
+					"platform_user_id": *platformUserID,
+					"error":            idErr,
+				}).Warn("failed to fetch user identities, continuing with empty set")
+			} else {
+				identities = ids
+			}
+		}
+		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, identities, conversationID, conversationHistory)
 		if err := h.dispatcher.DispatchFlow(*agent.OrchestratorFlowID, nil, triggerData); err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -232,6 +251,7 @@ func (h *InboundHandler) buildTriggerData(
 	msgID *string,
 	agentUserID *string,
 	platformUserID *string,
+	identities []*api.UserIdentity,
 	conversationID *string,
 	history []map[string]interface{},
 ) map[string]interface{} {
@@ -276,6 +296,26 @@ func (h *InboundHandler) buildTriggerData(
 		if agent.OrganisationID != nil {
 			data["organisation_id"] = *agent.OrganisationID
 		}
+	}
+	if len(identities) > 0 {
+		// Shape the slice to match the executor's ExecutionIdentity struct
+		// so flow.Get("identities") can unmarshal directly. Always non-nil
+		// when populated — empty stays absent from triggerData.
+		out := make([]map[string]interface{}, 0, len(identities))
+		for _, i := range identities {
+			if i == nil {
+				continue
+			}
+			row := map[string]interface{}{
+				"channel_type": i.ChannelType,
+				"external_id":  i.ExternalID,
+			}
+			if i.DisplayName != nil && *i.DisplayName != "" {
+				row["display_name"] = *i.DisplayName
+			}
+			out = append(out, row)
+		}
+		data["identities"] = out
 	}
 	if conversationID != nil {
 		data["conversation_id"] = *conversationID
