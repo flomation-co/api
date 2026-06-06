@@ -35,6 +35,17 @@ func (s *Service) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity,
 	return out, nil
 }
 
+// orgStringFromPointer normalises a nullable org pointer to the empty
+// string used by the user_identity statements' NULLIF(:organisation_id, '')
+// expression. nil → "" → NULLIF → SQL NULL; non-nil → the UUID string →
+// NULLIF leaves it alone → SQL NULL only when the pointer was nil.
+func orgStringFromPointer(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // GetUserIdentitiesByUserAndOrg is the scope the executor uses when
 // populating ${flow.identities}: just the identities relevant to the
 // org the agent is running in. organisationID == nil means personal
@@ -42,9 +53,9 @@ func (s *Service) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity,
 func (s *Service) GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error) {
 	var out []*api.UserIdentity
 	err := s.stmtGetUserIdentitiesByUserAndOrg.Select(&out, struct {
-		UserID         string  `db:"user_id"`
-		OrganisationID *string `db:"organisation_id"`
-	}{UserID: userID, OrganisationID: organisationID})
+		UserID         string `db:"user_id"`
+		OrganisationID string `db:"organisation_id"`
+	}{UserID: userID, OrganisationID: orgStringFromPointer(organisationID)})
 	if err != nil {
 		return nil, err
 	}
@@ -58,10 +69,10 @@ func (s *Service) GetUserIdentitiesByUserAndOrg(userID string, organisationID *s
 func (s *Service) LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error) {
 	var out api.UserIdentity
 	err := s.stmtLookupUserIdentityByChannel.Get(&out, struct {
-		OrganisationID *string `db:"organisation_id"`
-		ChannelType    string  `db:"channel_type"`
-		ExternalID     string  `db:"external_id"`
-	}{OrganisationID: organisationID, ChannelType: channelType, ExternalID: externalID})
+		OrganisationID string `db:"organisation_id"`
+		ChannelType    string `db:"channel_type"`
+		ExternalID     string `db:"external_id"`
+	}{OrganisationID: orgStringFromPointer(organisationID), ChannelType: channelType, ExternalID: externalID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -79,13 +90,13 @@ func (s *Service) LookupUserIdentityByChannel(organisationID *string, channelTyp
 // shows a green toast for a no-op.
 func (s *Service) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error) {
 	res, err := s.stmtDeleteUserIdentity.Exec(struct {
-		UserID         string  `db:"user_id"`
-		OrganisationID *string `db:"organisation_id"`
-		ChannelType    string  `db:"channel_type"`
-		ExternalID     string  `db:"external_id"`
+		UserID         string `db:"user_id"`
+		OrganisationID string `db:"organisation_id"`
+		ChannelType    string `db:"channel_type"`
+		ExternalID     string `db:"external_id"`
 	}{
 		UserID:         userID,
-		OrganisationID: organisationID,
+		OrganisationID: orgStringFromPointer(organisationID),
 		ChannelType:    channelType,
 		ExternalID:     externalID,
 	})
