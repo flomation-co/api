@@ -2799,7 +2799,7 @@ func NewService(config *config.Config) (*Service, error) {
 		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
 		FROM user_identity
 		WHERE user_id = :user_id
-		  AND organisation_id IS NOT DISTINCT FROM NULLIF(:organisation_id, '')::uuid
+		  AND organisation_id IS NOT DISTINCT FROM CAST(NULLIF(:organisation_id, '') AS uuid)
 		ORDER BY channel_type, external_id
 	`)
 	if err != nil {
@@ -2809,7 +2809,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtLookupUserIdentityByChannel, err = s.conn.PrepareNamed(`
 		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
 		FROM user_identity
-		WHERE organisation_id IS NOT DISTINCT FROM NULLIF(:organisation_id, '')::uuid
+		WHERE organisation_id IS NOT DISTINCT FROM CAST(NULLIF(:organisation_id, '') AS uuid)
 		  AND channel_type = :channel_type
 		  AND external_id  = :external_id
 		LIMIT 1
@@ -2821,7 +2821,7 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtDeleteUserIdentity, err = s.conn.PrepareNamed(`
 		DELETE FROM user_identity
 		WHERE user_id = :user_id
-		  AND organisation_id IS NOT DISTINCT FROM NULLIF(:organisation_id, '')::uuid
+		  AND organisation_id IS NOT DISTINCT FROM CAST(NULLIF(:organisation_id, '') AS uuid)
 		  AND channel_type   = :channel_type
 		  AND external_id    = :external_id
 	`)
