@@ -45,9 +45,9 @@ type InboundPersistence interface {
 	// stub user keyed per-(org, channel, external_id). After resolution
 	// the full declared-identity set for the resolved user is snapshot
 	// onto triggerData so flows can read ${flow.identities}.
-	LookupUserIdentityByChannel(organisationID, channelType, externalID string) (*api.UserIdentity, error)
+	LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error)
 	UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error)
-	GetUserIdentitiesByUserAndOrg(userID, organisationID string) ([]*api.UserIdentity, error)
+	GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error)
 }
 
 // FlowDispatcher triggers orchestrator flow executions.
@@ -108,26 +108,35 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 		}
 	}
 
-	// Step 1.5 (R2): resolve the platform user_id alongside the
-	// agent_user_id. The agent_user_id remains the canonical memory
-	// scope for now; the platform user_id is exposed to flows via
-	// ${flow.user_id} so declared identities and per-org anonymous
-	// users become visible to orchestrator logic. Only runs when the
-	// agent is org-scoped — anonymous and declared users are both
-	// keyed by (organisation_id, channel_type, external_id).
+	// Step 1.5 (R2 + R3 Phase 1.5): resolve the platform user_id
+	// alongside the agent_user_id. The agent_user_id remains the
+	// canonical memory scope for now; the platform user_id is exposed
+	// to flows via ${flow.user_id} so declared identities become
+	// visible to orchestrator logic. Runs for both org-scoped AND
+	// personal-mode agents — the lookup query uses COALESCE so NULL
+	// organisation_id (personal mode) matches NULL declarations.
+	//
+	// Anonymous-user upsert only runs in org-scoped mode: the users
+	// table CHECK constraint requires organisation_id when
+	// is_anonymous=true (personal-mode unknown senders have no
+	// platform user_id and fall back to agent_user-only scoping).
 	var platformUserID *string
-	if externalID != "" && agent.OrganisationID != nil && *agent.OrganisationID != "" {
-		orgID := *agent.OrganisationID
-		declared, err := h.persistence.LookupUserIdentityByChannel(orgID, identityChannelType, externalID)
-		switch {
-		case err != nil:
+	if externalID != "" {
+		declared, err := h.persistence.LookupUserIdentityByChannel(agent.OrganisationID, identityChannelType, externalID)
+		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id":     agentID,
 				"channel_type": identityChannelType,
 				"error":        err,
-			}).Warn("user_identity lookup failed; falling through to anonymous upsert")
-			fallthrough
-		case declared == nil:
+			}).Warn("user_identity lookup failed; treating as unrecognised sender")
+		}
+		switch {
+		case declared != nil:
+			id := declared.UserID
+			platformUserID = &id
+		case agent.OrganisationID != nil && *agent.OrganisationID != "":
+			// Org-scoped + unrecognised → anonymous stub user.
+			orgID := *agent.OrganisationID
 			anonID, upsertErr := h.persistence.UpsertAnonymousUser(orgID, identityChannelType, externalID, displayName)
 			if upsertErr != nil {
 				log.WithFields(log.Fields{
@@ -138,9 +147,6 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 			} else if anonID != "" {
 				platformUserID = &anonID
 			}
-		default:
-			id := declared.UserID
-			platformUserID = &id
 		}
 		if platformUserID != nil {
 			result.PlatformUserID = platformUserID
@@ -209,11 +215,14 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	// Step 5: dispatch orchestrator flow.
 	if agent.OrchestratorFlowID != nil && *agent.OrchestratorFlowID != "" {
 		// Snapshot the user's declared identities for ${flow.identities}.
-		// Empty for anonymous users (no rows in user_identity) — that's
-		// the correct read of "this person has nothing declared".
+		// Scope matches the agent: org-scoped agents see the user's
+		// org-scoped declarations; personal agents see the user's
+		// personal-mode (NULL org) declarations. Empty for anonymous
+		// users (no rows in user_identity) — correct read of "this
+		// person has nothing declared".
 		var identities []*api.UserIdentity
-		if platformUserID != nil && agent.OrganisationID != nil && *agent.OrganisationID != "" {
-			ids, idErr := h.persistence.GetUserIdentitiesByUserAndOrg(*platformUserID, *agent.OrganisationID)
+		if platformUserID != nil {
+			ids, idErr := h.persistence.GetUserIdentitiesByUserAndOrg(*platformUserID, agent.OrganisationID)
 			if idErr != nil {
 				log.WithFields(log.Fields{
 					"agent_id":         agentID,
