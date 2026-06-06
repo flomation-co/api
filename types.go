@@ -648,7 +648,12 @@ type GoogleTokenResponse struct {
 // per-org partial uniqueness still applies for non-personal rows.
 type UserIdentity struct {
 	UserID         string     `json:"user_id"          db:"user_id"`
-	OrganisationID *string    `json:"organisation_id,omitempty"  db:"organisation_id"`
+	// OrganisationID serialises as JSON null (not omitted) when nil so
+	// clients can reliably distinguish "personal mode" from "field
+	// missing because old API version" — the editor filters by
+	// (org_id === null) for the personal-mode view and that strict
+	// equality only works if the field is present as null.
+	OrganisationID *string    `json:"organisation_id"  db:"organisation_id"`
 	ChannelType    string     `json:"channel_type"     db:"channel_type"`
 	ExternalID     string     `json:"external_id"      db:"external_id"`
 	DisplayName    *string    `json:"display_name,omitempty" db:"display_name"`
