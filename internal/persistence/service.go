@@ -2789,10 +2789,17 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// :organisation_id is bound as a Go string (not *string) to dodge
+	// sqlx's pointer-binding ambiguity for NULL: empty string from Go
+	// → NULLIF turns into SQL NULL → ::uuid pins the parameter type
+	// so the prepared-statement planner can compare it against the
+	// nullable UUID column. IS NOT DISTINCT FROM does the null-safe
+	// equality, treating NULL=NULL as true.
 	s.stmtGetUserIdentitiesByUserAndOrg, err = s.conn.PrepareNamed(`
 		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
 		FROM user_identity
-		WHERE user_id = :user_id AND organisation_id = :organisation_id
+		WHERE user_id = :user_id
+		  AND organisation_id IS NOT DISTINCT FROM NULLIF(:organisation_id, '')::uuid
 		ORDER BY channel_type, external_id
 	`)
 	if err != nil {
@@ -2802,9 +2809,9 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtLookupUserIdentityByChannel, err = s.conn.PrepareNamed(`
 		SELECT user_id, organisation_id, channel_type, external_id, display_name, verified_at, created_at
 		FROM user_identity
-		WHERE organisation_id = :organisation_id
-		  AND channel_type    = :channel_type
-		  AND external_id     = :external_id
+		WHERE organisation_id IS NOT DISTINCT FROM NULLIF(:organisation_id, '')::uuid
+		  AND channel_type = :channel_type
+		  AND external_id  = :external_id
 		LIMIT 1
 	`)
 	if err != nil {
@@ -2813,10 +2820,10 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtDeleteUserIdentity, err = s.conn.PrepareNamed(`
 		DELETE FROM user_identity
-		WHERE user_id         = :user_id
-		  AND organisation_id = :organisation_id
-		  AND channel_type    = :channel_type
-		  AND external_id     = :external_id
+		WHERE user_id = :user_id
+		  AND organisation_id IS NOT DISTINCT FROM NULLIF(:organisation_id, '')::uuid
+		  AND channel_type   = :channel_type
+		  AND external_id    = :external_id
 	`)
 	if err != nil {
 		return nil, err
