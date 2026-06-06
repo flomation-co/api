@@ -72,9 +72,13 @@ func (s *Service) LookupUserIdentityByChannel(organisationID *string, channelTyp
 }
 
 // DeleteUserIdentity removes a single declaration. organisationID == nil
-// matches a personal-mode row (WHERE organisation_id IS NULL).
-func (s *Service) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) error {
-	_, err := s.stmtDeleteUserIdentity.Exec(struct {
+// matches a personal-mode row (WHERE organisation_id IS NULL via the
+// statement's IS NOT DISTINCT FROM). Returns the rows-affected count so
+// the caller can surface 404 when the requested row didn't exist —
+// without that check, a missed match returns success and the editor
+// shows a green toast for a no-op.
+func (s *Service) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error) {
+	res, err := s.stmtDeleteUserIdentity.Exec(struct {
 		UserID         string  `db:"user_id"`
 		OrganisationID *string `db:"organisation_id"`
 		ChannelType    string  `db:"channel_type"`
@@ -85,7 +89,15 @@ func (s *Service) DeleteUserIdentity(userID string, organisationID *string, chan
 		ChannelType:    channelType,
 		ExternalID:     externalID,
 	})
-	return err
+	if err != nil {
+		return 0, err
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		// Driver doesn't support RowsAffected — treat as success.
+		return 1, nil
+	}
+	return n, nil
 }
 
 // UpsertAnonymousUser creates (or fetches) a stub user row for an

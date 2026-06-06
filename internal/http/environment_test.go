@@ -677,5 +677,5 @@ func (m *mockPersistence) CreateUserIdentity(in api.CreateUserIdentity) (*api.Us
 func (m *mockPersistence) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity, error) { return nil, nil }
 func (m *mockPersistence) GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error) { return nil, nil }
 func (m *mockPersistence) LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) error { return nil }
+func (m *mockPersistence) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error) { return 0, nil }
 func (m *mockPersistence) UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error) { return "", nil }

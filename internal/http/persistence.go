@@ -73,7 +73,7 @@ type Persistence interface {
 	GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity, error)
 	GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error)
 	LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error)
-	DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) error
+	DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error)
 	UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error)
 	RemoveEnvironmentProperty(propertyID string) error
 	UpdateEnvironmentSecret(environmentID string, environmentKey string, secretID string, value string) error

@@ -110,13 +110,21 @@ func (s *Service) deleteUserIdentity(c *gin.Context) {
 		orgPtr = &organisationID
 	}
 
-	if err := s.persistence.DeleteUserIdentity(u.ID, orgPtr, channelType, externalID); err != nil {
+	n, err := s.persistence.DeleteUserIdentity(u.ID, orgPtr, channelType, externalID)
+	if err != nil {
 		log.WithFields(log.Fields{
 			"error":    err,
 			"user_id":  u.ID,
 			"personal": orgPtr == nil,
 		}).Error("unable to delete user identity")
 		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if n == 0 {
+		// No row matched — surfacing as 404 so the editor can stop
+		// pretending the delete succeeded (the previous behaviour was
+		// to return 204 here, which produced a green toast for a no-op).
+		c.JSON(http.StatusNotFound, gin.H{"error": "identity not found"})
 		return
 	}
 
