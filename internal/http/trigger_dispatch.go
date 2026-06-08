@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"flomation.app/automate/api/internal/agent"
 	"github.com/gin-gonic/gin"
@@ -128,10 +129,10 @@ func (s *Service) dispatchTrigger(c *gin.Context) {
 		if flo.OrganisationID != nil && *flo.OrganisationID != "" {
 			orgID = flo.OrganisationID
 		}
-		externalID := extractChannelExternalID(body)
-		if externalID != "" {
-			channelType := normaliseDispatchChannelType(body.ChannelType)
-			tu, err := agent.ResolveTriggeringUser(s.persistence, orgID, channelType, externalID, body.Sender)
+		channelType := normaliseDispatchChannelType(body.ChannelType)
+		candidates := extractChannelExternalIDCandidates(body, channelType)
+		if len(candidates) > 0 {
+			tu, err := agent.ResolveTriggeringUser(s.persistence, orgID, channelType, body.Sender, candidates...)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"trigger_id":   triggerID,
@@ -182,22 +183,61 @@ func (s *Service) dispatchTrigger(c *gin.Context) {
 	})
 }
 
-// extractChannelExternalID pulls the external sender identifier from a
-// dispatch body's metadata. Returns "" when no usable identifier is
-// found — caller skips identity hydration in that case.
+// extractChannelExternalIDCandidates returns the ordered list of
+// candidate sender identifiers to try when resolving the triggering
+// user. The first element is the canonical (stable) ID used for any
+// anonymous-user creation; subsequent elements are aliases tried only
+// for declared-identity lookup.
 //
-// All Launch channel handlers populate metadata["user_id"] as the
-// canonical sender identifier (Telegram chat user ID, Slack user ID,
-// Teams AAD object ID, Twilio phone number, Facebook PSID). We prefer
-// that; fall back to the human-readable Sender if absent (e.g. a future
-// handler that omits the canonical key).
-func extractChannelExternalID(body channelDispatchBody) string {
-	if body.Metadata != nil {
-		if v, ok := body.Metadata["user_id"].(string); ok && v != "" {
-			return v
+// For Telegram the stable numeric sender_id is canonical, with the
+// optional @username as an alias — users typically declare their
+// @handle in their profile, not the numeric ID. For most other
+// channels there's a single identifier (Slack U-ID, AAD Object ID,
+// Twilio phone) so the list contains one entry.
+//
+// channelType passed in is the normalised form (after
+// normaliseDispatchChannelType).
+func extractChannelExternalIDCandidates(body channelDispatchBody, channelType string) []string {
+	if body.Metadata == nil {
+		if body.Sender != "" {
+			return []string{body.Sender}
+		}
+		return nil
+	}
+
+	var candidates []string
+	add := func(v string) {
+		if v == "" {
+			return
+		}
+		for _, existing := range candidates {
+			if existing == v {
+				return
+			}
+		}
+		candidates = append(candidates, v)
+	}
+
+	switch channelType {
+	case "telegram":
+		// Stable numeric ID first (canonical for anon stubs).
+		if v, ok := body.Metadata["user_id"].(string); ok {
+			add(v)
+		}
+		// Friendly @username second — strip leading '@' so declared
+		// identities saved either with or without the prefix match.
+		if v, ok := body.Metadata["sender_username"].(string); ok {
+			add(strings.TrimPrefix(v, "@"))
+		}
+	default:
+		if v, ok := body.Metadata["user_id"].(string); ok {
+			add(v)
 		}
 	}
-	return body.Sender
+	if len(candidates) == 0 && body.Sender != "" {
+		candidates = append(candidates, body.Sender)
+	}
+	return candidates
 }
 
 // normaliseDispatchChannelType collapses channel sub-types to their

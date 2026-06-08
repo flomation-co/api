@@ -117,7 +117,21 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	var platformUserID *string
 	var triggeringIdentities []*api.UserIdentity
 	if externalID != "" {
-		tu, err := ResolveTriggeringUser(h.persistence, agent.OrganisationID, identityChannelType, externalID, displayName)
+		// For Telegram, also try the @username (without the @) as a
+		// secondary lookup candidate — users typically declare their
+		// handle, not the stable numeric sender_id.
+		candidates := []string{externalID}
+		if identityChannelType == "telegram" {
+			if msg.Metadata != nil {
+				if u, ok := msg.Metadata["sender_username"].(string); ok && u != "" {
+					trimmed := strings.TrimPrefix(u, "@")
+					if trimmed != "" && trimmed != externalID {
+						candidates = append(candidates, trimmed)
+					}
+				}
+			}
+		}
+		tu, err := ResolveTriggeringUser(h.persistence, agent.OrganisationID, identityChannelType, displayName, candidates...)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id":     agentID,

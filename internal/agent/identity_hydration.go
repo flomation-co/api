@@ -39,65 +39,92 @@ type TriggeringUser struct {
 // ResolveTriggeringUser is the single source of truth for resolving the
 // platform user behind an inbound channel event.
 //
+// externalIDs accepts one or more candidate identifiers tried in order
+// for the declared-identity lookup. The FIRST element is treated as
+// the canonical/stable identifier — it's what gets stored when an
+// anonymous stub user is created.
+//
+// The multi-candidate shape exists because some channels deliver more
+// than one usable identifier per sender:
+//   - Telegram: stable numeric sender_id (rarely seen by humans) +
+//     friendly @username (what users put in their profile). Pass
+//     [numericID, username] so a user who declared "AndyEsser" is
+//     matched, and anonymous stubs key on the stable numeric.
+//   - Slack/Teams/Twilio: a single identifier (Slack U-ID, AAD Object
+//     ID, phone number) — pass it alone.
+//
 // Behaviour:
 //
-//   - externalID empty → returns (nil, nil). No user, no identities.
-//     The flow still runs; ${flow.identities} resolves to [].
+//   - No candidates (all empty) → returns (nil, nil). The flow still
+//     runs; ${flow.identities} resolves to [].
 //
-//   - Declared identity exists for (organisationID, channelType, externalID)
+//   - Any candidate matches a declared user_identity for organisationID
 //     → returns the platform user_id + the user's full declared-identity
 //     snapshot scoped to organisationID.
 //
-//   - Undeclared + organisationID non-empty → upserts an anonymous stub
-//     user keyed on (organisationID, channelType, externalID) and returns
-//     its ID with an empty identities slice. The partial unique index
-//     on (organisation_id, channel_type, channel_external_id)
+//   - No declared match + organisationID non-empty → upserts an anonymous
+//     stub user keyed on (organisationID, channelType, canonical). The
+//     partial unique index on
+//     (organisation_id, channel_type, channel_external_id)
 //     WHERE is_anonymous=true keeps anonymous users isolated per-org.
 //
-//   - Undeclared + personal mode (organisationID nil or "") → returns
-//     (nil, nil). Personal mode does not create anonymous stubs (the
-//     users table CHECK constraint requires organisation_id when
+//   - No declared match + personal mode (organisationID nil or "") →
+//     returns (nil, nil). Personal mode does not create anonymous stubs
+//     (the users table CHECK constraint requires organisation_id when
 //     is_anonymous=true). ${flow.identities} resolves to [] and the
 //     flow still runs with raw sender info available in triggerData.
 //
 // channelType is expected to already be normalised (telegram_voice →
-// telegram, etc.) by the caller via normaliseChannelType, since the
-// normaliser lives in inbound.go and not all callers want the dep.
+// telegram, etc.) by the caller.
 func ResolveTriggeringUser(
 	p IdentityPersistence,
 	organisationID *string,
-	channelType, externalID, displayName string,
+	channelType, displayName string,
+	externalIDs ...string,
 ) (*TriggeringUser, error) {
-	if externalID == "" {
-		return nil, nil
-	}
-
-	declared, err := p.LookupUserIdentityByChannel(organisationID, channelType, externalID)
-	if err != nil {
-		// Treat a lookup failure as "no declared identity" rather than
-		// failing the trigger entirely — the caller logs the warning.
-		declared = nil
-	}
-
-	var userID string
-	if declared != nil {
-		userID = declared.UserID
-	} else if organisationID != nil && *organisationID != "" {
-		anonID, upsertErr := p.UpsertAnonymousUser(*organisationID, channelType, externalID, displayName)
-		if upsertErr != nil {
-			return nil, upsertErr
+	// Filter empties while preserving order — first non-empty becomes
+	// the canonical identifier for any anonymous-user creation.
+	var candidates []string
+	for _, e := range externalIDs {
+		if e != "" {
+			candidates = append(candidates, e)
 		}
-		userID = anonID
 	}
-
-	if userID == "" {
+	if len(candidates) == 0 {
 		return nil, nil
 	}
 
-	identities, err := p.GetUserIdentitiesByUserAndOrg(userID, organisationID)
-	if err != nil {
-		// Identity fetch is best-effort — return the user_id alone.
-		return &TriggeringUser{UserID: userID, Identities: nil}, nil
+	// Try each candidate against declared user_identity rows. A hit on
+	// any candidate wins — typical flow: a user declares "AndyEsser"
+	// as their Telegram identity; webhook delivers numeric sender_id as
+	// canonical + "AndyEsser" as alias; alias-match returns the
+	// declared user.
+	for _, ext := range candidates {
+		declared, err := p.LookupUserIdentityByChannel(organisationID, channelType, ext)
+		if err != nil {
+			// Treat lookup failure for this candidate as "no match";
+			// continue trying the others.
+			continue
+		}
+		if declared != nil {
+			identities, _ := p.GetUserIdentitiesByUserAndOrg(declared.UserID, organisationID)
+			return &TriggeringUser{UserID: declared.UserID, Identities: identities}, nil
+		}
 	}
-	return &TriggeringUser{UserID: userID, Identities: identities}, nil
+
+	// No declared match. Create anonymous stub keyed on the canonical
+	// (first) candidate — the order chosen by the caller — so the stub
+	// remains stable across username/handle changes.
+	if organisationID == nil || *organisationID == "" {
+		return nil, nil
+	}
+	anonID, err := p.UpsertAnonymousUser(*organisationID, channelType, candidates[0], displayName)
+	if err != nil {
+		return nil, err
+	}
+	if anonID == "" {
+		return nil, nil
+	}
+	identities, _ := p.GetUserIdentitiesByUserAndOrg(anonID, organisationID)
+	return &TriggeringUser{UserID: anonID, Identities: identities}, nil
 }
