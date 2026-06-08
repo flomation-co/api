@@ -3,6 +3,7 @@ package persistence
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 
 	api "flomation.app/automate/api"
 )
@@ -119,6 +120,13 @@ func (s *Service) DeleteUserIdentity(userID string, organisationID *string, chan
 // Personal-mode (no org) does NOT support anonymous users — the CHECK
 // constraint on users requires organisation_id when is_anonymous = true.
 func (s *Service) UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error) {
+	// Defensive: the CHECK constraint on users (migration 83) already
+	// rejects is_anonymous=true without organisation_id, but standalone
+	// trigger dispatch can reach this in personal mode — fail fast with
+	// a clearer error so callers can skip identity hydration cleanly.
+	if organisationID == "" {
+		return "", fmt.Errorf("anonymous users require an organisation; refusing to upsert in personal mode")
+	}
 	var id string
 	err := s.stmtUpsertAnonymousUser.Get(&id, struct {
 		OrganisationID    string `db:"organisation_id"`
