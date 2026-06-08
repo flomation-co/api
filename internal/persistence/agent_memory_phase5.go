@@ -35,7 +35,7 @@ func (s *Service) GetAgentIdentitiesByUserID(agentUserID string) ([]*api.AgentId
 // if no such identity exists. Used as a safety check before allowing identity
 // link proposals — the target must already be known to the agent.
 func (s *Service) LookupIdentity(agentID, channelType, externalID string) (*api.AgentIdentity, *api.AgentUser, error) {
-	identity, err := s.GetAgentIdentityByExternal(channelType, externalID, nil)
+	identity, err := s.GetAgentIdentityByExternal(agentID, channelType, externalID, nil)
 	if err != nil {
 		return nil, nil, err
 	}

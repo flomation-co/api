@@ -682,6 +682,7 @@ type CreateUserIdentity struct {
 // scoped per-identity.
 type AgentIdentity struct {
 	ID                string     `json:"id" db:"id"`
+	AgentID           string     `json:"agent_id" db:"agent_id"`
 	AgentUserID       string     `json:"agent_user_id" db:"agent_user_id"`
 	ChannelType       string     `json:"channel_type" db:"channel_type"`
 	ChannelExternalID string     `json:"channel_external_id" db:"channel_external_id"`

@@ -69,13 +69,15 @@ func (s *Service) CreateAgentUser(user api.AgentUser) (*string, error) {
 // migration 41: a NULL channel_scope and an empty-string channel_scope
 // collapse to the same bucket, so channel integrations that don't emit
 // a scope (generic webhook, email) produce stable identities.
-func (s *Service) GetAgentIdentityByExternal(channelType, externalID string, scope *string) (*api.AgentIdentity, error) {
+func (s *Service) GetAgentIdentityByExternal(agentID, channelType, externalID string, scope *string) (*api.AgentIdentity, error) {
 	var result api.AgentIdentity
 	if err := s.stmtGetAgentIdentityByExternal.Get(&result, struct {
+		AgentID           string  `db:"agent_id"`
 		ChannelType       string  `db:"channel_type"`
 		ChannelExternalID string  `db:"channel_external_id"`
 		ChannelScope      *string `db:"channel_scope"`
 	}{
+		AgentID:           agentID,
 		ChannelType:       channelType,
 		ChannelExternalID: externalID,
 		ChannelScope:      scope,
@@ -155,7 +157,7 @@ func (s *Service) ResolveOrCreateAgentIdentity(
 	scope *string,
 	displayName *string,
 ) (*api.AgentIdentity, *api.AgentUser, error) {
-	existing, err := s.GetAgentIdentityByExternal(channelType, externalID, scope)
+	existing, err := s.GetAgentIdentityByExternal(agentID, channelType, externalID, scope)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -184,6 +186,7 @@ func (s *Service) ResolveOrCreateAgentIdentity(
 	}
 
 	identityID, err := s.CreateAgentIdentity(api.AgentIdentity{
+		AgentID:           agentID,
 		AgentUserID:       *userID,
 		ChannelType:       channelType,
 		ChannelExternalID: externalID,
@@ -194,7 +197,7 @@ func (s *Service) ResolveOrCreateAgentIdentity(
 		return nil, nil, err
 	}
 
-	identity, err := s.GetAgentIdentityByExternal(channelType, externalID, scope)
+	identity, err := s.GetAgentIdentityByExternal(agentID, channelType, externalID, scope)
 	if err != nil {
 		return nil, nil, err
 	}

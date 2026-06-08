@@ -2881,7 +2881,8 @@ func NewService(config *config.Config) (*Service, error) {
 	// scope and an empty-string scope collapse to the same identity row.
 	s.stmtGetAgentIdentityByExternal, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_identity
-		WHERE channel_type = :channel_type
+		WHERE agent_id = :agent_id
+		  AND channel_type = :channel_type
 		  AND channel_external_id = :channel_external_id
 		  AND COALESCE(channel_scope, '') = COALESCE(:channel_scope, '')
 	`)
@@ -2890,8 +2891,8 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCreateAgentIdentity, err = s.conn.PrepareNamed(`
-		INSERT INTO agent_identity (agent_user_id, channel_type, channel_external_id, channel_scope, verified)
-		VALUES (:agent_user_id, :channel_type, :channel_external_id, :channel_scope, :verified)
+		INSERT INTO agent_identity (agent_id, agent_user_id, channel_type, channel_external_id, channel_scope, verified)
+		VALUES (:agent_id, :agent_user_id, :channel_type, :channel_external_id, :channel_scope, :verified)
 		RETURNING id
 	`)
 	if err != nil {
