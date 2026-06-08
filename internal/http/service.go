@@ -651,6 +651,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// See internal/http/agent_memory_phase2d.go.
 	internal.POST("/agent/:id/extract", s.extractAgentInternal)
 
+	// User-identity OAuth callbacks (R3 Phase 2). Launch's identity-purpose
+	// OAuth flows post the resolved external_id here after consenting the
+	// user; no client-supplied user_id is trusted — the user_id comes from
+	// the JWT-cookie session that Launch's identity initiate handler validated.
+	internal.POST("/user-identity", s.upsertUserIdentityInternal)
+
 	// Google Calendar: per-user account management (called by Launch OAuth callback
 	// and by the executor's calendar tool actions for token exchange).
 	internal.POST("/agent-user/:id/google-account", s.upsertGoogleAccountInternal)
