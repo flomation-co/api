@@ -675,7 +675,7 @@ func (m *mockPersistence) SetExecutionResumeTrigger(id, triggerType string, matc
 // identity flow can shadow these on their concrete mock type.
 func (m *mockPersistence) CreateUserIdentity(in api.CreateUserIdentity) (*api.UserIdentity, error) { return nil, nil }
 func (m *mockPersistence) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) GetUserIdentitiesByUserAndOrg(userID, organisationID string) ([]*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) LookupUserIdentityByChannel(organisationID, channelType, externalID string) (*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) DeleteUserIdentity(userID, organisationID, channelType, externalID string) error { return nil }
+func (m *mockPersistence) GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error) { return nil, nil }
+func (m *mockPersistence) LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error) { return nil, nil }
+func (m *mockPersistence) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error) { return 0, nil }
 func (m *mockPersistence) UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error) { return "", nil }

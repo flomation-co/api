@@ -547,6 +547,15 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		execution.TriggererEmail = author.EmailAddress
 	}
 
+	// Enrich execution.Data with the author's identities + user_id when
+	// they're not already present. The inbound agent pipeline sets these
+	// itself (using the message sender, not the flow author), so we
+	// only fill them in for manual / scheduled runs where the executing
+	// user IS the author. The runner picks these fields out of
+	// triggerData and routes them onto ExecutionContext so ${flow.user_id}
+	// and ${flow.identities} resolve in non-agent flows too.
+	enrichDataWithAuthorIdentities(s.persistence, execution, flow)
+
 	// Enrich with trigger type, triggerer email, and entry node ID from trigger invocation chain
 	if execution.TriggeredBy != nil {
 		if invocation, err := s.persistence.GetTriggerInvocationById(*execution.TriggeredBy); err == nil && invocation != nil {
@@ -623,4 +632,69 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, pe)
+}
+
+// enrichDataWithAuthorIdentities mutates execution.Data so that manual
+// and scheduled executions carry the author's user_id and declared
+// channel identities — the same fields the inbound agent pipeline sets
+// for channel-triggered executions. The runner reads these out of
+// triggerData and routes them onto ExecutionContext so the executor
+// resolves ${flow.user_id} and ${flow.identities} for non-agent flows.
+//
+// Skips the enrichment when execution.Data already contains a user_id
+// (the inbound agent pipeline ran first and set the channel sender —
+// who isn't necessarily the flow author).
+func enrichDataWithAuthorIdentities(p Persistence, execution *api.Execution, flow *api.Flo) {
+	if execution == nil {
+		return
+	}
+
+	// Unmarshal current execution.Data into a generic map (preserve any
+	// existing trigger fields the runner relies on).
+	data := map[string]interface{}{}
+	if len(execution.Data) > 0 && string(execution.Data) != "null" {
+		_ = json.Unmarshal(execution.Data, &data)
+	}
+
+	// Inbound agent pipeline wins — don't overwrite its sender resolution.
+	if _, hasUser := data["user_id"]; hasUser {
+		return
+	}
+	if execution.OwnerID == "" {
+		return
+	}
+
+	data["user_id"] = execution.OwnerID
+
+	// Identity snapshot is scoped to the flow's organisation context,
+	// matching the inbound agent pipeline's GetUserIdentitiesByUserAndOrg
+	// call. A nil OrganisationID means personal mode — IS NOT DISTINCT FROM
+	// NULL inside the persistence layer matches the right rows.
+	var orgID *string
+	if flow != nil && flow.OrganisationID != nil && *flow.OrganisationID != "" {
+		orgID = flow.OrganisationID
+	}
+
+	identities, err := p.GetUserIdentitiesByUserAndOrg(execution.OwnerID, orgID)
+	if err == nil && len(identities) > 0 {
+		shaped := make([]map[string]interface{}, 0, len(identities))
+		for _, i := range identities {
+			if i == nil {
+				continue
+			}
+			row := map[string]interface{}{
+				"channel_type": i.ChannelType,
+				"external_id":  i.ExternalID,
+			}
+			if i.DisplayName != nil && *i.DisplayName != "" {
+				row["display_name"] = *i.DisplayName
+			}
+			shaped = append(shaped, row)
+		}
+		data["identities"] = shaped
+	}
+
+	if raw, err := json.Marshal(data); err == nil {
+		execution.Data = raw
+	}
 }

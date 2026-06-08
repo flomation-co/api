@@ -32,10 +32,10 @@ func (s *Service) listUserIdentities(c *gin.Context) {
 }
 
 // createUserIdentity declares a new channel identity for the
-// authenticated user in a specific organisation. The request body must
-// supply organisation_id, channel_type, and external_id; display_name is
-// optional. The user's membership in the organisation is verified
-// against the JWT-derived user context.
+// authenticated user. organisation_id is optional: when omitted (or
+// null) the declaration is personal-mode — used by personal agents.
+// When provided, the user's membership in that org is verified against
+// the JWT-derived user context.
 func (s *Service) createUserIdentity(c *gin.Context) {
 	u := s.getUserFromContext(c)
 	if u == nil {
@@ -49,16 +49,22 @@ func (s *Service) createUserIdentity(c *gin.Context) {
 		return
 	}
 
-	if body.OrganisationID == "" || body.ChannelType == "" || body.ExternalID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "organisation_id, channel_type, and external_id are required"})
+	if body.ChannelType == "" || body.ExternalID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_type and external_id are required"})
 		return
 	}
 
-	// Ensure the caller is actually a member of the org they claim to
-	// be declaring an identity in.
-	if !userBelongsToOrg(u, body.OrganisationID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "you are not a member of that organisation"})
-		return
+	// Org-scoped declarations must come from a member; personal-mode
+	// declarations (nil org) are always allowed for the authenticated user.
+	if body.OrganisationID != nil && *body.OrganisationID != "" {
+		if !userBelongsToOrg(u, *body.OrganisationID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you are not a member of that organisation"})
+			return
+		}
+	} else {
+		// Normalise empty-string org to nil so the COALESCE-based unique
+		// index sees the same value the lookup queries pass in.
+		body.OrganisationID = nil
 	}
 
 	body.UserID = u.ID
@@ -66,14 +72,12 @@ func (s *Service) createUserIdentity(c *gin.Context) {
 	created, err := s.persistence.CreateUserIdentity(body)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"error":           err,
-			"user_id":         u.ID,
-			"organisation_id": body.OrganisationID,
-			"channel_type":    body.ChannelType,
+			"error":        err,
+			"user_id":      u.ID,
+			"channel_type": body.ChannelType,
+			"personal":     body.OrganisationID == nil,
 		}).Error("unable to create user identity")
-		// Conflict on existing (user, org, channel, external) tuple is
-		// fine to treat as idempotent — surface as 409 so the editor can
-		// distinguish from real errors.
+		// Conflict on existing tuple → 409 (editor distinguishes from real errors).
 		c.JSON(http.StatusConflict, gin.H{"error": "identity already declared"})
 		return
 	}
@@ -84,6 +88,7 @@ func (s *Service) createUserIdentity(c *gin.Context) {
 // deleteUserIdentity removes a single declared identity. Compound key
 // supplied via query string because external_id may contain characters
 // that are inconvenient in a URL path segment (e.g. Slack user IDs).
+// Empty organisation_id query param targets a personal-mode declaration.
 func (s *Service) deleteUserIdentity(c *gin.Context) {
 	u := s.getUserFromContext(c)
 	if u == nil {
@@ -95,18 +100,31 @@ func (s *Service) deleteUserIdentity(c *gin.Context) {
 	channelType := c.Query("channel_type")
 	externalID := c.Query("external_id")
 
-	if organisationID == "" || channelType == "" || externalID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "organisation_id, channel_type, and external_id query params are required"})
+	if channelType == "" || externalID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_type and external_id query params are required"})
 		return
 	}
 
-	if err := s.persistence.DeleteUserIdentity(u.ID, organisationID, channelType, externalID); err != nil {
+	var orgPtr *string
+	if organisationID != "" {
+		orgPtr = &organisationID
+	}
+
+	n, err := s.persistence.DeleteUserIdentity(u.ID, orgPtr, channelType, externalID)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"error":           err,
-			"user_id":         u.ID,
-			"organisation_id": organisationID,
+			"error":    err,
+			"user_id":  u.ID,
+			"personal": orgPtr == nil,
 		}).Error("unable to delete user identity")
 		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if n == 0 {
+		// No row matched — surfacing as 404 so the editor can stop
+		// pretending the delete succeeded (the previous behaviour was
+		// to return 204 here, which produced a green toast for a no-op).
+		c.JSON(http.StatusNotFound, gin.H{"error": "identity not found"})
 		return
 	}
 

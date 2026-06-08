@@ -642,9 +642,18 @@ type GoogleTokenResponse struct {
 // from their profile, and the webhook ingestion path resolves an incoming
 // sender by looking up (organisation_id, channel_type, external_id) here.
 // On miss, an anonymous users row is upserted instead (see migration 83).
+//
+// OrganisationID is nullable (migration 84): NULL means "personal mode",
+// for users running personal agents outside any organisation. The
+// per-org partial uniqueness still applies for non-personal rows.
 type UserIdentity struct {
 	UserID         string     `json:"user_id"          db:"user_id"`
-	OrganisationID string     `json:"organisation_id"  db:"organisation_id"`
+	// OrganisationID serialises as JSON null (not omitted) when nil so
+	// clients can reliably distinguish "personal mode" from "field
+	// missing because old API version" — the editor filters by
+	// (org_id === null) for the personal-mode view and that strict
+	// equality only works if the field is present as null.
+	OrganisationID *string    `json:"organisation_id"  db:"organisation_id"`
 	ChannelType    string     `json:"channel_type"     db:"channel_type"`
 	ExternalID     string     `json:"external_id"      db:"external_id"`
 	DisplayName    *string    `json:"display_name,omitempty" db:"display_name"`
@@ -653,10 +662,11 @@ type UserIdentity struct {
 }
 
 // CreateUserIdentity is the input shape for declaring a new identity from
-// the editor profile UI.
+// the editor profile UI. OrganisationID is omitted (or null) for
+// personal-mode declarations.
 type CreateUserIdentity struct {
 	UserID         string  `json:"user_id"          db:"user_id"`
-	OrganisationID string  `json:"organisation_id"  db:"organisation_id"`
+	OrganisationID *string `json:"organisation_id,omitempty"  db:"organisation_id"`
 	ChannelType    string  `json:"channel_type"     db:"channel_type"`
 	ExternalID     string  `json:"external_id"      db:"external_id"`
 	DisplayName    *string `json:"display_name,omitempty" db:"display_name"`
