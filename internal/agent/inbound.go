@@ -108,47 +108,40 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 		}
 	}
 
-	// Step 1.5 (R2 + R3 Phase 1.5): resolve the platform user_id
-	// alongside the agent_user_id. The agent_user_id remains the
-	// canonical memory scope for now; the platform user_id is exposed
-	// to flows via ${flow.user_id} so declared identities become
-	// visible to orchestrator logic. Runs for both org-scoped AND
-	// personal-mode agents — the lookup query uses COALESCE so NULL
-	// organisation_id (personal mode) matches NULL declarations.
-	//
-	// Anonymous-user upsert only runs in org-scoped mode: the users
-	// table CHECK constraint requires organisation_id when
-	// is_anonymous=true (personal-mode unknown senders have no
-	// platform user_id and fall back to agent_user-only scoping).
+	// Step 1.5 (R2 + R3 Phase 1.5, refactored Phase 4): resolve the
+	// platform user_id + the user's declared-identity snapshot in one
+	// shot via the shared ResolveTriggeringUser helper. The same helper
+	// is used by the standalone trigger dispatch path so that
+	// ${flow.identities} hydrates uniformly across agent and non-agent
+	// flows.
 	var platformUserID *string
+	var triggeringIdentities []*api.UserIdentity
 	if externalID != "" {
-		declared, err := h.persistence.LookupUserIdentityByChannel(agent.OrganisationID, identityChannelType, externalID)
+		// For Telegram, also try the @username (without the @) as a
+		// secondary lookup candidate — users typically declare their
+		// handle, not the stable numeric sender_id.
+		candidates := []string{externalID}
+		if identityChannelType == "telegram" {
+			if msg.Metadata != nil {
+				if u, ok := msg.Metadata["sender_username"].(string); ok && u != "" {
+					trimmed := strings.TrimPrefix(u, "@")
+					if trimmed != "" && trimmed != externalID {
+						candidates = append(candidates, trimmed)
+					}
+				}
+			}
+		}
+		tu, err := ResolveTriggeringUser(h.persistence, agent.OrganisationID, identityChannelType, displayName, candidates...)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id":     agentID,
 				"channel_type": identityChannelType,
 				"error":        err,
-			}).Warn("user_identity lookup failed; treating as unrecognised sender")
-		}
-		switch {
-		case declared != nil:
-			id := declared.UserID
+			}).Warn("user identity resolution failed; continuing without platform user scoping")
+		} else if tu != nil {
+			id := tu.UserID
 			platformUserID = &id
-		case agent.OrganisationID != nil && *agent.OrganisationID != "":
-			// Org-scoped + unrecognised → anonymous stub user.
-			orgID := *agent.OrganisationID
-			anonID, upsertErr := h.persistence.UpsertAnonymousUser(orgID, identityChannelType, externalID, displayName)
-			if upsertErr != nil {
-				log.WithFields(log.Fields{
-					"agent_id":     agentID,
-					"channel_type": identityChannelType,
-					"error":        upsertErr,
-				}).Warn("anonymous user upsert failed; continuing without platform user scoping")
-			} else if anonID != "" {
-				platformUserID = &anonID
-			}
-		}
-		if platformUserID != nil {
+			triggeringIdentities = tu.Identities
 			result.PlatformUserID = platformUserID
 		}
 	}
@@ -212,28 +205,11 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	}
 	result.MessageID = msgID
 
-	// Step 5: dispatch orchestrator flow.
+	// Step 5: dispatch orchestrator flow. The identities snapshot was
+	// fetched in Step 1.5 via ResolveTriggeringUser — reuse it directly
+	// rather than re-querying.
 	if agent.OrchestratorFlowID != nil && *agent.OrchestratorFlowID != "" {
-		// Snapshot the user's declared identities for ${flow.identities}.
-		// Scope matches the agent: org-scoped agents see the user's
-		// org-scoped declarations; personal agents see the user's
-		// personal-mode (NULL org) declarations. Empty for anonymous
-		// users (no rows in user_identity) — correct read of "this
-		// person has nothing declared".
-		var identities []*api.UserIdentity
-		if platformUserID != nil {
-			ids, idErr := h.persistence.GetUserIdentitiesByUserAndOrg(*platformUserID, agent.OrganisationID)
-			if idErr != nil {
-				log.WithFields(log.Fields{
-					"agent_id":         agentID,
-					"platform_user_id": *platformUserID,
-					"error":            idErr,
-				}).Warn("failed to fetch user identities, continuing with empty set")
-			} else {
-				identities = ids
-			}
-		}
-		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, identities, conversationID, conversationHistory)
+		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, triggeringIdentities, conversationID, conversationHistory)
 		if err := h.dispatcher.DispatchFlow(*agent.OrchestratorFlowID, nil, triggerData); err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -302,6 +278,10 @@ func (h *InboundHandler) buildTriggerData(
 	}
 	if platformUserID != nil {
 		data["user_id"] = *platformUserID
+		// Reserved key extracted by persistence.TriggerExecution at INSERT
+		// time → execution.triggering_user_id. Doesn't reach trigger node
+		// inputs (filtered by reservedTriggerDataKeys in the executor).
+		data["__triggering_user_id"] = *platformUserID
 		if agent.OrganisationID != nil {
 			data["organisation_id"] = *agent.OrganisationID
 		}

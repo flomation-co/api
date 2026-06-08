@@ -1042,13 +1042,16 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'billingDuration' AS billing_duration,
 			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
 			tt.name AS trigger_type,
-			e.agent_id
+			e.agent_id,
+			e.triggering_user_id,
+			COALESCE(NULLIF(tu.name, ''), tu.channel_external_id) AS triggering_user_display_name
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
 		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
 		LEFT JOIN trigger t ON t.id = ti.trigger_id
 		LEFT JOIN trigger_type tt ON tt.id = t.type
+		LEFT JOIN users tu ON tu.id = e.triggering_user_id
 		WHERE e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1066,13 +1069,16 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
 			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
 			tt.name AS trigger_type,
-			e.agent_id
+			e.agent_id,
+			e.triggering_user_id,
+			COALESCE(NULLIF(tu.name, ''), tu.channel_external_id) AS triggering_user_display_name
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
 		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
 		LEFT JOIN trigger t ON t.id = ti.trigger_id
 		LEFT JOIN trigger_type tt ON tt.id = t.type
+		LEFT JOIN users tu ON tu.id = e.triggering_user_id
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.owner_id = :user_id AND e.organisation_id IS NULL
 		ORDER BY e.created_at DESC
@@ -1110,13 +1116,16 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
 			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
 			tt.name AS trigger_type,
-			e.agent_id
+			e.agent_id,
+			e.triggering_user_id,
+			COALESCE(NULLIF(tu.name, ''), tu.channel_external_id) AS triggering_user_display_name
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
 		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
 		LEFT JOIN trigger t ON t.id = ti.trigger_id
 		LEFT JOIN trigger_type tt ON tt.id = t.type
+		LEFT JOIN users tu ON tu.id = e.triggering_user_id
 		WHERE e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
 		OFFSET :offset LIMIT :limit
@@ -1134,13 +1143,16 @@ func NewService(config *config.Config) (*Service, error) {
 			e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
 			ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
 			tt.name AS trigger_type,
-			e.agent_id
+			e.agent_id,
+			e.triggering_user_id,
+			COALESCE(NULLIF(tu.name, ''), tu.channel_external_id) AS triggering_user_display_name
 		FROM execution e
 		INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 		LEFT JOIN runner r ON r.id = e.runner_id
 		LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
 		LEFT JOIN trigger t ON t.id = ti.trigger_id
 		LEFT JOIN trigger_type tt ON tt.id = t.type
+		LEFT JOIN users tu ON tu.id = e.triggering_user_id
 		WHERE (CAST(e.id AS TEXT) LIKE LOWER(:search) OR LOWER(f.name) LIKE LOWER(:search))
 		AND e.organisation_id = :organisation_id
 		ORDER BY e.created_at DESC
@@ -1257,7 +1269,8 @@ func NewService(config *config.Config) (*Service, error) {
 			execution_status,
 		   	completion_status,
 			data,
-			agent_id
+			agent_id,
+			triggering_user_id
 		) VALUES (
 			:flo_id,
 			:name,
@@ -1267,7 +1280,8 @@ func NewService(config *config.Config) (*Service, error) {
 			:execution_status,
 		   	:completion_status,
 			:data,
-			:agent_id
+			:agent_id,
+			:triggering_user_id
 		) RETURNING id;
 	`)
 	if err != nil {
@@ -2867,7 +2881,8 @@ func NewService(config *config.Config) (*Service, error) {
 	// scope and an empty-string scope collapse to the same identity row.
 	s.stmtGetAgentIdentityByExternal, err = s.conn.PrepareNamed(`
 		SELECT * FROM agent_identity
-		WHERE channel_type = :channel_type
+		WHERE agent_id = :agent_id
+		  AND channel_type = :channel_type
 		  AND channel_external_id = :channel_external_id
 		  AND COALESCE(channel_scope, '') = COALESCE(:channel_scope, '')
 	`)
@@ -2876,8 +2891,8 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCreateAgentIdentity, err = s.conn.PrepareNamed(`
-		INSERT INTO agent_identity (agent_user_id, channel_type, channel_external_id, channel_scope, verified)
-		VALUES (:agent_user_id, :channel_type, :channel_external_id, :channel_scope, :verified)
+		INSERT INTO agent_identity (agent_id, agent_user_id, channel_type, channel_external_id, channel_scope, verified)
+		VALUES (:agent_id, :agent_user_id, :channel_type, :channel_external_id, :channel_scope, :verified)
 		RETURNING id
 	`)
 	if err != nil {
@@ -4079,9 +4094,15 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 		// Extract agent_id from trigger data so it's set atomically
 		// at INSERT time — prevents orphaned executions missing the
 		// agent tag when they fail before the post-creation UPDATE.
+		// Same pattern for __triggering_user_id, set by both the agent
+		// inbound pipeline and the standalone trigger dispatch path
+		// via the shared ResolveTriggeringUser helper.
 		if dataMap, ok := data.(map[string]interface{}); ok {
 			if agentID, ok := dataMap["agent_id"].(string); ok && agentID != "" {
 				execution.AgentID = &agentID
+			}
+			if tuid, ok := dataMap["__triggering_user_id"].(string); ok && tuid != "" {
+				execution.TriggeringUserID = &tuid
 			}
 		}
 

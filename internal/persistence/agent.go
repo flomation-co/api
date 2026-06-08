@@ -45,6 +45,27 @@ func (s *Service) GetAgentByID(id string) (*api.Agent, error) {
 	return &agent, nil
 }
 
+// GetAgentByOrchestratorFloID returns the agent whose orchestrator flow
+// is flowID, or nil with nil error if no agent owns this flow. Used by
+// the trigger dispatch endpoint to decide whether an inbound channel
+// message should run through the agent inbound pipeline (identity
+// resolution, conversation tracking, message persistence) or fire the
+// flow as a standalone trigger execution.
+func (s *Service) GetAgentByOrchestratorFloID(flowID string) (*api.Agent, error) {
+	var agent api.Agent
+	err := s.conn.Get(&agent, `
+		SELECT * FROM agent
+		WHERE orchestrator_flow_id = $1
+		LIMIT 1`, flowID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &agent, nil
+}
+
 // IsFlowAgentPaused checks if the given flow ID is the orchestrator or
 // extraction flow of a non-running agent. Returns true if the agent
 // exists and is paused, stopped, or in error state — false if running

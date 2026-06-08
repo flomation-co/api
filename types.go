@@ -152,6 +152,8 @@ type Execution struct {
 	ParentExecutionID *string          `json:"parent_execution_id,omitempty" db:"parent_execution_id"`
 	AgentID           *string          `json:"agent_id,omitempty" db:"agent_id"`
 	AgentSessionID    *string          `json:"agent_session_id,omitempty" db:"agent_session_id"`
+	TriggeringUserID  *string          `json:"triggering_user_id,omitempty" db:"triggering_user_id"`
+	TriggeringUserDisplayName *string  `json:"triggering_user_display_name,omitempty" db:"triggering_user_display_name"`
 	CreditCostPence   *int64           `json:"credit_cost_pence,omitempty" db:"-"`
 	Checkpoint        *json.RawMessage `json:"checkpoint,omitempty" db:"checkpoint"`
 	ResumeAt          *time.Time       `json:"resume_at,omitempty" db:"resume_at"`
@@ -680,6 +682,7 @@ type CreateUserIdentity struct {
 // scoped per-identity.
 type AgentIdentity struct {
 	ID                string     `json:"id" db:"id"`
+	AgentID           string     `json:"agent_id" db:"agent_id"`
 	AgentUserID       string     `json:"agent_user_id" db:"agent_user_id"`
 	ChannelType       string     `json:"channel_type" db:"channel_type"`
 	ChannelExternalID string     `json:"channel_external_id" db:"channel_external_id"`

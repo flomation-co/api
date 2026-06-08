@@ -866,3 +866,6 @@ func (m *agentMock) UnpinOldestMemories(agentUserID string, count int) ([]string
 }
 func (m *agentMock) GetMaxPinnedMemories(agentID string) (int, error)         { return 50, nil }
 func (m *agentMock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }
+func (m *agentMock) GetAgentByOrchestratorFloID(flowID string) (*api.Agent, error) {
+	return nil, nil
+}

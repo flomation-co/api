@@ -94,6 +94,7 @@ type Persistence interface {
 
 	TriggerExecution(floId string, triggerId string, data interface{}) (*string, error)
 	IsFlowAgentPaused(flowID string) bool
+	GetAgentByOrchestratorFloID(flowID string) (*api.Agent, error)
 	UpdateCompletionStatus(ID string, status string) error
 	UpdateEnvironmentProperty(environmentID string, environmentKey string, property api.EnvironmentProperty) error
 	UpdateExecutionResult(ID string, result interface{}) error
