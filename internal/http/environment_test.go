@@ -211,6 +211,9 @@ func (m *mockPersistence) TriggerExecution(string, string, interface{}) (*string
 	panic("not implemented")
 }
 func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }
+func (m *mockPersistence) GetAgentByOrchestratorFloID(string) (*api.Agent, error) {
+	return nil, nil
+}
 func (m *mockPersistence) UpdateCompletionStatus(string, string) error { panic("not implemented") }
 func (m *mockPersistence) UpdateEnvironmentProperty(string, string, api.EnvironmentProperty) error {
 	panic("not implemented")
