@@ -97,12 +97,14 @@ func (s *Service) GetAgentIdentityByExternal(agentID, channelType, externalID st
 func (s *Service) CreateAgentIdentity(identity api.AgentIdentity) (*string, error) {
 	var id string
 	if err := s.stmtCreateAgentIdentity.Get(&id, struct {
+		AgentID           string  `db:"agent_id"`
 		AgentUserID       string  `db:"agent_user_id"`
 		ChannelType       string  `db:"channel_type"`
 		ChannelExternalID string  `db:"channel_external_id"`
 		ChannelScope      *string `db:"channel_scope"`
 		Verified          bool    `db:"verified"`
 	}{
+		AgentID:           identity.AgentID,
 		AgentUserID:       identity.AgentUserID,
 		ChannelType:       identity.ChannelType,
 		ChannelExternalID: identity.ChannelExternalID,
