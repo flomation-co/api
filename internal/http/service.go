@@ -562,7 +562,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.POST("/agent/:id/state/:key", s.setAgentStateInternal)
 	internal.POST("/flo/:FloID/execute", s.executeFlo)
 	internal.POST("/flo/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
-	internal.POST("/trigger/:trigger_id/dispatch", s.dispatchTrigger)
+	internal.POST("/trigger/:id/dispatch", s.dispatchTrigger)
 	internal.GET("/execution/:id", s.getExecutionByID)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
 

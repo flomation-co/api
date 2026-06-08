@@ -36,7 +36,7 @@ type channelDispatchBody struct {
 // its existing direct-to-InboundHandler path for legacy agent_id-keyed
 // URLs as a fallback.
 func (s *Service) dispatchTrigger(c *gin.Context) {
-	triggerID := c.Param("trigger_id")
+	triggerID := c.Param("id")
 	if triggerID == "" {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
