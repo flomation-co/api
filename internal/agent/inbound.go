@@ -503,6 +503,12 @@ func normaliseChannelType(channelType string) string {
 		return "telegram"
 	case "twilio_voice":
 		return "twilio"
+	case "teams":
+		// Transport identifier "teams" describes the Microsoft Teams
+		// webhook source, but identities are declared per Microsoft
+		// account (Teams, Outlook, etc. all share the same AAD Object
+		// ID). Collapse onto a single "microsoft" identity channel.
+		return "microsoft"
 	default:
 		return channelType
 	}
