@@ -325,6 +325,18 @@ func (s *Service) registerRunner(c *gin.Context) {
 			return
 		}
 
+		// Refresh version + executor_version on every re-registration so
+		// the Runners page reflects what's actually running, not what
+		// was running on first enrolment. Non-fatal: a transient DB blip
+		// here shouldn't fail the registration call — heartbeat already
+		// landed and the cosmetic stale version is the lesser evil.
+		if err := s.persistence.UpdateRunnerVersion(r.ID, request.Version, request.ExecutorVersion); err != nil {
+			log.WithFields(log.Fields{
+				"error":     err,
+				"runner_id": r.ID,
+			}).Warn("unable to update runner version metadata")
+		}
+
 		if len(request.Manifest) > 0 {
 			result, err := s.migrator.Migrate(request.Manifest, true)
 			if err != nil {

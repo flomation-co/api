@@ -110,6 +110,7 @@ type Persistence interface {
 	UpdateFlo(flo api.Flo) error
 	UpdateOrganisation(organisation api.Organisation) error
 	UpdateRunnerLastContact(ID string, IPAddress string) error
+	UpdateRunnerVersion(ID string, version, executorVersion *string) error
 	UpdateTrigger(trigger api.Trigger) error
 	GetTriggersByFloID(floID string) ([]*api.Trigger, error)
 	LinkFloToTrigger(floID string, triggerID string) error
