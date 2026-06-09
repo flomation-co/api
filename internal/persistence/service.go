@@ -100,6 +100,7 @@ type Service struct {
 	stmtGetRunners             *sqlx.NamedStmt
 	stmtInsertRunner           *sqlx.NamedStmt
 	stmtUpdateRunnerLastAccess *sqlx.NamedStmt
+	stmtUpdateRunnerVersion    *sqlx.NamedStmt
 	stmtInsertQueueRunner      *sqlx.NamedStmt
 	stmtCanRunnerAccessQueue   *sqlx.NamedStmt
 	stmtRemoveQueueRunner      *sqlx.NamedStmt
@@ -1544,11 +1545,32 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtUpdateRunnerLastAccess, err = db.PrepareNamed(`
-		UPDATE 
+		UPDATE
 		    runner
 		SET
 		    last_contact_at = CURRENT_TIMESTAMP,
 		    ip = :ip
+		WHERE
+		    id = :id;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Refreshes the version + executor_version columns shown on the
+	// Runners page. Called from the HTTP registerRunner handler on every
+	// re-registration so a runner first enrolled on a stale build (e.g.
+	// the hand-built v0.0.dev that lived on the OVH host) is correctly
+	// relabelled once it rejoins from a proper .deb release. Without
+	// this the column shows whatever was stored on initial INSERT — and
+	// stays that way through every subsequent restart, because the
+	// existing last-contact heartbeat update doesn't touch these columns.
+	s.stmtUpdateRunnerVersion, err = db.PrepareNamed(`
+		UPDATE
+		    runner
+		SET
+		    version = :version,
+		    executor_version = :executor_version
 		WHERE
 		    id = :id;
 	`)
@@ -4464,6 +4486,32 @@ func (s *Service) UpdateRunnerLastContact(ID string, IPAddress string) error {
 		return err
 	}
 
+	return nil
+}
+
+// UpdateRunnerVersion refreshes the version + executor_version columns
+// for an already-registered runner. Called from the HTTP registerRunner
+// handler so each re-registration restamps the build metadata shown on
+// the Runners page; without it, a runner first enrolled on a stale
+// build (e.g. the hand-built v0.0.dev that lived on the OVH host)
+// would display that stale version forever, because the heartbeat
+// update path only touches last_contact_at + ip.
+//
+// Pointer-typed args mirror api.Runner's shape — a runner that
+// registers without a version would write NULL columns, which is the
+// honest representation.
+func (s *Service) UpdateRunnerVersion(ID string, version, executorVersion *string) error {
+	if _, err := s.stmtUpdateRunnerVersion.Exec(struct {
+		ID              string  `db:"id"`
+		Version         *string `db:"version"`
+		ExecutorVersion *string `db:"executor_version"`
+	}{
+		ID:              ID,
+		Version:         version,
+		ExecutorVersion: executorVersion,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
