@@ -105,6 +105,17 @@ func (s *Service) syncCreditBalanceInternal(c *gin.Context) {
 // usage dashboards and upgrade prompts.
 func (s *Service) getQuota(c *gin.Context) {
 	user := s.getUserFromContext(c)
+	if user == nil {
+		// Defensive: every getUserFromContext caller should nil-check
+		// before dereferencing. This one historically didn't, and a
+		// fresh-user race on the lazy-create path produced a nil deref
+		// that 500-ed the entire response with no body — which the
+		// editor surfaced as a React #418 hydration mismatch on first
+		// page load. The persistence-side ON CONFLICT in stmtCreateUser
+		// closes the race; this guard is belt-and-braces.
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
 
 	var orgID *string
 	if len(user.Organisations) > 0 {
