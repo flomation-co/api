@@ -89,6 +89,21 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		channelsJSON = json.RawMessage("[]")
 	}
 
+	// If the caller didn't supply an extraction flow, point the new
+	// agent at the canonical system flow. Without this, memory
+	// extraction is a silent no-op until the next API restart triggers
+	// BootstrapExtractionFlow's backfill — which is why brand-new bots
+	// appeared "memoryless" in localhost testing.
+	if agent.ExtractionFlowID == nil || *agent.ExtractionFlowID == "" {
+		var systemFlowID string
+		if err := s.conn.Get(&systemFlowID,
+			`SELECT id FROM flo WHERE system_flow = TRUE AND system_flow_purpose = $1 LIMIT 1`,
+			ExtractionFlowPurpose,
+		); err == nil && systemFlowID != "" {
+			agent.ExtractionFlowID = &systemFlowID
+		}
+	}
+
 	var id string
 	if err := s.stmtCreateAgent.Get(&id, struct {
 		Name                    string          `db:"name"`
