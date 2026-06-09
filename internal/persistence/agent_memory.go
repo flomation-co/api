@@ -367,6 +367,68 @@ func (s *Service) CloseAgentConversation(conversationID string) error {
 	return err
 }
 
+// CloseAgentConversationIfOpen is the atomic close-and-claim variant used
+// by the conversation sweeper. Returns true iff this call actually closed
+// the row — false means another writer (concurrent sweeper, an inbound
+// message that triggered the in-band close, etc.) got there first.
+//
+// The sweeper uses the boolean to decide whether to fire a session
+// summary: only the winning closer should, otherwise two API instances
+// would each dispatch one summary per stale conversation.
+func (s *Service) CloseAgentConversationIfOpen(conversationID string) (bool, error) {
+	res, err := s.conn.Exec(`
+		UPDATE agent_conversation SET ended_at = NOW() WHERE id = $1 AND ended_at IS NULL
+	`, conversationID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// ListStaleOpenConversations returns open conversations whose
+// last_message_at is older than their owning agent's idle_timeout_seconds.
+// Used by the conversation sweeper to surface conversations that the
+// inbound-message path would never close on its own (i.e. the user never
+// came back).
+//
+// Filters:
+//   - ended_at IS NULL (still open)
+//   - agent.archived_at IS NULL (skip archived agents)
+//   - agent.idle_timeout_seconds > 0 (zero means "no timeout configured" —
+//     don't auto-close)
+//
+// Ordered by oldest last_message_at first so a backlog drains in age
+// order; bounded by limit so a single tick doesn't try to summarise
+// thousands of conversations in one go.
+func (s *Service) ListStaleOpenConversations(limit int) ([]*api.AgentConversation, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var results []*api.AgentConversation
+	if err := s.conn.Select(&results, `
+		SELECT c.id, c.agent_id, c.agent_user_id, c.channel_type, c.channel_id,
+		       c.thread_id, c.started_at, c.last_message_at, c.ended_at, c.metadata
+		FROM agent_conversation c
+		JOIN agent a ON a.id = c.agent_id
+		WHERE c.ended_at IS NULL
+		  AND a.archived_at IS NULL
+		  AND a.idle_timeout_seconds > 0
+		  AND c.last_message_at < NOW() - (a.idle_timeout_seconds * INTERVAL '1 second')
+		ORDER BY c.last_message_at ASC
+		LIMIT $1
+	`, limit); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return results, nil
+}
+
 // --- Conversation-scoped messages ---
 
 // GetAgentConversationMessages returns the conversation's messages in

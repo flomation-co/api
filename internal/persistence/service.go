@@ -1247,13 +1247,30 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// IMPORTANT: this is the fan-out point for every trigger fire.
+	// `flo_trigger` keeps historical linkages around even after a flo
+	// is archived (the archive path only updates `flo.archived_at`,
+	// it doesn't prune flo_trigger rows). Without the archived guard
+	// below, a single schedule fire would create one execution per
+	// every flo that was *ever* linked to the trigger, including
+	// long-replaced orchestrator flows. That's how Ada Whitmore ended
+	// up with 6 executions at 08:00 — six prior orchestrator-flow
+	// replacements, all still linked to her morning-briefing trigger.
+	//
+	// Note the opt-out marker on the archived line: this is a dispatch
+	// query, not a list query, so it MUST include system flows —
+	// otherwise the Agent Memory Extraction system flow's manual
+	// trigger would silently stop firing. The convention test in
+	// system_flow_filter_test.go recognises this marker.
 	s.stmtGetFlosForTrigger, err = s.conn.PrepareNamed(`
 		SELECT
-		    flo_id
+		    ft.flo_id
 		FROM
-		    flo_trigger
+		    flo_trigger ft
+		    JOIN flo f ON f.id = ft.flo_id
 		WHERE
-		    trigger_id = :trigger_id
+		    ft.trigger_id = :trigger_id
+		    AND f.archived_at IS NULL -- dispatch-path:system-flows-allowed
 	`)
 	if err != nil {
 		return nil, err
@@ -3800,12 +3817,32 @@ func (s *Service) UpdateFlo(flo api.Flo) error {
 	return nil
 }
 
+// DeleteFlo soft-archives a flo and prunes its junction rows in
+// flo_trigger. Both steps run in one transaction so a crash between
+// them can't leave orphan trigger linkages on an archived flo (which
+// would resurrect the duplicate-execution bug as soon as the next
+// trigger fires).
+//
+// The read path (stmtGetFlosForTrigger) also filters on
+// flo.archived_at IS NULL as belt-and-braces, so even without this
+// cleanup an archived flo would not receive new executions — but
+// keeping the junction clean makes operational queries
+// ("which flos does this trigger drive?") return accurate answers
+// and prevents unbounded growth of flo_trigger over time.
 func (s *Service) DeleteFlo(flo api.Flo) error {
-	if _, err := s.stmtDeleteFlo.Exec(flo); err != nil {
+	tx, err := s.conn.Beginx()
+	if err != nil {
 		return err
 	}
+	defer func() { _ = tx.Rollback() }()
 
-	return nil
+	if _, err := tx.NamedStmt(s.stmtDeleteFlo).Exec(flo); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM flo_trigger WHERE flo_id = $1`, flo.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) CreateFloRevision(revision api.Revision) (*string, error) {

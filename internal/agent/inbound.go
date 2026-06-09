@@ -355,27 +355,19 @@ func (h *InboundHandler) dispatchExtraction(
 
 func (h *InboundHandler) generateSessionSummary(agentID, closedConvID string, agentUserID *string) {
 	msgs, err := h.persistence.GetAgentConversationMessages(closedConvID, 50)
-	if err != nil || len(msgs) == 0 {
+	if err != nil {
 		return
 	}
-
-	var sb strings.Builder
-	sb.WriteString("Summarise this completed conversation in 2-3 sentences. ")
-	sb.WriteString("Focus on: what the user asked for, what was accomplished, ")
-	sb.WriteString("and any outstanding items. Write as a factual summary, not as a message.\n\n")
-	for _, m := range msgs {
-		role := "user"
-		if m.Direction == "outbound" {
-			role = "assistant"
-		}
-		fmt.Fprintf(&sb, "[%s]: %s\n", role, m.Content)
+	prompt := BuildSessionSummaryPrompt(msgs)
+	if prompt == "" {
+		return
 	}
 
 	userID := ""
 	if agentUserID != nil {
 		userID = *agentUserID
 	}
-	h.persistence.DispatchExtraction(agentID, sb.String(), "summary", nil, &userID, &closedConvID)
+	h.persistence.DispatchExtraction(agentID, prompt, "summary", nil, &userID, &closedConvID)
 }
 
 func (h *InboundHandler) checkPendingActionConfirmation(agentID string, msg InboundMessage, agentUserID string) {
