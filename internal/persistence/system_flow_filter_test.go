@@ -35,6 +35,16 @@ func TestSystemFlowFilterAppliedToAllListQueries(t *testing.T) {
 	const archivedMarker = "f.archived_at IS NULL"
 	const systemFlowMarker = "f.system_flow = FALSE"
 
+	// An explicit opt-out marker for queries that legitimately need
+	// system flows included alongside non-archived user flows. The
+	// canonical example is the trigger fan-out query
+	// (stmtGetFlosForTrigger) — every trigger fire reads it to decide
+	// which executions to create, and the Agent Memory Extraction
+	// system flow's manual trigger MUST fire that path. The marker
+	// must appear on the same line as the archived clause so it's
+	// visually impossible to miss when reading the query.
+	const allowSystemFlowsMarker = "-- dispatch-path:system-flows-allowed"
+
 	lines := strings.Split(src, "\n")
 	var missing []string
 	found := 0
@@ -43,6 +53,9 @@ func TestSystemFlowFilterAppliedToAllListQueries(t *testing.T) {
 			continue
 		}
 		found++
+		if strings.Contains(line, allowSystemFlowsMarker) {
+			continue
+		}
 		if !strings.Contains(line, systemFlowMarker) {
 			missing = append(missing, lineRef(i+1, line))
 		}
