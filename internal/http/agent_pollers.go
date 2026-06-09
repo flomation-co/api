@@ -42,6 +42,13 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 		log.Info("API-side embedding backfill poller registered")
 	}
 
+	// Conversation sweeper (5m) — closes abandoned conversations whose
+	// idle timeout has elapsed and fires session summaries for them.
+	// Without this, conversations the user never returned to would
+	// remain open indefinitely and produce zero summaries.
+	poller.StartConversationSweeperPoller(p, s.executionNotifier)
+	log.Info("API-side conversation sweeper registered")
+
 	// Credit deduction sync poller (30s) — pushes deductions to billing service.
 	if cfg.Billing.InternalURL != "" {
 		billingClient, err := mtls.ClientOrDefault(cfg.TLS, 15*time.Second)

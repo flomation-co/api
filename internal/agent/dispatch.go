@@ -119,6 +119,72 @@ func (d *DirectFlowDispatcher) DispatchFlow(flowID string, triggerID *string, da
 	return nil
 }
 
+// SummaryPersistence is the slice of the persistence API needed to
+// assemble a session summary prompt from a closed conversation.
+type SummaryPersistence interface {
+	DispatchPersistence
+	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
+}
+
+// BuildSessionSummaryPrompt assembles the canonical "summarise this
+// conversation" prompt from a transcript. Returns the empty string when
+// the transcript is empty (caller should skip the dispatch).
+//
+// Single source of truth for the prompt shape — both the in-band inbound
+// path and the out-of-band sweeper poller call this so the extraction
+// model sees the same input regardless of which closed the conversation.
+func BuildSessionSummaryPrompt(msgs []*api.AgentMessage) string {
+	if len(msgs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Summarise this completed conversation in 2-3 sentences. ")
+	sb.WriteString("Focus on: what the user asked for, what was accomplished, ")
+	sb.WriteString("and any outstanding items. Write as a factual summary, not as a message.\n\n")
+	for _, m := range msgs {
+		role := "user"
+		if m.Direction == "outbound" {
+			role = "assistant"
+		}
+		fmt.Fprintf(&sb, "[%s]: %s\n", role, m.Content)
+	}
+	return sb.String()
+}
+
+// GenerateSessionSummary fetches the messages of a (closed) conversation
+// and dispatches a summary turn through the extraction pipeline with
+// role="summary". The extraction flow's system prompt special-cases that
+// role to write a single session_summary memory and any task_completed
+// confirmations.
+//
+// Used by the conversation sweeper poller; the in-band inbound path
+// reuses BuildSessionSummaryPrompt directly because its persistence
+// adapter exposes a different DispatchExtraction surface.
+//
+// Silent no-op if the conversation has no messages — nothing to
+// summarise.
+func GenerateSessionSummary(
+	p SummaryPersistence,
+	notifier ExecutionNotifier,
+	agentID, conversationID string,
+	agentUserID *string,
+) {
+	msgs, err := p.GetAgentConversationMessages(conversationID, 50)
+	if err != nil {
+		return
+	}
+	prompt := BuildSessionSummaryPrompt(msgs)
+	if prompt == "" {
+		return
+	}
+
+	userID := ""
+	if agentUserID != nil {
+		userID = *agentUserID
+	}
+	DispatchExtraction(p, notifier, agentID, prompt, "summary", nil, &userID, &conversationID)
+}
+
 // DispatchExtraction triggers the extraction pipeline for an agent.
 // Direct replacement for the extractAgentInternal HTTP handler.
 func DispatchExtraction(
