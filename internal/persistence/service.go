@@ -499,6 +499,18 @@ func NewService(config *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	// ON CONFLICT (id) DO NOTHING makes this idempotent under the race
+	// that happens when a freshly-registered user's first page load
+	// fires several parallel API calls (e.g. /user + /billing/quota +
+	// /dashboard). Each call independently runs getUserFromContext →
+	// GetUserByID returns nil → CreateUser fires. Without the conflict
+	// clause, the first wins and the rest 500 with users_pkey
+	// duplicate-key, which then nil-derefs in any handler that doesn't
+	// defensively check the returned *api.User.
+	//
+	// On conflict the RETURNING clause emits no row, so CreateUser's
+	// Get sees sql.ErrNoRows — the Go wrapper treats that as the
+	// idempotent-success path and returns the input id.
 	s.stmtCreateUser, err = s.conn.PrepareNamed(`
 		INSERT INTO users (
 		    id,
@@ -510,7 +522,7 @@ func NewService(config *config.Config) (*Service, error) {
 			:name,
 		    PGP_SYM_ENCRYPT(:email_address, :encrypt_key),
 		    :marketing_opt_in
-		) RETURNING id;
+		) ON CONFLICT (id) DO NOTHING RETURNING id;
 	`)
 	if err != nil {
 		return nil, err
@@ -3516,6 +3528,15 @@ func (s *Service) CreateUser(user *api.User) (*string, error) {
 		user,
 		s.config.Database.EncryptionKey,
 	}); err != nil {
+		// Idempotent-success path: ON CONFLICT (id) DO NOTHING in the
+		// prepared statement means a concurrent insert by another
+		// goroutine resolves to "no row returned". sqlx surfaces that
+		// as sql.ErrNoRows. Treat it as success and return the input
+		// id — the caller's next GetUserByID will see the row the
+		// other goroutine just wrote.
+		if errors.Is(err, sql.ErrNoRows) {
+			return &user.ID, nil
+		}
 		return nil, err
 	}
 
