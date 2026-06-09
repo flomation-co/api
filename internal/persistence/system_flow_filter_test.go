@@ -43,7 +43,13 @@ func TestSystemFlowFilterAppliedToAllListQueries(t *testing.T) {
 	// system flow's manual trigger MUST fire that path. The marker
 	// must appear on the same line as the archived clause so it's
 	// visually impossible to miss when reading the query.
-	const allowSystemFlowsMarker = "-- dispatch-path:system-flows-allowed"
+	//
+	// The marker MUST NOT contain a ':' character: sqlx's named-
+	// statement preparer regex-scans the SQL text (including inside
+	// SQL comments) for `:identifier` patterns and would treat
+	// `:system` as a required bound parameter, breaking every Exec
+	// on the prepared statement at runtime.
+	const allowSystemFlowsMarker = "-- dispatch-path-system-flows-allowed"
 
 	lines := strings.Split(src, "\n")
 	var missing []string
@@ -67,6 +73,75 @@ func TestSystemFlowFilterAppliedToAllListQueries(t *testing.T) {
 	if len(missing) > 0 {
 		t.Fatalf("these %d list/join clauses are missing the system_flow filter:\n%s",
 			len(missing), strings.Join(missing, "\n"))
+	}
+}
+
+// TestNoColonIdentifiersInSQLComments guards against an entire class
+// of sqlx-PrepareNamed regression. The named-statement preparer
+// regex-scans the SQL TEXT for `:identifier` patterns and binds each
+// match to a struct field at Exec time — without respecting SQL
+// comment scopes. So a stray `-- explainer:topic` line silently turns
+// into a required `:explainer` parameter and every dispatch returns
+// 500 with "could not find name explainer in ...".
+//
+// Triggered by the dispatch-path-system-flows-allowed marker bug from
+// commit bbadfd4 — the original marker contained a colon, sqlx parsed
+// `:system` as a parameter, and every Telegram/Slack/Teams dispatch
+// against an agent's orchestrator started failing in production.
+//
+// The check is narrow on purpose: it only flags `--` line comments
+// inside raw SQL strings that contain `:<letter>` patterns. The
+// false-positive surface is essentially zero in practice — nobody
+// writes `time-of-day:14:00` in a SQL comment — and the cost of
+// missing one is a production outage on every dispatch.
+func TestNoColonIdentifiersInSQLComments(t *testing.T) {
+	b, err := os.ReadFile("service.go")
+	if err != nil {
+		t.Fatalf("failed to read service.go: %v", err)
+	}
+	src := string(b)
+
+	lines := strings.Split(src, "\n")
+	var offences []string
+	for i, line := range lines {
+		// Only look at lines that look like they're inside a SQL
+		// backtick block (heuristic: contain a `--` SQL line comment
+		// AND start with whitespace, ruling out Go `//` style code
+		// comments and string literals on assignment lines).
+		commentIdx := strings.Index(line, "--")
+		if commentIdx < 0 {
+			continue
+		}
+		// Skip lines that are pure Go-style comments (start of trimmed
+		// line is `//` or `/*`). Those are never inside SQL strings.
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		comment := line[commentIdx+2:]
+		// Look for :letter — sqlx terminates parameter names at the
+		// first non-alphanumeric/underscore character, so the colon
+		// followed by a letter is the dangerous shape. Allow `::` as
+		// it's the Postgres cast operator (e.g. `::uuid`).
+		for j := 0; j < len(comment)-1; j++ {
+			if comment[j] != ':' {
+				continue
+			}
+			if j+1 < len(comment) && comment[j+1] == ':' {
+				// `::` cast, not a binding.
+				continue
+			}
+			next := comment[j+1]
+			if (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') || next == '_' {
+				offences = append(offences, lineRef(i+1, line))
+				break
+			}
+		}
+	}
+
+	if len(offences) > 0 {
+		t.Fatalf("these %d SQL line comments contain `:identifier` patterns that sqlx will parse as required parameters at Exec time:\n%s",
+			len(offences), strings.Join(offences, "\n"))
 	}
 }
 

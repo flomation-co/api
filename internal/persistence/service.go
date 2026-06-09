@@ -1262,6 +1262,12 @@ func NewService(config *config.Config) (*Service, error) {
 	// otherwise the Agent Memory Extraction system flow's manual
 	// trigger would silently stop firing. The convention test in
 	// system_flow_filter_test.go recognises this marker.
+	//
+	// The marker MUST NOT contain a ':' character. sqlx's named-
+	// statement preparer regex-scans the SQL text (including inside
+	// SQL comments) for `:identifier` patterns and treats every match
+	// as a required parameter — so e.g. `-- foo:bar` would surface
+	// `:foo` at Exec time as "could not find name foo in struct ...".
 	s.stmtGetFlosForTrigger, err = s.conn.PrepareNamed(`
 		SELECT
 		    ft.flo_id
@@ -1270,7 +1276,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    JOIN flo f ON f.id = ft.flo_id
 		WHERE
 		    ft.trigger_id = :trigger_id
-		    AND f.archived_at IS NULL -- dispatch-path:system-flows-allowed
+		    AND f.archived_at IS NULL -- dispatch-path-system-flows-allowed
 	`)
 	if err != nil {
 		return nil, err
