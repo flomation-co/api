@@ -120,6 +120,11 @@ type Persistence interface {
 	UpdateOnboardingProgress(userID string, step int, completedAt *time.Time) error
 	SetChecklistFlag(userID string, flag int) error
 	ClearChecklistFlag(userID string, flag int) error
+	CompleteUserWelcome(userID, name string, marketingOptIn bool) error
+	SetUserMarketingOptIn(userID string, optIn bool) error
+	MarkUserMarketingSynced(userID string) error
+	MarkUserMarketingSyncFailed(userID, reason string) error
+	ListUsersNeedingMarketingSync(limit int) ([]*api.User, error)
 
 	// Favourites
 	GetFloFavourites(userID string) ([]string, error)

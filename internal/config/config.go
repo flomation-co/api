@@ -73,6 +73,16 @@ type BillingConfig struct {
 	InternalURL             string `json:"internal_url,omitempty" env:"BILLING_INTERNAL_URL" arg:"billing-internal-url"`
 }
 
+// EmailOctopusConfig holds the credentials for the outbound marketing
+// sync connector. Both fields are required for the connector to do
+// anything — a missing or empty value disables marketing sync (the
+// connector becomes a no-op, useful for local development where no
+// EO list is provisioned).
+type EmailOctopusConfig struct {
+	APIKey string `json:"api_key"`
+	ListID string `json:"list_id"`
+}
+
 // OAuthProviderConfig holds client credentials for a default OAuth provider.
 type OAuthProviderConfig struct {
 	ClientID     string `json:"client_id"`
@@ -90,6 +100,7 @@ type Config struct {
 	Metrics          MetricsConfig    `json:"metrics"`
 	Billing          BillingConfig    `json:"billing"`
 	OAuth            map[string]OAuthProviderConfig `json:"oauth,omitempty"`
+	EmailOctopus     *EmailOctopusConfig            `json:"email_octopus,omitempty"`
 }
 
 func LoadConfig(path string) (*Config, error) {

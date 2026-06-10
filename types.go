@@ -58,7 +58,16 @@ type User struct {
 	OnboardingCompletedAt *time.Time     `json:"onboarding_completed_at,omitempty" db:"onboarding_completed_at"`
 	ChecklistFlags        int            `json:"checklist_flags" db:"checklist_flags"`
 	LastActivityAt        *time.Time     `json:"last_activity_at,omitempty" db:"last_activity_at"`
-	CreatedAt             time.Time      `json:"created_at" db:"created_at"`
+	// WelcomeCompletedAt records the user dismissing the post-EULA
+	// welcome modal (display name + optional marketing opt-in). NULL =
+	// modal still due. The editor mounts the modal until this is set.
+	WelcomeCompletedAt *time.Time `json:"welcome_completed_at,omitempty" db:"welcome_completed_at"`
+	// MarketingSyncedAt / MarketingSyncError track EmailOctopus sync
+	// state. The retry poller reads marketing_sync_error to find rows
+	// that need re-sync; clears it on success and stamps synced_at.
+	MarketingSyncedAt  *time.Time `json:"-" db:"marketing_synced_at"`
+	MarketingSyncError *string    `json:"-" db:"marketing_sync_error"`
+	CreatedAt          time.Time      `json:"created_at" db:"created_at"`
 	Organisations         []Organisation `json:"organisations"`
 }
 
