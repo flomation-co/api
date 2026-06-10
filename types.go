@@ -577,7 +577,14 @@ type AgentMessage struct {
 	Content        string      `json:"content" db:"content"`
 	Metadata       interface{} `json:"metadata,omitempty" db:"metadata"`
 	ExecutionID    *string     `json:"execution_id,omitempty" db:"execution_id"`
-	CreatedAt      time.Time   `json:"created_at" db:"created_at"`
+	// SourceConversationID points back at the conversation that
+	// *initiated* this message when it was sent via an AI tool call to
+	// a different recipient than the orchestrator's own conversation.
+	// Populated only on cross-conversation relays (e.g. Andy on
+	// Telegram → agent sends Slack DM to Bob); regular replies leave
+	// this NULL.
+	SourceConversationID *string   `json:"source_conversation_id,omitempty" db:"source_conversation_id"`
+	CreatedAt            time.Time `json:"created_at" db:"created_at"`
 }
 
 // AgentUser is the canonical "person" an agent knows about, independent of
