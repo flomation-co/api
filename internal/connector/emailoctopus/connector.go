@@ -86,9 +86,14 @@ func (c *Connector) Configured() bool {
 // contactID derives the EmailOctopus contact identifier from an
 // email address. EO documents this as MD5(lowercase(email)) for both
 // v1.6 and v2; the hash has no security meaning here, just identifier
-// derivation.
+// derivation. The MD5 algorithm is mandated by EO's API contract —
+// switching to SHA-256 would produce identifiers EmailOctopus does
+// not recognise.
+//
+// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5
 func contactID(email string) string {
-	sum := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(email)))) // #nosec G401
+	// #nosec G401 -- EmailOctopus mandates MD5 for contact_id derivation
+	sum := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(email))))
 	return hex.EncodeToString(sum[:])
 }
 
