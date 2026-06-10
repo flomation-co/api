@@ -3041,10 +3041,12 @@ func NewService(config *config.Config) (*Service, error) {
 	s.stmtCreateAgentMessageInConversation, err = s.conn.PrepareNamed(`
 		INSERT INTO agent_message (
 			agent_id, session_id, conversation_id, sequence,
-			direction, channel_type, sender, content, metadata, execution_id
+			direction, channel_type, sender, content, metadata, execution_id,
+			source_conversation_id
 		) VALUES (
 			:agent_id, :session_id, :conversation_id, :sequence,
-			:direction, :channel_type, :sender, :content, :metadata, :execution_id
+			:direction, :channel_type, :sender, :content, :metadata, :execution_id,
+			:source_conversation_id
 		)
 		RETURNING id
 	`)

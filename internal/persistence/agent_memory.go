@@ -491,27 +491,29 @@ func (s *Service) CreateAgentMessageInConversation(msg api.AgentMessage) (*strin
 
 	var id string
 	if err := s.stmtCreateAgentMessageInConversation.Get(&id, struct {
-		AgentID        string          `db:"agent_id"`
-		SessionID      *string         `db:"session_id"`
-		ConversationID *string         `db:"conversation_id"`
-		Sequence       int64           `db:"sequence"`
-		Direction      string          `db:"direction"`
-		ChannelType    string          `db:"channel_type"`
-		Sender         *string         `db:"sender"`
-		Content        string          `db:"content"`
-		Metadata       json.RawMessage `db:"metadata"`
-		ExecutionID    *string         `db:"execution_id"`
+		AgentID              string          `db:"agent_id"`
+		SessionID            *string         `db:"session_id"`
+		ConversationID       *string         `db:"conversation_id"`
+		Sequence             int64           `db:"sequence"`
+		Direction            string          `db:"direction"`
+		ChannelType          string          `db:"channel_type"`
+		Sender               *string         `db:"sender"`
+		Content              string          `db:"content"`
+		Metadata             json.RawMessage `db:"metadata"`
+		ExecutionID          *string         `db:"execution_id"`
+		SourceConversationID *string         `db:"source_conversation_id"`
 	}{
-		AgentID:        msg.AgentID,
-		SessionID:      msg.SessionID,
-		ConversationID: msg.ConversationID,
-		Sequence:       sequence,
-		Direction:      msg.Direction,
-		ChannelType:    msg.ChannelType,
-		Sender:         msg.Sender,
-		Content:        msg.Content,
-		Metadata:       metadataJSON,
-		ExecutionID:    msg.ExecutionID,
+		AgentID:              msg.AgentID,
+		SessionID:            msg.SessionID,
+		ConversationID:       msg.ConversationID,
+		Sequence:             sequence,
+		Direction:            msg.Direction,
+		ChannelType:          msg.ChannelType,
+		Sender:               msg.Sender,
+		Content:              msg.Content,
+		Metadata:             metadataJSON,
+		ExecutionID:          msg.ExecutionID,
+		SourceConversationID: msg.SourceConversationID,
 	}); err != nil {
 		return nil, err
 	}

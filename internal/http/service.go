@@ -576,6 +576,15 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
 
+	// AI tool-loop relay recording: when the executor's flow engine
+	// detects a tool call to a messaging action (send-slack, send-
+	// telegram, etc.), it posts here so the outbound is recorded
+	// against the *recipient's* conversation. This keeps cross-user
+	// relays — Andy on Telegram telling the agent "tell Bob on Slack"
+	// — symmetrically visible to both sides. See
+	// internal/http/agent_record_outbound.go.
+	internal.POST("/agent/:id/record-outbound", s.recordAgentOutboundInternal)
+
 	// Agent Memory Phase 2: memories, pending actions, commitments.
 	// Called by Launch's system prompt assembler, by the extraction
 	// System Flow, and by the executor actions agent/remember,
