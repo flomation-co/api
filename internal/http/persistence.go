@@ -120,6 +120,9 @@ type Persistence interface {
 	UpdateOnboardingProgress(userID string, step int, completedAt *time.Time) error
 	SetChecklistFlag(userID string, flag int) error
 	ClearChecklistFlag(userID string, flag int) error
+	GetUserChecklistStateForOrg(userID string, organisationID *string) (int, error)
+	SetUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
+	ClearUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
 	CompleteUserWelcome(userID, name string, marketingOptIn bool) error
 	SetUserMarketingOptIn(userID string, optIn bool) error
 	MarkUserMarketingSynced(userID string) error

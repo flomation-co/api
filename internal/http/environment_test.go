@@ -239,6 +239,9 @@ func (m *mockPersistence) GetLatestEula() (*api.Eula, error)                    
 func (m *mockPersistence) UpdateOnboardingProgress(string, int, *time.Time) error { return nil }
 func (m *mockPersistence) SetChecklistFlag(string, int) error                     { return nil }
 func (m *mockPersistence) ClearChecklistFlag(string, int) error                   { return nil }
+func (m *mockPersistence) GetUserChecklistStateForOrg(string, *string) (int, error) { return 0, nil }
+func (m *mockPersistence) SetUserChecklistFlagForOrg(string, *string, int) error    { return nil }
+func (m *mockPersistence) ClearUserChecklistFlagForOrg(string, *string, int) error  { return nil }
 func (m *mockPersistence) CompleteUserWelcome(string, string, bool) error         { return nil }
 func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error               { return nil }
 func (m *mockPersistence) MarkUserMarketingSynced(string) error                   { return nil }

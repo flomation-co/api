@@ -3804,6 +3804,91 @@ func (s *Service) ClearChecklistFlag(userID string, flag int) error {
 	return err
 }
 
+// GetUserChecklistStateForOrg returns the persisted org-scoped flags
+// for the given (user, org) pair. Personal mode is org=nil. Returns
+// 0 with no error when no row exists yet — a never-touched (user, org)
+// has zero progress in this scope, which is the natural default.
+//
+// Note: this returns ONLY org-scoped bits. Global bits (profile name,
+// MFA) live on users.checklist_flags and are read separately via
+// GetUserByID. The editor combines the two with a bitwise OR before
+// rendering.
+func (s *Service) GetUserChecklistStateForOrg(userID string, organisationID *string) (int, error) {
+	var flags int
+	var err error
+	if organisationID == nil {
+		err = s.conn.Get(&flags,
+			`SELECT flags FROM user_checklist_state
+			 WHERE user_id = $1 AND organisation_id IS NULL`,
+			userID,
+		)
+	} else {
+		err = s.conn.Get(&flags,
+			`SELECT flags FROM user_checklist_state
+			 WHERE user_id = $1 AND organisation_id = $2`,
+			userID, *organisationID,
+		)
+	}
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return flags, nil
+}
+
+// SetUserChecklistFlagForOrg sets a bitmask flag for the given
+// (user, org) row via an upsert. Personal mode is org=nil. Used for
+// org-scoped flags only (FLAG_CREATE_FLOW, FLAG_EXECUTE_FLOW,
+// FLAG_CONFIGURE_ENV, FLAG_INVITE_TEAM). Global flags continue to
+// use SetChecklistFlag against users.checklist_flags.
+//
+// IS NOT DISTINCT FROM handles the NULL-org case in the conflict
+// matcher; a plain `=` would treat two NULL-org rows as non-conflicting
+// and let the partial unique index reject the second insert at the
+// table level. Personal-mode and org-mode rows share the same handler.
+func (s *Service) SetUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error {
+	if organisationID == nil {
+		_, err := s.conn.Exec(`
+			INSERT INTO user_checklist_state (user_id, organisation_id, flags, updated_at)
+			VALUES ($1, NULL, $2, NOW())
+			ON CONFLICT (user_id) WHERE organisation_id IS NULL
+			DO UPDATE SET flags = user_checklist_state.flags | EXCLUDED.flags,
+			              updated_at = NOW()
+		`, userID, flag)
+		return err
+	}
+	_, err := s.conn.Exec(`
+		INSERT INTO user_checklist_state (user_id, organisation_id, flags, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (user_id, organisation_id) WHERE organisation_id IS NOT NULL
+		DO UPDATE SET flags = user_checklist_state.flags | EXCLUDED.flags,
+		              updated_at = NOW()
+	`, userID, *organisationID, flag)
+	return err
+}
+
+// ClearUserChecklistFlagForOrg is the inverse — bitwise AND NOT
+// against the existing row's flags. Silent no-op if no row exists,
+// since clearing a flag from a zeroed state is already correct.
+func (s *Service) ClearUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error {
+	if organisationID == nil {
+		_, err := s.conn.Exec(`
+			UPDATE user_checklist_state
+			SET flags = flags & ~$1, updated_at = NOW()
+			WHERE user_id = $2 AND organisation_id IS NULL
+		`, flag, userID)
+		return err
+	}
+	_, err := s.conn.Exec(`
+		UPDATE user_checklist_state
+		SET flags = flags & ~$1, updated_at = NOW()
+		WHERE user_id = $2 AND organisation_id = $3
+	`, flag, userID, *organisationID)
+	return err
+}
+
 func (s *Service) GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error) {
 	var results []*api.Flo
 	var count int64
