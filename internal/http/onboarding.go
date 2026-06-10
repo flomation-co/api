@@ -71,8 +71,14 @@ func (s *Service) updateChecklist(c *gin.Context) {
 		return
 	}
 
-	// Bitmask: only allow known flags (bits 0-4)
-	if req.Flag < 1 || req.Flag > 16 {
+	// Bitmask: only allow known flags. Currently bits 0-5:
+	//   1  profile name
+	//   2  create flow
+	//   4  execute flow
+	//   8  configure environment
+	//   16 invite team
+	//   32 enable MFA
+	if req.Flag < 1 || req.Flag > 32 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flag value"})
 		return
 	}
