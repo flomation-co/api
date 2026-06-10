@@ -389,6 +389,17 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	users.POST("/checklist", s.updateChecklist)
 	users.POST("/share", s.sendShareEmail)
 
+	// Welcome modal completion — sets display name + marketing opt-in
+	// atomically and stamps welcome_completed_at so the modal stops
+	// re-appearing. Mounted in the editor's root layout, gated on
+	// (eula_accepted_at NOT NULL AND welcome_completed_at IS NULL).
+	users.POST("/welcome-complete", s.completeWelcome)
+
+	// Marketing toggle — the profile Communications section's
+	// single-action endpoint. Flips marketing_opt_in and queues an
+	// EmailOctopus sync via the retry poller.
+	users.POST("/marketing-opt-in", s.setMarketingOptIn)
+
 	// User-declared channel identities (R2). Replaces the AI-initiated
 	// [LINK_OFFER] linking flow with explicit user opt-in declarations.
 	users.GET("/identity", s.listUserIdentities)

@@ -5,6 +5,7 @@ import (
 
 	"flomation.app/automate/api/internal/agent"
 	apiconfig "flomation.app/automate/api/internal/config"
+	"flomation.app/automate/api/internal/connector/emailoctopus"
 	"flomation.app/automate/api/internal/mtls"
 	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/poller"
@@ -59,6 +60,14 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 			log.Info("API-side credit sync poller registered")
 		}
 	}
+
+	// Marketing sync poller (60s) — reconciles users.marketing_opt_in
+	// with EmailOctopus list membership. The profile + welcome
+	// endpoints push state changes into a NULL-synced row; this
+	// poller drains the queue and updates EO. Silently no-ops when
+	// EmailOctopus isn't configured (local dev).
+	poller.StartMarketingSyncPoller(p, emailoctopus.NewConnector(cfg))
+	log.Info("API-side marketing sync poller registered")
 
 	// Credential token refresh poller (60s) — proactively refreshes OAuth tokens.
 	poller.StartCredentialRefreshPoller(p)

@@ -39,8 +39,13 @@ type Service struct {
 
 	stmtGetUserByID      *sqlx.NamedStmt
 	stmtCreateUser       *sqlx.NamedStmt
-	stmtUpdateUser       *sqlx.NamedStmt
-	stmtAcceptEula       *sqlx.NamedStmt
+	stmtUpdateUser                     *sqlx.NamedStmt
+	stmtAcceptEula                     *sqlx.NamedStmt
+	stmtCompleteUserWelcome            *sqlx.NamedStmt
+	stmtSetUserMarketingOptIn          *sqlx.NamedStmt
+	stmtMarkUserMarketingSynced        *sqlx.NamedStmt
+	stmtMarkUserMarketingSyncFailed    *sqlx.NamedStmt
+	stmtListUsersNeedingMarketingSync  *sqlx.NamedStmt
 	stmtGetLatestEula    *sqlx.NamedStmt
 	stmtUpdateOnboarding *sqlx.NamedStmt
 
@@ -490,7 +495,10 @@ func NewService(config *config.Config) (*Service, error) {
 		    eula_accepted_at,
 		    onboarding_step,
 		    onboarding_completed_at,
-		    checklist_flags
+		    checklist_flags,
+		    welcome_completed_at,
+		    marketing_synced_at,
+		    marketing_sync_error
 		FROM
 		    users
 		WHERE
@@ -547,6 +555,85 @@ func NewService(config *config.Config) (*Service, error) {
 		UPDATE users
 		SET eula_version = :eula_version, eula_accepted_at = NOW()
 		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Welcome-modal completion: atomic write of display name +
+	// marketing_opt_in + welcome_completed_at. Resets marketing sync
+	// state so the EmailOctopus retry poller picks up the new opt-in
+	// value on the next tick.
+	s.stmtCompleteUserWelcome, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET name                 = :name,
+		    marketing_opt_in     = :marketing_opt_in,
+		    welcome_completed_at = NOW(),
+		    marketing_synced_at  = NULL,
+		    marketing_sync_error = NULL
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Marketing-toggle update: changes opt_in only and resets the sync
+	// state so the retry poller re-syncs to EmailOctopus on the next
+	// tick. Used by the profile Communications section.
+	s.stmtSetUserMarketingOptIn, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET marketing_opt_in     = :marketing_opt_in,
+		    marketing_synced_at  = NULL,
+		    marketing_sync_error = NULL
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Marketing-sync result update — used by both the inline sync path
+	// (immediate after profile change) and the retry poller.
+	s.stmtMarkUserMarketingSynced, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET marketing_synced_at  = NOW(),
+		    marketing_sync_error = NULL
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stmtMarkUserMarketingSyncFailed, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET marketing_sync_error = :marketing_sync_error
+		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Retry poller scan: returns users whose marketing state needs
+	// pushing to EmailOctopus, ordered NULLS FIRST so never-synced
+	// rows drain ahead of previously-failed ones, then by oldest
+	// failure within the failed bucket. Bounded by limit per tick.
+	//
+	// NULLS FIRST is used instead of `COALESCE(..., '1970-01-01'::timestamptz)`
+	// to avoid the `::cast` syntax — sqlx's named-statement preparer
+	// regex-scans the SQL for `:identifier` patterns and incorrectly
+	// interprets `::timestamptz` as the parameter `:timestamptz`,
+	// which then fails to bind. NULLS FIRST is the cleaner expression
+	// of the intent anyway.
+	s.stmtListUsersNeedingMarketingSync, err = s.conn.PrepareNamed(`
+		SELECT
+		    id,
+		    name,
+		    PGP_SYM_DECRYPT(email_address, :encrypt_key) AS email_address,
+		    marketing_opt_in
+		FROM users
+		WHERE marketing_sync_error IS NOT NULL
+		   OR (welcome_completed_at IS NOT NULL AND marketing_synced_at IS NULL)
+		ORDER BY marketing_synced_at ASC NULLS FIRST
+		LIMIT :limit
 	`)
 	if err != nil {
 		return nil, err
@@ -3592,6 +3679,87 @@ func (s *Service) AcceptEula(userID string, version int) error {
 		return err
 	}
 	return nil
+}
+
+// CompleteUserWelcome atomically writes the welcome-modal answers:
+// updated display name, marketing opt-in choice, and a
+// welcome_completed_at timestamp that stops the modal from
+// re-appearing on subsequent logins. Resets EmailOctopus sync state
+// so the retry poller pushes the new opt-in value out on its next
+// tick (fire-and-forget per the design decision).
+func (s *Service) CompleteUserWelcome(userID, name string, marketingOptIn bool) error {
+	_, err := s.stmtCompleteUserWelcome.Exec(struct {
+		ID             string `db:"id"`
+		Name           string `db:"name"`
+		MarketingOptIn bool   `db:"marketing_opt_in"`
+	}{
+		ID:             userID,
+		Name:           name,
+		MarketingOptIn: marketingOptIn,
+	})
+	return err
+}
+
+// SetUserMarketingOptIn flips the marketing opt-in flag and resets
+// the sync state. Called from the profile Communications toggle.
+// EmailOctopus delivery happens via the retry poller, not inline,
+// so a slow EO can never block the user's profile save.
+func (s *Service) SetUserMarketingOptIn(userID string, optIn bool) error {
+	_, err := s.stmtSetUserMarketingOptIn.Exec(struct {
+		ID             string `db:"id"`
+		MarketingOptIn bool   `db:"marketing_opt_in"`
+	}{
+		ID:             userID,
+		MarketingOptIn: optIn,
+	})
+	return err
+}
+
+// MarkUserMarketingSynced is called by the retry poller after a
+// successful EmailOctopus subscribe / unsubscribe / update.
+func (s *Service) MarkUserMarketingSynced(userID string) error {
+	_, err := s.stmtMarkUserMarketingSynced.Exec(struct {
+		ID string `db:"id"`
+	}{ID: userID})
+	return err
+}
+
+// MarkUserMarketingSyncFailed records the failure reason so the
+// retry poller can pick it up on a subsequent tick and so an
+// operator can grep for stuck rows.
+func (s *Service) MarkUserMarketingSyncFailed(userID, reason string) error {
+	_, err := s.stmtMarkUserMarketingSyncFailed.Exec(struct {
+		ID                 string `db:"id"`
+		MarketingSyncError string `db:"marketing_sync_error"`
+	}{
+		ID:                 userID,
+		MarketingSyncError: reason,
+	})
+	return err
+}
+
+// ListUsersNeedingMarketingSync returns the next batch of users
+// whose EmailOctopus state has drifted from their stored
+// marketing_opt_in flag. Returned rows include enough data
+// (id, name, decrypted email, opt_in) for the connector to fire
+// without additional lookups. Bounded by `limit` per call so the
+// poller can pace itself.
+func (s *Service) ListUsersNeedingMarketingSync(limit int) ([]*api.User, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var rows []*api.User
+	err := s.stmtListUsersNeedingMarketingSync.Select(&rows, struct {
+		EncryptionKey string `db:"encrypt_key"`
+		Limit         int    `db:"limit"`
+	}{
+		EncryptionKey: s.config.Database.EncryptionKey,
+		Limit:         limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *Service) GetLatestEula() (*api.Eula, error) {
