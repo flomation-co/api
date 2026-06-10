@@ -387,6 +387,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	users.POST("/eula/accept", s.acceptEula)
 	users.POST("/onboarding", s.updateOnboardingProgress)
 	users.POST("/checklist", s.updateChecklist)
+	users.GET("/checklist", s.getChecklist)
 	users.POST("/share", s.sendShareEmail)
 
 	// Welcome modal completion — sets display name + marketing opt-in
