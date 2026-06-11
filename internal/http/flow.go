@@ -533,7 +533,14 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		}).Error("unable to bind payload")
 	}
 
-	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
+	// Optional ?triggerer=<user_id> attribution. Launch passes this on
+	// form submissions when the form has require_login set and a
+	// session resolves — surfacing the form submitter as the
+	// invocation OwnerID so the Executions UI's Triggered By column
+	// distinguishes them from the flow author.
+	triggererUserID := c.Query("triggerer")
+
+	i, err := s.persistence.TriggerExecution(floID, triggerID, data, triggererUserID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -621,7 +628,7 @@ func (s *Service) executeFlo(c *gin.Context) {
 		return
 	}
 
-	i, err := s.persistence.TriggerExecution(floID, triggerID, data)
+	i, err := s.persistence.TriggerExecution(floID, triggerID, data, "")
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("unable to trigger execution")
 		c.AbortWithStatus(http.StatusBadRequest)

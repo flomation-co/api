@@ -166,7 +166,13 @@ func (s *Service) dispatchTrigger(c *gin.Context) {
 		}
 	}
 
-	executionID, err := s.persistence.TriggerExecution(flowID, triggerID, triggerData)
+	// Identity resolution earlier in this handler may have set
+	// triggerData["user_id"] to the platform user_id of the channel
+	// sender. Surfacing that as the trigger invocation's OwnerID makes
+	// the Executions UI's Triggered By column populate correctly for
+	// inbound webhook / channel-driven flows.
+	triggererUserID, _ := triggerData["user_id"].(string)
+	executionID, err := s.persistence.TriggerExecution(flowID, triggerID, triggerData, triggererUserID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"trigger_id": triggerID,
