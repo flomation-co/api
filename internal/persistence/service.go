@@ -4390,7 +4390,7 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 	return results, count, nil
 }
 
-func (s *Service) TriggerExecution(floId string, triggerId string, data interface{}) (*string, error) {
+func (s *Service) TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string) (*string, error) {
 	tx, err := s.conn.Beginx()
 	if err != nil {
 		return nil, err
@@ -4440,6 +4440,18 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 	}
 
 	invocation.Data = j
+
+	// When the caller supplies a triggerer (form submitter, channel
+	// sender, etc.), overwrite the invocation OwnerID so the Executions
+	// page surfaces them via runner.go's "if invocation.OwnerID !=
+	// execution.OwnerID" logic. When empty, leave OwnerID as the flow
+	// author copy from the trigger row — preserving the existing
+	// manual-execution UX where Triggered By stays blank to avoid the
+	// redundant "Andy ran Andy's flow" noise.
+	if triggererUserID != "" {
+		uid := triggererUserID
+		invocation.OwnerID = &uid
+	}
 
 	if err := tx.NamedStmt(s.stmtInsertTriggerInvocation).Get(&invocation, invocation); err != nil {
 		if err == sql.ErrNoRows {

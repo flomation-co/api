@@ -207,7 +207,7 @@ func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string
 func (m *mockPersistence) GetCredentialByName(string, string, string) (*string, error) { return nil, nil }
 func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persistence.CredentialRefreshRow, error) { return nil, nil }
 
-func (m *mockPersistence) TriggerExecution(string, string, interface{}) (*string, error) {
+func (m *mockPersistence) TriggerExecution(string, string, interface{}, string) (*string, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }

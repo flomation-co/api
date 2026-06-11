@@ -80,7 +80,7 @@ func (m *phase2dMock) GetTriggersByFloID(floID string) ([]*api.Trigger, error) {
 	return m.triggerList, nil
 }
 
-func (m *phase2dMock) TriggerExecution(floID, triggerID string, data interface{}) (*string, error) {
+func (m *phase2dMock) TriggerExecution(floID, triggerID string, data interface{}, triggererUserID string) (*string, error) {
 	m.p2dmu.Lock()
 	defer m.p2dmu.Unlock()
 	m.triggerExecCalls = append(m.triggerExecCalls, triggerExecCall{

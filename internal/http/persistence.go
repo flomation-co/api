@@ -92,7 +92,7 @@ type Persistence interface {
 	GetCredentialByName(environmentID, name, environmentKey string) (*string, error)
 	GetCredentialsNeedingRefresh(within time.Duration) ([]persistence.CredentialRefreshRow, error)
 
-	TriggerExecution(floId string, triggerId string, data interface{}) (*string, error)
+	TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string) (*string, error)
 	IsFlowAgentPaused(flowID string) bool
 	GetAgentByOrchestratorFloID(flowID string) (*api.Agent, error)
 	UpdateCompletionStatus(ID string, status string) error
