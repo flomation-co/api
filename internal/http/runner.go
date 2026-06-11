@@ -567,6 +567,10 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 	// triggerData and routes them onto ExecutionContext so ${flow.user_id}
 	// and ${flow.identities} resolve in non-agent flows too.
 	enrichDataWithAuthorIdentities(s.persistence, execution, flow)
+	// Always runs AFTER the identity enrichment so it picks up whichever
+	// user_id won (sender for inbound agent messages, author for manual /
+	// scheduled runs). Adds ${user.X} substitution data.
+	enrichDataWithUserVariables(s.persistence, execution)
 
 	// Enrich with trigger type, triggerer email, and entry node ID from trigger invocation chain
 	if execution.TriggeredBy != nil {
@@ -705,6 +709,65 @@ func enrichDataWithAuthorIdentities(p Persistence, execution *api.Execution, flo
 		}
 		data["identities"] = shaped
 	}
+
+	if raw, err := json.Marshal(data); err == nil {
+		execution.Data = raw
+	}
+}
+
+// enrichDataWithUserVariables mutates execution.Data to inject the
+// executing user's profile as a "user_variables" map. The runner forwards
+// it onto ExecutionContext.UserVariables so the executor resolves
+// ${user.first_name}, ${user.full_address}, etc. Pre-composed full_name
+// and full_address use the same canonical formatting as the editor
+// preview (composeFullName / composeFullAddress in profile.go) so flow
+// authors never see a stale shape.
+//
+// Reads data["user_id"] — whichever path wrote it (inbound agent sender
+// or manual/scheduled author). No-ops cleanly when user_id is absent
+// (e.g. anonymous webhook trigger).
+func enrichDataWithUserVariables(p Persistence, execution *api.Execution) {
+	if execution == nil {
+		return
+	}
+
+	data := map[string]interface{}{}
+	if len(execution.Data) > 0 && string(execution.Data) != "null" {
+		_ = json.Unmarshal(execution.Data, &data)
+	}
+
+	userID, _ := data["user_id"].(string)
+	if userID == "" {
+		return
+	}
+
+	user, err := p.GetUserByID(userID)
+	if err != nil || user == nil {
+		return
+	}
+
+	vars := map[string]string{
+		"id":             user.ID,
+		"name":           user.Name,
+		"salutation":     deref(user.Salutation),
+		"first_name":     deref(user.FirstName),
+		"last_name":      deref(user.LastName),
+		"job_title":      deref(user.JobTitle),
+		"address_line_1": deref(user.AddressLine1),
+		"address_line_2": deref(user.AddressLine2),
+		"city":           deref(user.City),
+		"region":         deref(user.Region),
+		"postcode":       deref(user.Postcode),
+		"country":        deref(user.Country),
+	}
+	if user.EmailAddress != nil {
+		vars["email"] = *user.EmailAddress
+	}
+	vars["full_name"] = composeFullName(vars["salutation"], vars["first_name"], vars["last_name"], user.Name)
+	vars["full_address"] = composeFullAddress(vars["address_line_1"], vars["address_line_2"],
+		vars["city"], vars["region"], vars["postcode"], vars["country"])
+
+	data["user_variables"] = vars
 
 	if raw, err := json.Marshal(data); err == nil {
 		execution.Data = raw
