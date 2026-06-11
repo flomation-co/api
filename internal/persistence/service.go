@@ -4441,17 +4441,11 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 
 	invocation.Data = j
 
-	// When the caller supplies a triggerer (form submitter, channel
-	// sender, etc.), overwrite the invocation OwnerID so the Executions
-	// page surfaces them via runner.go's "if invocation.OwnerID !=
-	// execution.OwnerID" logic. When empty, leave OwnerID as the flow
-	// author copy from the trigger row — preserving the existing
-	// manual-execution UX where Triggered By stays blank to avoid the
-	// redundant "Andy ran Andy's flow" noise.
-	if triggererUserID != "" {
-		uid := triggererUserID
-		invocation.OwnerID = &uid
-	}
+	// triggererUserID is propagated through to execution.TriggeringUserID
+	// at insert time (see the execution-construction block below). We
+	// deliberately leave invocation.OwnerID alone — it remains the
+	// trigger row's owner so existing semantics around per-trigger
+	// permissions / quota attribution are unchanged.
 
 	if err := tx.NamedStmt(s.stmtInsertTriggerInvocation).Get(&invocation, invocation); err != nil {
 		if err == sql.ErrNoRows {
@@ -4503,6 +4497,14 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 			if tuid, ok := dataMap["__triggering_user_id"].(string); ok && tuid != "" {
 				execution.TriggeringUserID = &tuid
 			}
+		}
+		// Explicit triggererUserID (Launch's form submitter, channel
+		// webhook sender, etc.) takes precedence over data-blob
+		// derivation and populates the column the Executions UI's
+		// Triggered By column reads.
+		if triggererUserID != "" {
+			uid := triggererUserID
+			execution.TriggeringUserID = &uid
 		}
 
 		if err = tx.NamedStmt(s.stmtInsertFloExecution).Get(&id, execution); err != nil {
