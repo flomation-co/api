@@ -67,6 +67,18 @@ type User struct {
 	// that need re-sync; clears it on success and stamps synced_at.
 	MarketingSyncedAt  *time.Time `json:"-" db:"marketing_synced_at"`
 	MarketingSyncError *string    `json:"-" db:"marketing_sync_error"`
+	// Extended profile fields surfaced in flows as ${user.X} variables.
+	// All nullable — empty/NULL collapses to "" at substitution time.
+	Salutation    *string `json:"salutation,omitempty" db:"salutation"`
+	FirstName     *string `json:"first_name,omitempty" db:"first_name"`
+	LastName      *string `json:"last_name,omitempty" db:"last_name"`
+	JobTitle      *string `json:"job_title,omitempty" db:"job_title"`
+	AddressLine1  *string `json:"address_line_1,omitempty" db:"address_line_1"`
+	AddressLine2  *string `json:"address_line_2,omitempty" db:"address_line_2"`
+	City          *string `json:"city,omitempty" db:"city"`
+	Region        *string `json:"region,omitempty" db:"region"`
+	Postcode      *string `json:"postcode,omitempty" db:"postcode"`
+	Country       *string `json:"country,omitempty" db:"country"`
 	CreatedAt          time.Time      `json:"created_at" db:"created_at"`
 	Organisations         []Organisation `json:"organisations"`
 }

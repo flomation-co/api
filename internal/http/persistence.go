@@ -115,6 +115,7 @@ type Persistence interface {
 	GetTriggersByFloID(floID string) ([]*api.Trigger, error)
 	LinkFloToTrigger(floID string, triggerID string) error
 	UpdateUser(user *api.User) error
+	UpdateUserProfile(user *api.User) error
 	AcceptEula(userID string, version int) error
 	GetLatestEula() (*api.Eula, error)
 	UpdateOnboardingProgress(userID string, step int, completedAt *time.Time) error

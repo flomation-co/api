@@ -401,6 +401,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// EmailOctopus sync via the retry poller.
 	users.POST("/marketing-opt-in", s.setMarketingOptIn)
 
+	// Extended profile fields (salutation, names, address). Surfaces in
+	// flows as ${user.X} variables. The PUT endpoint accepts a full
+	// payload — fields omitted from the body are treated as cleared
+	// (NULL). Compare to /welcome-complete which is partial-merge.
+	users.PUT("/profile", s.updateProfile)
+
 	// User-declared channel identities (R2). Replaces the AI-initiated
 	// [LINK_OFFER] linking flow with explicit user opt-in declarations.
 	users.GET("/identity", s.listUserIdentities)
@@ -596,6 +602,12 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// — symmetrically visible to both sides. See
 	// internal/http/agent_record_outbound.go.
 	internal.POST("/agent/:id/record-outbound", s.recordAgentOutboundInternal)
+
+	// User profile variables — surfaced as ${user.X} at execution-context
+	// bootstrap. Returns the full profile map (salutation, names, address
+	// fields) so the executor can populate substitution without round-
+	// tripping per-variable. See internal/http/profile.go.
+	internal.GET("/user/:id/variables", s.getUserVariablesInternal)
 
 	// Agent Memory Phase 2: memories, pending actions, commitments.
 	// Called by Launch's system prompt assembler, by the extraction
