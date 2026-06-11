@@ -40,6 +40,7 @@ type Service struct {
 	stmtGetUserByID      *sqlx.NamedStmt
 	stmtCreateUser       *sqlx.NamedStmt
 	stmtUpdateUser                     *sqlx.NamedStmt
+	stmtUpdateUserProfile              *sqlx.NamedStmt
 	stmtAcceptEula                     *sqlx.NamedStmt
 	stmtCompleteUserWelcome            *sqlx.NamedStmt
 	stmtSetUserMarketingOptIn          *sqlx.NamedStmt
@@ -498,7 +499,17 @@ func NewService(config *config.Config) (*Service, error) {
 		    checklist_flags,
 		    welcome_completed_at,
 		    marketing_synced_at,
-		    marketing_sync_error
+		    marketing_sync_error,
+		    salutation,
+		    first_name,
+		    last_name,
+		    job_title,
+		    address_line_1,
+		    address_line_2,
+		    city,
+		    region,
+		    postcode,
+		    country
 		FROM
 		    users
 		WHERE
@@ -546,6 +557,29 @@ func NewService(config *config.Config) (*Service, error) {
 		    marketing_opt_in = :marketing_opt_in
 		WHERE
 		    id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// stmtUpdateUserProfile is dedicated to the extended-profile columns
+	// (salutation/first_name/.../country). It deliberately does NOT touch
+	// name / email / marketing_opt_in — those have their own write paths
+	// (Welcome modal, opt-in flow, etc.) and conflating writes would risk
+	// nulling them when only profile fields are being updated.
+	s.stmtUpdateUserProfile, err = s.conn.PrepareNamed(`
+		UPDATE users SET
+		    salutation     = :salutation,
+		    first_name     = :first_name,
+		    last_name      = :last_name,
+		    job_title      = :job_title,
+		    address_line_1 = :address_line_1,
+		    address_line_2 = :address_line_2,
+		    city           = :city,
+		    region         = :region,
+		    postcode       = :postcode,
+		    country        = :country
+		WHERE id = :id
 	`)
 	if err != nil {
 		return nil, err
@@ -3665,6 +3699,18 @@ func (s *Service) UpdateUser(user *api.User) error {
 		return err
 	}
 
+	return nil
+}
+
+// UpdateUserProfile writes the extended-profile columns only. Caller is
+// expected to have loaded the user, mutated the relevant *string pointers
+// (or left them nil for fields that should clear to NULL), and called
+// this method. Other columns (name, email, marketing_opt_in, etc.) are
+// untouched.
+func (s *Service) UpdateUserProfile(user *api.User) error {
+	if _, err := s.stmtUpdateUserProfile.Exec(user); err != nil {
+		return err
+	}
 	return nil
 }
 
