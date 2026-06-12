@@ -36,11 +36,20 @@ type GoogleAccountRefreshPoller struct {
 
 // StartGoogleAccountRefreshPoller creates and starts the refresh poller.
 // Returns nil if no Google OAuth credentials are configured.
+//
+// Logs a redacted form of the configured client_id at startup so an
+// operator can compare it against Launch's google.client_id and catch
+// the case where the two services are pointed at different OAuth
+// clients. A drift there is silent and lethal: refresh tokens minted
+// against Launch's client_id will be rejected with invalid_client
+// the moment the poller tries to use them under a different one.
 func StartGoogleAccountRefreshPoller(p GoogleAccountRefreshPersistence, clientID, clientSecret string) *GoogleAccountRefreshPoller {
 	if clientID == "" || clientSecret == "" {
 		log.Warn("Google OAuth credentials not configured — agent Google account refresh disabled")
 		return nil
 	}
+	log.WithField("client_id", redactClientID(clientID)).Info(
+		"Google account refresh poller: using OAuth client (compare against Launch's google.client_id to ensure they match)")
 	rp := &GoogleAccountRefreshPoller{
 		persistence:  p,
 		clientID:     clientID,
@@ -49,6 +58,18 @@ func StartGoogleAccountRefreshPoller(p GoogleAccountRefreshPersistence, clientID
 	}
 	go rp.watch()
 	return rp
+}
+
+// redactClientID keeps the leading 12 chars (enough to fingerprint a
+// Google OAuth client_id, which always starts with the project number)
+// and replaces the rest. We never want the full secret-adjacent
+// identifier in logs even though Google client_ids aren't strictly
+// secret — being conservative here is cheap.
+func redactClientID(id string) string {
+	if len(id) <= 12 {
+		return id
+	}
+	return id[:12] + "…"
 }
 
 func (rp *GoogleAccountRefreshPoller) watch() {

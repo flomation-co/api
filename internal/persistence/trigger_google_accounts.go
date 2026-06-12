@@ -9,6 +9,10 @@ import (
 
 // UpsertTriggerGoogleAccount stores or updates a Google account connection
 // scoped to a trigger. The refresh_token is encrypted with PGP.
+//
+// Mirrors UpsertGoogleAccount: re-linking resets status/last_error
+// and clears the stale cached access_token so the next refresh
+// attempt starts from a clean slate.
 func (s *Service) UpsertTriggerGoogleAccount(triggerID, email, refreshToken, label, purpose string) error {
 	if purpose == "" {
 		purpose = "email_read"
@@ -17,7 +21,13 @@ func (s *Service) UpsertTriggerGoogleAccount(triggerID, email, refreshToken, lab
 		INSERT INTO trigger_google_account (trigger_id, google_email, refresh_token, label, purpose)
 		VALUES ($1, $2, PGP_SYM_ENCRYPT($3, $4), $5, $6)
 		ON CONFLICT (trigger_id, google_email, purpose)
-		DO UPDATE SET refresh_token = PGP_SYM_ENCRYPT($3, $4), label = $5, connected_at = NOW()
+		DO UPDATE SET refresh_token = PGP_SYM_ENCRYPT($3, $4),
+		              label = $5,
+		              connected_at = NOW(),
+		              status = 'active',
+		              last_error = NULL,
+		              access_token = NULL,
+		              token_expires_at = NULL
 	`, triggerID, email, refreshToken, s.config.Database.EncryptionKey, label, purpose)
 	return err
 }
@@ -85,13 +95,16 @@ func (s *Service) DeleteTriggerGoogleAccount(triggerID, email string, purpose ..
 
 // GetTriggerGoogleAccountsNeedingRefresh returns trigger-scoped accounts
 // whose cached access token is missing or expiring within the given window.
+//
+// Includes status='error' rows for the same reason as the agent-user
+// variant — see GetGoogleAccountsNeedingRefresh.
 func (s *Service) GetTriggerGoogleAccountsNeedingRefresh(within time.Duration) ([]GoogleAccountRefreshRow, error) {
 	var rows []GoogleAccountRefreshRow
 	if err := s.conn.Select(&rows, `
 		SELECT id, PGP_SYM_DECRYPT(refresh_token, $2) AS refresh_token,
 		       purpose, google_email
 		FROM trigger_google_account
-		WHERE status = 'active'
+		WHERE status IN ('active', 'error')
 		  AND refresh_token IS NOT NULL
 		  AND (
 		      access_token IS NULL

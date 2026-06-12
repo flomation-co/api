@@ -11,6 +11,13 @@ import (
 // for an agent_user with a specific purpose. The refresh_token is
 // encrypted with PGP. The unique constraint is on
 // (agent_user_id, google_email, purpose).
+//
+// On conflict we also reset status/last_error/access_token. Re-running
+// the OAuth flow is the user's natural fix when their refresh token
+// has gone bad — if we kept status='error' and a stale access_token
+// around, the next poller tick would still skip the row (its needs-
+// refresh query historically required status='active') and the
+// stale cached token would mislead the on-demand path.
 func (s *Service) UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error {
 	if purpose == "" {
 		purpose = "calendar"
@@ -19,7 +26,13 @@ func (s *Service) UpsertGoogleAccount(agentUserID, email, refreshToken, label, p
 		INSERT INTO agent_user_google_account (agent_user_id, google_email, refresh_token, label, purpose)
 		VALUES ($1, $2, PGP_SYM_ENCRYPT($3, $4), $5, $6)
 		ON CONFLICT (agent_user_id, google_email, purpose)
-		DO UPDATE SET refresh_token = PGP_SYM_ENCRYPT($3, $4), label = $5, connected_at = NOW()
+		DO UPDATE SET refresh_token = PGP_SYM_ENCRYPT($3, $4),
+		              label = $5,
+		              connected_at = NOW(),
+		              status = 'active',
+		              last_error = NULL,
+		              access_token = NULL,
+		              token_expires_at = NULL
 	`, agentUserID, email, refreshToken, s.config.Database.EncryptionKey, label, purpose)
 	return err
 }
@@ -99,13 +112,20 @@ type GoogleAccountRefreshRow struct {
 
 // GetGoogleAccountsNeedingRefresh returns accounts whose cached access token
 // is missing or expiring within the given window.
+//
+// Includes status='error' rows so a transient Google failure (rate
+// limit, brief outage) doesn't sticky-error the account forever. The
+// poller retries every tick; a row that's genuinely dead simply
+// keeps logging warnings and stays at status='error'. The on-demand
+// path doesn't check status at all, so a momentarily-errored row
+// can still satisfy live agent calls if Google recovers.
 func (s *Service) GetGoogleAccountsNeedingRefresh(within time.Duration) ([]GoogleAccountRefreshRow, error) {
 	var rows []GoogleAccountRefreshRow
 	if err := s.conn.Select(&rows, `
 		SELECT id, PGP_SYM_DECRYPT(refresh_token, $2) AS refresh_token,
 		       purpose, google_email
 		FROM agent_user_google_account
-		WHERE status = 'active'
+		WHERE status IN ('active', 'error')
 		  AND refresh_token IS NOT NULL
 		  AND (
 		      access_token IS NULL
