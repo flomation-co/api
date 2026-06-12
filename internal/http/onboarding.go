@@ -8,8 +8,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Step uses min/max bounds (not `required`) so that step=0 — the first
+// tutorial slot, which a brand-new user can validly try to persist
+// when they skip on the welcome step — round-trips correctly. Gin's
+// `required` treats Go's zero value as "missing" and would 400 here,
+// silently breaking Skip-on-step-0 and leaving the popup re-appearing
+// after any user refetch.
 type updateOnboardingRequest struct {
-	Step      int  `json:"step" binding:"required"`
+	Step      int  `json:"step" binding:"min=0,max=7"`
 	Completed bool `json:"completed,omitempty"`
 }
 
@@ -23,11 +29,6 @@ func (s *Service) updateOnboardingProgress(c *gin.Context) {
 	var req updateOnboardingRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	if req.Step < 0 || req.Step > 7 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "step must be between 0 and 7"})
 		return
 	}
 
