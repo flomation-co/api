@@ -1,10 +1,34 @@
 # Flomation API
 
-Backend API server for the Flomation Automate platform, providing RESTful endpoints for managing automation workflows, executions, runners, and environments.
+> Backend REST API for the Flomation Automate platform — manages flos, executions, runners, and environments/secrets.
+
+## The Flomation Automate platform
+
+Flomation Automate lets non-technical, front-of-house users build and run automation
+workflows ("flos") from a visual editor. This repository is one of five services that
+make up the platform:
+
+| Service | Role |
+|---------|------|
+| **API** (this repository) | Backend REST API — manages flos, executions, runners, and environments/secrets |
+| [Editor](https://gitlab.tooling.flomation.app/flomation/automate/editor) | Visual web app for building, running, and monitoring flos |
+| [Launch](https://gitlab.tooling.flomation.app/flomation/automate/launch) | Ingress service — turns external events (webhooks, QR scans, forms, pixels) into trigger fires |
+| [Runner](https://gitlab.tooling.flomation.app/flomation/automate/runner) | Remote agent — polls the API for pending executions and runs them |
+| [Executor](https://gitlab.tooling.flomation.app/flomation/automate/executor) | Runtime engine — executes a flo's node graph and reports results |
 
 ## Overview
 
-The Flomation API is a Go service built with [Gin](https://github.com/gin-gonic/gin) that serves as the backend for the Flomation Automate platform. It handles workflow (Flo) management, execution orchestration, runner coordination, and environment/secret management. It connects to a PostgreSQL database and uses JWT-based authentication via an external identity service.
+The Flomation API is a Go service built with [Gin](https://github.com/gin-gonic/gin)
+that serves as the backend for the Flomation Automate platform. It handles workflow (Flo)
+management, execution orchestration, runner coordination, and environment/secret
+management. It connects to a PostgreSQL database and uses JWT-based authentication via an
+external identity service.
+
+It is the system of record that the [Editor](https://gitlab.tooling.flomation.app/flomation/automate/editor)
+reads and writes, that [Runners](https://gitlab.tooling.flomation.app/flomation/automate/runner)
+poll for pending executions, and that
+[Launch](https://gitlab.tooling.flomation.app/flomation/automate/launch) calls to fire
+triggers.
 
 ## Prerequisites
 
@@ -12,18 +36,19 @@ The Flomation API is a Go service built with [Gin](https://github.com/gin-gonic/
 - PostgreSQL database
 - Access to the Flomation identity service (for authentication)
 - `golangci-lint`, `goimports`, `gosec`, and `govulncheck` (for linting)
+- Docker (optional, for containerised deployment)
 
 ## Installation
 
 ```bash
-git clone <repository-url>
-cd api
+git clone <repo-url> && cd api
 go mod download
 ```
 
 ## Configuration
 
-Configuration is loaded from `config.json` (and can be overridden via environment variables or CLI arguments).
+Configuration is loaded from `config.json` and can be overridden via environment
+variables or CLI arguments.
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
@@ -65,17 +90,17 @@ Example `config.json`:
 
 ## Usage
 
-### Running the server
-
 ```bash
 go run ./cmd
 ```
 
-The server starts on the configured address and port (default `:8888`) and automatically runs any pending database migrations on startup.
+The server starts on the configured address and port (default `:8888`) and automatically
+runs any pending database migrations on startup.
 
-### API endpoints
+## API Endpoints
 
-All endpoints are under `/api/v1` unless noted. Most require a Bearer JWT token via the `Authorization` header.
+All endpoints are under `/api/v1` unless noted. Most require a Bearer JWT token via the
+`Authorization` header.
 
 | Group | Method | Path | Auth | Description |
 |-------|--------|------|------|-------------|
@@ -116,7 +141,7 @@ All endpoints are under `/api/v1` unless noted. Most require a Bearer JWT token 
 ## Development
 
 ```bash
-# Run tests
+# Run tests with coverage
 make test
 
 # Lint (runs go mod tidy, goimports, golangci-lint, go vet, gosec, govulncheck)
@@ -126,7 +151,17 @@ make lint
 make build
 ```
 
-The build produces cross-compiled binaries in `dist/` with embedded version, git hash, and build date.
+The build produces cross-compiled binaries in `dist/` with embedded version, git hash,
+and build date.
+
+## Docker
+
+Built on Alpine Linux, listening on port 8888 and running as a non-root `flomation` user.
+
+```bash
+docker build --build-arg BINARY_FILE=dist/flomation-api-amd64-linux-1.0.dev -t flomation-api .
+docker run -p 8888:8888 -v $(pwd)/config.json:/config.json flomation-api
+```
 
 ## Project Structure
 
@@ -157,11 +192,10 @@ The build produces cross-compiled binaries in `dist/` with embedded version, git
 │   ├── utils/                   # Utility functions
 │   └── version/                 # Build version info
 ├── types.go                     # Shared domain types
-├── project-metadata.json        # Package metadata for RPM/DEB builds
 ├── Dockerfile                   # Container image (Alpine, port 8888)
 └── Makefile                     # Build, lint, test targets
 ```
 
 ## Licence
 
-MIT — see [LICENCE.md](LICENCE.md).
+MIT — Flomation LTD. See [LICENCE.md](LICENCE.md).
