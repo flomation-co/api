@@ -10,10 +10,10 @@ management, execution orchestration, runner coordination, and environment/secret
 management. It connects to a PostgreSQL database and uses JWT-based authentication via an
 external identity service.
 
-It is the system of record that the [Editor](https://gitlab.tooling.flomation.app/flomation/automate/editor)
-reads and writes, that [Runners](https://gitlab.tooling.flomation.app/flomation/automate/runner)
+It is the system of record that the Editor
+reads and writes, that Runners
 poll for pending executions, and that
-[Launch](https://gitlab.tooling.flomation.app/flomation/automate/launch) calls to fire
+Launch calls to fire
 triggers.
 
 ## Prerequisites
