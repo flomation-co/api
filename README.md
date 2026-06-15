@@ -2,20 +2,6 @@
 
 > Backend REST API for the Flomation Automate platform — manages flos, executions, runners, and environments/secrets.
 
-## The Flomation Automate platform
-
-Flomation Automate lets non-technical, front-of-house users build and run automation
-workflows ("flos") from a visual editor. This repository is one of five services that
-make up the platform:
-
-| Service | Role |
-|---------|------|
-| **API** (this repository) | Backend REST API — manages flos, executions, runners, and environments/secrets |
-| [Editor](https://gitlab.tooling.flomation.app/flomation/automate/editor) | Visual web app for building, running, and monitoring flos |
-| [Launch](https://gitlab.tooling.flomation.app/flomation/automate/launch) | Ingress service — turns external events (webhooks, QR scans, forms, pixels) into trigger fires |
-| [Runner](https://gitlab.tooling.flomation.app/flomation/automate/runner) | Remote agent — polls the API for pending executions and runs them |
-| [Executor](https://gitlab.tooling.flomation.app/flomation/automate/executor) | Runtime engine — executes a flo's node graph and reports results |
-
 ## Overview
 
 The Flomation API is a Go service built with [Gin](https://github.com/gin-gonic/gin)
@@ -34,7 +20,6 @@ triggers.
 
 - Go 1.26.1+
 - PostgreSQL database
-- Access to the Flomation identity service (for authentication)
 - `golangci-lint`, `goimports`, `gosec`, and `govulncheck` (for linting)
 - Docker (optional, for containerised deployment)
 
