@@ -5,6 +5,7 @@ import (
 	"time"
 
 	api "flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -13,6 +14,15 @@ type SchedulePersistence interface {
 	GetEnabledAgentSchedules() ([]*api.AgentSchedule, error)
 	UpdateAgentScheduleLastFired(id string, firedAt time.Time) error
 	GetAgentByID(id string) (*api.Agent, error)
+	GetAgentConversationByID(id string) (*api.AgentConversation, error)
+	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
+	ResolveOrCreateAgentConversation(
+		agentID string,
+		agentUserID *string,
+		channelType, channelID string,
+		threadID *string,
+		idleTimeout int,
+	) (*persistence.ConversationResolution, error)
 }
 
 // SchedulePoller fires due agent schedules by dispatching orchestrator
@@ -168,6 +178,29 @@ func (sp *SchedulePoller) processSchedule(sched *api.AgentSchedule) {
 		triggerData["agent_user_id"] = *sched.AgentUserID
 	}
 
+	// Anchor to the active conversation for this schedule. The pinned
+	// conversation_id is used as a seed: we read its (channel_type,
+	// channel_id, thread_id) tuple and ask ResolveOrCreateAgentConversation
+	// to return the currently-active conversation — which may be the
+	// pinned one, or a fresh one if the pin has idled out. Without this
+	// resolution, schedules fire into closed conversations and the AI's
+	// history-loading either gets stale context or none at all.
+	if conv := sp.resolveActiveConversation(sched, agent); conv != nil {
+		triggerData["conversation_id"] = conv.ID
+		triggerData["channel_type"] = conv.ChannelType
+		triggerData["channel_id"] = conv.ChannelID
+		if conv.ThreadID != nil && *conv.ThreadID != "" {
+			triggerData["thread_id"] = *conv.ThreadID
+		}
+
+		if msgs, err := sp.persistence.GetAgentConversationMessages(conv.ID, 5); err == nil {
+			history := normaliseHistory(msgs)
+			if len(history) > 0 {
+				triggerData["conversation_history"] = history
+			}
+		}
+	}
+
 	// Build system prompt.
 	systemPrompt := ""
 	if agent.SystemPrompt != nil {
@@ -202,4 +235,49 @@ func derefStr(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// resolveActiveConversation returns the conversation the schedule should
+// fire into right now. It uses the schedule's pinned conversation_id as a
+// seed to discover the (channel_type, channel_id, thread_id) tuple, then
+// calls ResolveOrCreateAgentConversation — which returns the active
+// conversation for that tuple, closing the pinned one and creating a
+// fresh one if it has idled out.
+//
+// This prevents schedules from firing into stale, long-closed conversations
+// after the originating conversation rotates due to idle timeout.
+//
+// Returns nil when:
+//   - The schedule has no pinned conversation_id (legacy schedules
+//     pre-dating the conversation_id capture in agent_create_schedule).
+//   - The seed conversation row no longer exists.
+//   - The resolver fails — but in that case we'd rather fire with no
+//     context than fire into a definitely-stale conversation.
+func (sp *SchedulePoller) resolveActiveConversation(
+	sched *api.AgentSchedule,
+	agent *api.Agent,
+) *api.AgentConversation {
+	if sched.ConversationID == nil || *sched.ConversationID == "" {
+		return nil
+	}
+
+	seed, err := sp.persistence.GetAgentConversationByID(*sched.ConversationID)
+	if err != nil || seed == nil {
+		return nil
+	}
+
+	res, err := sp.persistence.ResolveOrCreateAgentConversation(
+		agent.ID,
+		sched.AgentUserID,
+		seed.ChannelType,
+		seed.ChannelID,
+		seed.ThreadID,
+		agent.IdleTimeoutSeconds,
+	)
+	if err != nil || res == nil || res.Conversation == nil {
+		// Fall back to the seed — better to fire into a possibly-stale
+		// conversation than to lose the routing entirely.
+		return seed
+	}
+	return res.Conversation
 }
