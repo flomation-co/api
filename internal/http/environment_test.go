@@ -324,6 +324,9 @@ func (m *mockPersistence) CountAgentExecutionsInHour(string) (int64, error) { re
 func (m *mockPersistence) ResolveOrCreateAgentIdentity(string, *string, string, string, *string, *string) (*api.AgentIdentity, *api.AgentUser, error) {
 	return nil, nil, nil
 }
+func (m *mockPersistence) ResolveOrCreateAgentIdentityWithSecondary(string, *string, string, string, *string, *string, *string) (*api.AgentIdentity, *api.AgentUser, error) {
+	return nil, nil, nil
+}
 func (m *mockPersistence) ResolveOrCreateAgentConversation(string, *string, string, string, *string, int) (*persistence.ConversationResolution, error) {
 	return nil, nil
 }

@@ -95,6 +95,98 @@ func TestDeriveExternalID_NilMetadata(t *testing.T) {
 	Expect(name).To(Equal("fallback"))
 }
 
+func TestDeriveExternalIDWithSecondary_TelegramHasUsername(t *testing.T) {
+	RegisterTestingT(t)
+
+	msg := InboundMessage{
+		ChannelType: "telegram",
+		Sender:      "Andy",
+		Metadata: map[string]interface{}{
+			"sender_id":       "67890",
+			"sender_username": "AndyEsser",
+			"sender_name":     "Andy Esser",
+		},
+	}
+
+	id, name, secondary := DeriveExternalIDWithSecondary(msg)
+	Expect(id).To(Equal("67890"))
+	Expect(name).To(Equal("Andy Esser"))
+	Expect(secondary).To(Equal("@AndyEsser"))
+}
+
+func TestDeriveExternalIDWithSecondary_TelegramNoUsername(t *testing.T) {
+	RegisterTestingT(t)
+
+	msg := InboundMessage{
+		ChannelType: "telegram",
+		Sender:      "Andy",
+		Metadata: map[string]interface{}{
+			"sender_id":   "67890",
+			"sender_name": "Andy Esser",
+		},
+	}
+
+	id, name, secondary := DeriveExternalIDWithSecondary(msg)
+	Expect(id).To(Equal("67890"))
+	Expect(name).To(Equal("Andy Esser"))
+	Expect(secondary).To(Equal(""))
+}
+
+func TestDeriveExternalIDWithSecondary_TelegramUsernameOnly(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Edge case: no sender_name, only sender_username. Display name
+	// should fall back to "@username".
+	msg := InboundMessage{
+		ChannelType: "telegram",
+		Sender:      "Andy",
+		Metadata: map[string]interface{}{
+			"sender_id":       "67890",
+			"sender_username": "AndyEsser",
+		},
+	}
+
+	id, name, secondary := DeriveExternalIDWithSecondary(msg)
+	Expect(id).To(Equal("67890"))
+	Expect(name).To(Equal("@AndyEsser"))
+	Expect(secondary).To(Equal("@AndyEsser"))
+}
+
+func TestDeriveExternalIDWithSecondary_Slack(t *testing.T) {
+	RegisterTestingT(t)
+
+	msg := InboundMessage{
+		ChannelType: "slack",
+		Sender:      "Andy",
+		Metadata: map[string]interface{}{
+			"user_id":   "U12345",
+			"user_name": "andy.esser",
+		},
+	}
+
+	id, name, secondary := DeriveExternalIDWithSecondary(msg)
+	Expect(id).To(Equal("U12345"))
+	Expect(name).To(Equal("andy.esser"))
+	Expect(secondary).To(Equal("@andy.esser"))
+}
+
+func TestDeriveExternalIDWithSecondary_EmailNoSecondary(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Email has no concept of a separate username/handle — bare address
+	// is the only identifier. Secondary should be empty.
+	msg := InboundMessage{
+		ChannelType: "email",
+		Sender:      "andy",
+		Metadata:    map[string]interface{}{"from": "Andy Esser <andy@flomation.co>"},
+	}
+
+	id, name, secondary := DeriveExternalIDWithSecondary(msg)
+	Expect(id).To(Equal("andy@flomation.co"))
+	Expect(name).To(Equal("Andy Esser <andy@flomation.co>"))
+	Expect(secondary).To(Equal(""))
+}
+
 func TestDeriveChannelScope_Slack(t *testing.T) {
 	RegisterTestingT(t)
 

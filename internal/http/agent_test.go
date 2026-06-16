@@ -186,6 +186,9 @@ func (m *agentMock) CreateAgentMessage(msg api.AgentMessage) (*string, error) {
 func (m *agentMock) ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error) {
 	return nil, nil, nil
 }
+func (m *agentMock) ResolveOrCreateAgentIdentityWithSecondary(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string, secondaryExternalID *string) (*api.AgentIdentity, *api.AgentUser, error) {
+	return nil, nil, nil
+}
 func (m *agentMock) ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error) {
 	return nil, nil
 }

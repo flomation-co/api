@@ -11,6 +11,7 @@ import (
 // IdentityResolver resolves inbound message senders to agent users.
 type IdentityResolver interface {
 	ResolveOrCreateAgentIdentity(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string) (*api.AgentIdentity, *api.AgentUser, error)
+	ResolveOrCreateAgentIdentityWithSecondary(agentID string, organisationID *string, channelType, externalID string, scope *string, displayName *string, secondaryExternalID *string) (*api.AgentIdentity, *api.AgentUser, error)
 }
 
 // ConversationResolver opens or continues conversations.

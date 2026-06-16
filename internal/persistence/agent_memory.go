@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	log "github.com/sirupsen/logrus"
 )
 
 // --- Agent Users ---
@@ -136,22 +137,10 @@ func (s *Service) LinkAgentIdentityToUser(identityID, agentUserID string) error 
 	return err
 }
 
-// ResolveOrCreateAgentIdentity is the main entry point Launch calls when
-// an incoming webhook arrives. It:
-//
-//  1. Looks up an identity by (channel_type, channel_external_id, scope).
-//  2. If found, returns the existing identity and its AgentUser.
-//  3. If not found, creates a fresh AgentUser scoped to the given agent
-//     + organisation, then a fresh identity pointing at that user with
-//     verified=false, then returns both.
-//
-// The auto-create path is what lets memories start accruing immediately
-// for previously-unseen external identifiers, while keeping them scoped
-// to a single identity until the user explicitly links identities via
-// natural-language confirmation (Phase 5).
-//
-// displayName is used only on first creation; if the identity already
-// exists, the existing AgentUser is returned unchanged.
+// ResolveOrCreateAgentIdentity is the legacy entry point that resolves
+// or creates an identity from a single external_id. New callers that have
+// access to a username should prefer ResolveOrCreateAgentIdentityWithSecondary
+// so profile-declared identities can be linked automatically.
 func (s *Service) ResolveOrCreateAgentIdentity(
 	agentID string,
 	organisationID *string,
@@ -159,6 +148,45 @@ func (s *Service) ResolveOrCreateAgentIdentity(
 	scope *string,
 	displayName *string,
 ) (*api.AgentIdentity, *api.AgentUser, error) {
+	return s.ResolveOrCreateAgentIdentityWithSecondary(
+		agentID, organisationID, channelType, externalID, scope, displayName, nil,
+	)
+}
+
+// ResolveOrCreateAgentIdentityWithSecondary is the main entry point Launch
+// calls when an incoming webhook arrives. Like the legacy resolver it
+// looks up an identity by (channel_type, channel_external_id, scope) and
+// auto-creates one if none exists — but it also accepts an OPTIONAL
+// secondary external ID (typically the channel's username form, e.g.
+// "@AndyEsser" for Telegram) used for two purposes:
+//
+//  1. **Cross-format linking.** If the primary external_id has no identity
+//     row but the secondary does, the existing identity's AgentUser is
+//     reused. A new primary identity row is created pointing at that same
+//     AgentUser. This is how profile-declared identities (entered as
+//     "@username") get reconciled with Launch-resolved identities (stored
+//     as numeric channel IDs) without the user having to merge manually.
+//
+//  2. **First-sight backfill.** If neither primary nor secondary exists,
+//     a fresh AgentUser is created along with BOTH identity rows (primary
+//     and secondary, both pointing at the same user). Future inbounds —
+//     or future user-profile declarations — resolving by either format
+//     find the same AgentUser.
+//
+// Failure to write the secondary row is non-fatal: the primary identity
+// is established and the lookup-by-secondary linking benefit is simply
+// lost for this user. We log and proceed.
+//
+// displayName is used only on first creation.
+func (s *Service) ResolveOrCreateAgentIdentityWithSecondary(
+	agentID string,
+	organisationID *string,
+	channelType, externalID string,
+	scope *string,
+	displayName *string,
+	secondaryExternalID *string,
+) (*api.AgentIdentity, *api.AgentUser, error) {
+	// 1. Primary lookup — by far the hot path once the row exists.
 	existing, err := s.GetAgentIdentityByExternal(agentID, channelType, externalID, scope)
 	if err != nil {
 		return nil, nil, err
@@ -171,48 +199,79 @@ func (s *Service) ResolveOrCreateAgentIdentity(
 		return existing, user, nil
 	}
 
-	// Auto-create a fresh AgentUser and identity in a minimal two-step
-	// write. Transactional atomicity isn't strictly required here because
-	// the failure mode is benign: a created-then-orphaned AgentUser with
-	// no identity row cannot be observed by any other query path (there
-	// is no API lookup of agent_user that doesn't go through an identity
-	// first) and will be cleaned up the next time the same external ID
-	// arrives.
-	userID, err := s.CreateAgentUser(api.AgentUser{
-		AgentID:        agentID,
-		OrganisationID: organisationID,
-		DisplayName:    displayName,
-	})
-	if err != nil {
-		return nil, nil, err
+	// 2. Secondary lookup — only when the primary missed AND a secondary
+	// was provided. This is what reconciles "@username" profile-declared
+	// identities with newly-arriving numeric Telegram sender_ids.
+	var userID string
+	var foundViaSecondary bool
+	if secondaryExternalID != nil && *secondaryExternalID != "" {
+		secondaryIdentity, err := s.GetAgentIdentityByExternal(
+			agentID, channelType, *secondaryExternalID, scope,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		if secondaryIdentity != nil {
+			userID = secondaryIdentity.AgentUserID
+			foundViaSecondary = true
+		}
 	}
 
-	identityID, err := s.CreateAgentIdentity(api.AgentIdentity{
+	// 3. If neither primary nor secondary found, create a fresh AgentUser.
+	if !foundViaSecondary {
+		newUserID, err := s.CreateAgentUser(api.AgentUser{
+			AgentID:        agentID,
+			OrganisationID: organisationID,
+			DisplayName:    displayName,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		userID = *newUserID
+	}
+
+	// 4. Create the primary identity row pointing at the resolved user.
+	if _, err := s.CreateAgentIdentity(api.AgentIdentity{
 		AgentID:           agentID,
-		AgentUserID:       *userID,
+		AgentUserID:       userID,
 		ChannelType:       channelType,
 		ChannelExternalID: externalID,
 		ChannelScope:      scope,
 		Verified:          false,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, nil, err
 	}
 
+	// 5. Best-effort: if secondary was provided and didn't already exist,
+	// create its row too so future @username lookups resolve to this same
+	// user. Failures here are non-fatal — the primary is established.
+	if secondaryExternalID != nil && *secondaryExternalID != "" && !foundViaSecondary {
+		if _, err := s.CreateAgentIdentity(api.AgentIdentity{
+			AgentID:           agentID,
+			AgentUserID:       userID,
+			ChannelType:       channelType,
+			ChannelExternalID: *secondaryExternalID,
+			ChannelScope:      scope,
+			Verified:          false,
+		}); err != nil {
+			log.WithFields(log.Fields{
+				"agent_id":              agentID,
+				"channel_type":          channelType,
+				"secondary_external_id": *secondaryExternalID,
+				"error":                 err,
+			}).Warn("failed to write secondary identity row — primary identity is established but @username linkage is lost for this user")
+		}
+	}
+
+	// 6. Re-fetch the primary and return.
 	identity, err := s.GetAgentIdentityByExternal(agentID, channelType, externalID, scope)
 	if err != nil {
 		return nil, nil, err
 	}
-	user, err := s.GetAgentUserByID(*userID)
+	user, err := s.GetAgentUserByID(userID)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// Silence unused local; identityID's value is already reflected in
-	// the row we just re-fetched above. We keep the return from
-	// CreateAgentIdentity for future logging hooks.
-	_ = identityID
-
 	return identity, user, nil
 }
 

@@ -93,10 +93,14 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	identityChannelType := normaliseChannelType(msg.ChannelType)
 
 	var agentUserID *string
-	externalID, displayName := DeriveExternalID(msg)
+	externalID, displayName, secondaryExternalID := DeriveExternalIDWithSecondary(msg)
 	if externalID != "" {
-		identity, user, err := h.persistence.ResolveOrCreateAgentIdentity(
-			agentID, agent.OrganisationID, identityChannelType, externalID, nil, &displayName)
+		var secondaryPtr *string
+		if secondaryExternalID != "" {
+			secondaryPtr = &secondaryExternalID
+		}
+		identity, user, err := h.persistence.ResolveOrCreateAgentIdentityWithSecondary(
+			agentID, agent.OrganisationID, identityChannelType, externalID, nil, &displayName, secondaryPtr)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -486,11 +490,26 @@ func normaliseChannelType(channelType string) string {
 	}
 }
 
-// DeriveExternalID extracts the stable channel-specific ID from message metadata.
+// DeriveExternalID extracts the stable channel-specific ID from message
+// metadata. Delegates to DeriveExternalIDWithSecondary and drops the
+// secondary, kept for backwards compatibility with callers that don't
+// need the @username form.
 func DeriveExternalID(msg InboundMessage) (externalID, displayName string) {
+	externalID, displayName, _ = DeriveExternalIDWithSecondary(msg)
+	return externalID, displayName
+}
+
+// DeriveExternalIDWithSecondary extracts both the stable channel-specific
+// ID (used as the primary lookup key) AND an optional secondary external
+// ID (typically "@username" form) used to reconcile profile-declared
+// identities with Launch-resolved ones. The secondary is empty when the
+// channel has no username concept or when the inbound metadata didn't
+// include one (Telegram users can opt out of usernames; email/SMS have
+// no notion of one).
+func DeriveExternalIDWithSecondary(msg InboundMessage) (externalID, displayName, secondaryExternalID string) {
 	displayName = msg.Sender
 	if msg.Metadata == nil {
-		return msg.Sender, displayName
+		return msg.Sender, displayName, ""
 	}
 	switch msg.ChannelType {
 	case "slack":
@@ -499,6 +518,7 @@ func DeriveExternalID(msg InboundMessage) (externalID, displayName string) {
 		}
 		if v, ok := msg.Metadata["user_name"].(string); ok && v != "" {
 			displayName = v
+			secondaryExternalID = "@" + v
 		} else if v, ok := msg.Metadata["display_name"].(string); ok && v != "" {
 			displayName = v
 		}
@@ -506,10 +526,13 @@ func DeriveExternalID(msg InboundMessage) (externalID, displayName string) {
 		if v, ok := msg.Metadata["sender_id"].(string); ok && v != "" {
 			externalID = v
 		}
+		if v, ok := msg.Metadata["sender_username"].(string); ok && v != "" {
+			secondaryExternalID = "@" + v
+		}
 		if v, ok := msg.Metadata["sender_name"].(string); ok && v != "" {
 			displayName = v
-		} else if v, ok := msg.Metadata["sender_username"].(string); ok && v != "" {
-			displayName = "@" + v
+		} else if secondaryExternalID != "" {
+			displayName = secondaryExternalID
 		}
 	case "email":
 		if v, ok := msg.Metadata["from"].(string); ok && v != "" {
@@ -525,7 +548,7 @@ func DeriveExternalID(msg InboundMessage) (externalID, displayName string) {
 	if externalID == "" {
 		externalID = msg.Sender
 	}
-	return externalID, displayName
+	return externalID, displayName, secondaryExternalID
 }
 
 // DeriveChannelScope extracts the channel ID and optional thread ID.
