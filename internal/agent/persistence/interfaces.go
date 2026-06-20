@@ -29,6 +29,14 @@ type HistoryFetcher interface {
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 }
 
+// PriorConversationsFetcher returns session_summary memories joined
+// to their source conversations, so inbound dispatch can surface
+// them in trigger data. Defined here (rather than imported wholesale)
+// to keep the agent package's external surface narrow.
+type PriorConversationsFetcher interface {
+	GetRecentPriorConversations(agentID, agentUserID string, limit int) ([]apipersistence.PriorConversationSummary, error)
+}
+
 // ExtractionDispatcher dispatches extraction pipeline runs.
 // This interface wraps the extraction logic so the agent package
 // doesn't need to know about HTTP handlers or flow execution details.

@@ -90,15 +90,15 @@ type OAuthProviderConfig struct {
 }
 
 type Config struct {
-	HttpListenConfig HttpListenConfig `json:"http"`
-	Database         DatabaseConfig   `json:"database"`
-	Security         SecurityConfig   `json:"security"`
-	Launch           LaunchConfig     `json:"launch"`
-	SMTP             SMTPConfig       `json:"smtp"`
-	Embedding        *EmbeddingConfig `json:"embedding,omitempty"`
-	TLS              *mtls.TLSConfig  `json:"tls,omitempty"`
-	Metrics          MetricsConfig    `json:"metrics"`
-	Billing          BillingConfig    `json:"billing"`
+	HttpListenConfig HttpListenConfig               `json:"http"`
+	Database         DatabaseConfig                 `json:"database"`
+	Security         SecurityConfig                 `json:"security"`
+	Launch           LaunchConfig                   `json:"launch"`
+	SMTP             SMTPConfig                     `json:"smtp"`
+	Embedding        *EmbeddingConfig               `json:"embedding,omitempty"`
+	TLS              *mtls.TLSConfig                `json:"tls,omitempty"`
+	Metrics          MetricsConfig                  `json:"metrics"`
+	Billing          BillingConfig                  `json:"billing"`
 	OAuth            map[string]OAuthProviderConfig `json:"oauth,omitempty"`
 	EmailOctopus     *EmailOctopusConfig            `json:"email_octopus,omitempty"`
 }

@@ -130,6 +130,7 @@ func (s *Service) StoreCredentialTokens(id, environmentKey, accessToken, refresh
 		    status = 'active',
 		    last_refreshed_at = NOW(),
 		    last_error = NULL,
+		    consecutive_failures = 0,
 		    updated_at = NOW()
 		WHERE id = $1`,
 		id, accessToken, environmentKey, refreshToken, expiresAt, clientID, clientSecret)
@@ -150,7 +151,7 @@ func (s *Service) GetCredentialsNeedingRefresh(within time.Duration) ([]Credenti
 		FROM environment_credential ec
 		JOIN environment e ON e.id = ec.environment_id
 		JOIN credential_provider cp ON cp.slug = ec.provider_slug
-		WHERE ec.status = 'active'
+		WHERE ec.status IN ('active', 'error')
 		  AND ec.refresh_token IS NOT NULL
 		  AND ec.token_expires_at IS NOT NULL
 		  AND ec.token_expires_at < NOW() + $1::INTERVAL`,
@@ -173,12 +174,41 @@ type CredentialRefreshRow struct {
 }
 
 // UpdateCredentialStatus sets the status and optional error message.
+// Does not touch consecutive_failures — the poller uses
+// RecordCredentialRefreshFailure for atomic counter+status moves.
 func (s *Service) UpdateCredentialStatus(id, status string, lastError *string) error {
 	_, err := s.conn.Exec(`
 		UPDATE environment_credential
 		SET status = $2, last_error = $3, updated_at = NOW()
 		WHERE id = $1`, id, status, lastError)
 	return err
+}
+
+// RecordCredentialRefreshFailure mirrors the Google variant: bump
+// the counter, decide whether to stay at 'error' (transient) or
+// flip to 'revoked' (permanent error or threshold reached).
+//
+// Previously credentials transitioned to 'error' on the first
+// failure and were excluded from refresh queries until the user
+// re-OAuth'd manually — overly aggressive for transient failures
+// (a brief OAuth-provider outage shouldn't permanently break a
+// credential). The new behaviour retries up to `threshold` times
+// for transient errors and only gives up when the provider tells
+// us the refresh token is dead.
+func (s *Service) RecordCredentialRefreshFailure(id, lastError string, permanent bool, threshold int) (string, error) {
+	var newStatus string
+	err := s.conn.Get(&newStatus, `
+		UPDATE environment_credential
+		SET consecutive_failures = consecutive_failures + 1,
+		    last_error = $2,
+		    status = CASE
+		        WHEN $3::BOOLEAN OR consecutive_failures + 1 >= $4 THEN 'revoked'
+		        ELSE 'error'
+		    END,
+		    updated_at = NOW()
+		WHERE id = $1
+		RETURNING status`, id, lastError, permanent, threshold)
+	return newStatus, err
 }
 
 // DeleteCredential removes a credential.

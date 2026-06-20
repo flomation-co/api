@@ -13,6 +13,7 @@ import (
 
 	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/embedding"
+	apipersistence "flomation.app/automate/api/internal/persistence"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/pgvector/pgvector-go"
@@ -100,6 +101,14 @@ type SystemPromptRequest struct {
 	ChannelType string
 	AgentUserID string
 	Content     string // inbound message text for semantic search
+
+	// PriorConversations is the trigger-time snapshot of past
+	// conversation summaries surfaced to the agent. Each entry's
+	// conversation_id is what the agent passes to the
+	// agent/get_conversation tool when it wants the full history.
+	// Caller (inbound dispatch) has already capped this at the
+	// agent's PriorConversationCount.
+	PriorConversations []apipersistence.PriorConversationSummary
 }
 
 // SystemPromptResult is the response from AssembleSystemPrompt.
@@ -149,7 +158,7 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 	// Without an agent_user_id, degrade to persona + honesty + channel.
 	if req.AgentUserID == "" {
 		return SystemPromptResult{
-			Prompt: BuildSystemPrompt(req.Persona, nil, nil, nil, nil, toolSummary, req.ChannelType),
+			Prompt: BuildSystemPrompt(req.Persona, nil, nil, nil, nil, toolSummary, req.ChannelType, nil),
 		}
 	}
 
@@ -195,7 +204,7 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 		"tools":             len(toolSummary),
 	}).Info("system prompt assembly complete (API-side)")
 
-	prompt := BuildSystemPrompt(req.Persona, pinnedMem, relevantMem, pending, schedules, toolSummary, req.ChannelType)
+	prompt := BuildSystemPrompt(req.Persona, pinnedMem, relevantMem, pending, schedules, toolSummary, req.ChannelType, req.PriorConversations)
 
 	return SystemPromptResult{
 		Prompt:            prompt,
@@ -354,6 +363,7 @@ func BuildSystemPrompt(
 	schedules []assembledSchedule,
 	tools []AssembledTool,
 	channelType string,
+	priorConversations []apipersistence.PriorConversationSummary,
 ) string {
 	var b strings.Builder
 
@@ -442,6 +452,46 @@ func BuildSystemPrompt(
 				b.WriteString("• ")
 				b.WriteString(mem.Body)
 			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if len(priorConversations) > 0 {
+		b.WriteString("━━━ Recent conversations ━━━\n")
+		b.WriteString("Past conversations with this user, in reverse chronological order. Each entry " +
+			"is a SUMMARY plus the original conversation_id. If a summary looks relevant to the " +
+			"current message, pass its conversation_id verbatim to the agent/get_conversation tool " +
+			"to retrieve the full message history before answering. Do NOT invent details from a " +
+			"summary alone — fetch the conversation first.\n")
+		for _, pc := range priorConversations {
+			ended := ""
+			if pc.EndedAt != nil {
+				ended = pc.EndedAt.Format("2 Jan 2006 15:04")
+			}
+			b.WriteString("• [")
+			b.WriteString(pc.ConversationID)
+			b.WriteString("] ")
+			if pc.ChannelType != "" {
+				b.WriteString("via ")
+				b.WriteString(pc.ChannelType)
+				b.WriteString(", ")
+			}
+			if ended != "" {
+				b.WriteString("ended ")
+				b.WriteString(ended)
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%d msgs", pc.MessageCount)
+			b.WriteString("\n  ")
+			// Trim summary to a single tight paragraph so a chatty
+			// summariser doesn't blow the token budget. The full
+			// text remains retrievable via get_conversation.
+			summary := strings.TrimSpace(pc.Summary)
+			if len(summary) > 600 {
+				summary = summary[:600] + "…"
+			}
+			b.WriteString(summary)
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")

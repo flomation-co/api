@@ -32,7 +32,8 @@ func (s *Service) UpsertGoogleAccount(agentUserID, email, refreshToken, label, p
 		              status = 'active',
 		              last_error = NULL,
 		              access_token = NULL,
-		              token_expires_at = NULL
+		              token_expires_at = NULL,
+		              consecutive_failures = 0
 	`, agentUserID, email, refreshToken, s.config.Database.EncryptionKey, label, purpose)
 	return err
 }
@@ -138,26 +139,58 @@ func (s *Service) GetGoogleAccountsNeedingRefresh(within time.Duration) ([]Googl
 	return rows, nil
 }
 
-// StoreGoogleAccountAccessToken caches a fresh access token with its expiry.
+// StoreGoogleAccountAccessToken caches a fresh access token with its
+// expiry. Successfully refreshing zeros the consecutive-failures
+// counter so a row that was sitting at, say, 7 failures gets a clean
+// slate the moment Google starts responding again.
 func (s *Service) StoreGoogleAccountAccessToken(id, accessToken string, expiresAt *time.Time) error {
 	_, err := s.conn.Exec(`
 		UPDATE agent_user_google_account
 		SET access_token = PGP_SYM_ENCRYPT($2, $3),
 		    token_expires_at = $4,
 		    status = 'active',
-		    last_error = NULL
+		    last_error = NULL,
+		    consecutive_failures = 0
 		WHERE id = $1`,
 		id, accessToken, s.config.Database.EncryptionKey, expiresAt)
 	return err
 }
 
-// UpdateGoogleAccountStatus sets the status and optional error message.
+// UpdateGoogleAccountStatus sets the status and optional error
+// message without touching the consecutive-failures counter. Used
+// for state transitions that aren't driven by a refresh attempt
+// (e.g. admin tooling). The poller uses RecordGoogleAccountRefreshFailure
+// instead so the counter and status move atomically.
 func (s *Service) UpdateGoogleAccountStatus(id, status string, lastError *string) error {
 	_, err := s.conn.Exec(`
 		UPDATE agent_user_google_account
 		SET status = $2, last_error = $3
 		WHERE id = $1`, id, status, lastError)
 	return err
+}
+
+// RecordGoogleAccountRefreshFailure increments the consecutive
+// failures counter and decides whether the row should transition to
+// 'revoked' (permanent) or stay at 'error' (transient). One UPDATE
+// covers both writes so the counter and status never disagree.
+//
+// Returns the status the row settled on so the caller can log it.
+// When permanent is true the row goes straight to 'revoked' no
+// matter the counter — Google explicitly told us the token will
+// never work, so retrying is wasteful and noisy.
+func (s *Service) RecordGoogleAccountRefreshFailure(id, lastError string, permanent bool, threshold int) (string, error) {
+	var newStatus string
+	err := s.conn.Get(&newStatus, `
+		UPDATE agent_user_google_account
+		SET consecutive_failures = consecutive_failures + 1,
+		    last_error = $2,
+		    status = CASE
+		        WHEN $3::BOOLEAN OR consecutive_failures + 1 >= $4 THEN 'revoked'
+		        ELSE 'error'
+		    END
+		WHERE id = $1
+		RETURNING status`, id, lastError, permanent, threshold)
+	return newStatus, err
 }
 
 // GetGoogleAccountAccessToken returns the cached decrypted access token

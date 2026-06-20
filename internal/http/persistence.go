@@ -48,6 +48,9 @@ type Persistence interface {
 	GetExecutionByID(ID string) (*api.Execution, error)
 	GetExecutionForRunnerID(ID string) (*api.Execution, error)
 	GetExecutions(offset int64, limit int64, search string, userID string, organisationID *string, rootOnly ...bool) ([]*api.Execution, int64, error)
+	GetExecutionTree(rootID string) ([]*api.Execution, error)
+	GetExecutionAncestors(id string) ([]*api.Execution, error)
+	GetExecutionDirectChildren(parentID string) ([]*api.Execution, error)
 	GetFloByID(floID string) (*api.Flo, error)
 	GetLatestRevisionByFloID(ID string) (*api.Revision, error)
 	GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error)
@@ -92,7 +95,7 @@ type Persistence interface {
 	GetCredentialByName(environmentID, name, environmentKey string) (*string, error)
 	GetCredentialsNeedingRefresh(within time.Duration) ([]persistence.CredentialRefreshRow, error)
 
-	TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string) (*string, error)
+	TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string, parent *persistence.ParentLink) (*string, error)
 	IsFlowAgentPaused(flowID string) bool
 	GetAgentByOrchestratorFloID(flowID string) (*api.Agent, error)
 	UpdateCompletionStatus(ID string, status string) error
@@ -205,6 +208,9 @@ type Persistence interface {
 	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error)
 	CloseAgentConversation(conversationID string) error
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
+	GetRecentPriorConversations(agentID, agentUserID string, limit int) ([]persistence.PriorConversationSummary, error)
+	GetConversationMessagesForAgent(conversationID, agentID, agentUserID string, maxMessages int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error)
+	GetAgentUserCalendarAccessToken(agentUserID string) (string, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 
 	// Agent Memory Phase 2: memories, pending actions, commitments. See

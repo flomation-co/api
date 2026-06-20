@@ -201,7 +201,7 @@ func backfillAgent(db *persistence.Service, agentID string, commit bool) (Summar
 
 	if patchCount == 0 && len(nodeUpdates) > 0 {
 		log.WithFields(log.Fields{
-			"agent_id":         agentID,
+			"agent_id":            agentID,
 			"channels_with_creds": len(nodeUpdates),
 		}).Warn("no matching trigger nodes found in orchestrator flow — credentials minted but flow not updated; user must add the trigger nodes manually")
 	}

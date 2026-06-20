@@ -451,6 +451,13 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
+	executions.GET("/:id/ancestors", s.jwtMiddleware, s.getExecutionAncestors)
+	executions.GET("/:id/children", s.jwtMiddleware, s.getExecutionChildren)
+
+	// /execution-tree/:rootID lives outside the executions group
+	// because the rootID parameter would collide with /:id otherwise
+	// (gin treats /:id and /:rootID as the same path segment).
+	v1.GET("/execution-tree/:rootID", s.jwtMiddleware, s.getExecutionTree)
 	executions.GET("/:id/status", s.executionMiddleware, s.getExecutionStatus)
 	executions.GET("/:id/stream", s.streamAuthMiddleware, s.streamExecutionLogs)
 
@@ -496,6 +503,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	environment.GET("/:environment/elevenlabs-voices/:credential", s.jwtMiddleware, s.getElevenLabsVoices)
 	environment.GET("/:environment/elevenlabs-models/:credential", s.jwtMiddleware, s.getElevenLabsModels)
+	environment.GET("/:environment/elevenlabs-shared-voices/:credential", s.jwtMiddleware, s.getElevenLabsSharedVoices)
+	environment.POST("/:environment/elevenlabs-add-voice/:credential", s.jwtMiddleware, s.addElevenLabsVoice)
 	environment.GET("/:environment/facebook-pages/:credentialName", s.jwtMiddleware, s.getFacebookPages)
 	environment.GET("/:environment/facebook-webhook-check/:credentialName/:pageId", s.jwtMiddleware, s.checkFacebookWebhook)
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
@@ -570,6 +579,18 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		gin.SetMode(gin.ReleaseMode)
 		s.internalEngine = gin.New()
 		internalRouter = s.internalEngine.Group("api/v1")
+		// Tag every request that arrived on the mTLS-only engine.
+		// Handlers that share a function across engines (triggerFlo,
+		// executeFlo, …) read this via isInternalRequest before
+		// honouring service-to-service-only headers like
+		// X-Flomation-Parent-Execution-ID. The middleware is
+		// intentionally NOT added in single-engine dev mode — without
+		// mTLS we cannot distinguish internal from external callers,
+		// so the safe default is "everyone is external".
+		internalRouter.Use(func(c *gin.Context) {
+			c.Set("internal_mtls", true)
+			c.Next()
+		})
 	}
 	// Trigger variable resolution (called by Launch for ${secrets.X}, ${credentials.X})
 	internalRouter.POST("/trigger/:id/resolve", s.resolveTriggerVariables)
@@ -615,6 +636,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// agent/recall, agent/forget. See internal/http/agent_memory_phase2.go.
 	internal.POST("/agent/:id/memory", s.createAgentMemoryInternal)
 	internal.GET("/agent/:id/memory", s.listAgentMemoriesInternal)
+	internal.GET("/agent/:id/prior-conversations", s.getAgentPriorConversationsInternal)
+	internal.POST("/agent/:id/conversation/:conv_id/messages", s.getAgentConversationMessagesInternal)
+	internal.POST("/agent/:id/calendar/events", s.getAgentCalendarEventsInternal)
 	internal.GET("/memory/:id", s.getAgentMemoryInternal)
 	internal.DELETE("/memory/:id", s.deleteAgentMemoryInternal)
 	internal.POST("/agent/:id/pending-action", s.createAgentPendingActionInternal)

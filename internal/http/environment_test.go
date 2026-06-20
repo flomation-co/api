@@ -40,6 +40,56 @@ func (m *mockPersistence) GetExecutionByID(ID string) (*api.Execution, error) {
 	return m.executions[ID], nil
 }
 
+func (m *mockPersistence) GetRecentPriorConversations(string, string, int) ([]persistence.PriorConversationSummary, error) {
+	return nil, nil
+}
+
+func (m *mockPersistence) GetConversationMessagesForAgent(string, string, string, int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error) {
+	return nil, nil, 0, false, nil
+}
+
+func (m *mockPersistence) GetAgentUserCalendarAccessToken(string) (string, error) {
+	return "", nil
+}
+
+func (m *mockPersistence) GetExecutionTree(rootID string) ([]*api.Execution, error) {
+	var out []*api.Execution
+	for _, e := range m.executions {
+		if e.RootExecutionID == rootID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockPersistence) GetExecutionAncestors(id string) ([]*api.Execution, error) {
+	exec := m.executions[id]
+	if exec == nil {
+		return nil, nil
+	}
+	var chain []*api.Execution
+	cursor := exec.ParentExecutionID
+	for cursor != nil {
+		p := m.executions[*cursor]
+		if p == nil {
+			break
+		}
+		chain = append([]*api.Execution{p}, chain...)
+		cursor = p.ParentExecutionID
+	}
+	return chain, nil
+}
+
+func (m *mockPersistence) GetExecutionDirectChildren(parentID string) ([]*api.Execution, error) {
+	var out []*api.Execution
+	for _, e := range m.executions {
+		if e.ParentExecutionID != nil && *e.ParentExecutionID == parentID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func (m *mockPersistence) GetFloByID(floID string) (*api.Flo, error) {
 	return m.flos[floID], nil
 }
@@ -196,18 +246,34 @@ func (m *mockPersistence) UpdateEnvironmentSecret(string, string, string, string
 func (m *mockPersistence) RemoveEnvironmentSecret(string) error { panic("not implemented") }
 
 func (m *mockPersistence) GetCredentialProviders() ([]api.CredentialProvider, error) { return nil, nil }
-func (m *mockPersistence) GetCredentialProvider(string) (*api.CredentialProvider, error) { return nil, nil }
-func (m *mockPersistence) GetCredentialsByEnvironmentID(string) ([]api.EnvironmentCredential, error) { return nil, nil }
-func (m *mockPersistence) GetCredentialByID(string) (*api.EnvironmentCredential, error) { return nil, nil }
-func (m *mockPersistence) CreateCredential(*api.EnvironmentCredential, string) (string, error) { return "", nil }
-func (m *mockPersistence) StoreCredentialTokens(string, string, string, string, string, string, *time.Time) error { return nil }
+func (m *mockPersistence) GetCredentialProvider(string) (*api.CredentialProvider, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetCredentialsByEnvironmentID(string) ([]api.EnvironmentCredential, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetCredentialByID(string) (*api.EnvironmentCredential, error) {
+	return nil, nil
+}
+func (m *mockPersistence) CreateCredential(*api.EnvironmentCredential, string) (string, error) {
+	return "", nil
+}
+func (m *mockPersistence) StoreCredentialTokens(string, string, string, string, string, string, *time.Time) error {
+	return nil
+}
 func (m *mockPersistence) UpdateCredentialStatus(string, string, *string) error { return nil }
-func (m *mockPersistence) DeleteCredential(string, string) error { return nil }
-func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string, *string, error) { return nil, nil, nil }
-func (m *mockPersistence) GetCredentialByName(string, string, string) (*string, error) { return nil, nil }
-func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persistence.CredentialRefreshRow, error) { return nil, nil }
+func (m *mockPersistence) DeleteCredential(string, string) error                { return nil }
+func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string, *string, error) {
+	return nil, nil, nil
+}
+func (m *mockPersistence) GetCredentialByName(string, string, string) (*string, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persistence.CredentialRefreshRow, error) {
+	return nil, nil
+}
 
-func (m *mockPersistence) TriggerExecution(string, string, interface{}, string) (*string, error) {
+func (m *mockPersistence) TriggerExecution(string, string, interface{}, string, *persistence.ParentLink) (*string, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }
@@ -232,22 +298,22 @@ func (m *mockPersistence) UpdateTrigger(api.Trigger) error                      
 func (m *mockPersistence) GetTriggersByFloID(string) ([]*api.Trigger, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) LinkFloToTrigger(string, string) error                  { panic("not implemented") }
-func (m *mockPersistence) UpdateUser(*api.User) error                             { panic("not implemented") }
-func (m *mockPersistence) UpdateUserProfile(*api.User) error                      { panic("not implemented") }
-func (m *mockPersistence) AcceptEula(string, int) error                           { return nil }
-func (m *mockPersistence) GetLatestEula() (*api.Eula, error)                      { return nil, nil }
-func (m *mockPersistence) UpdateOnboardingProgress(string, int, *time.Time) error { return nil }
-func (m *mockPersistence) SetChecklistFlag(string, int) error                     { return nil }
-func (m *mockPersistence) ClearChecklistFlag(string, int) error                   { return nil }
+func (m *mockPersistence) LinkFloToTrigger(string, string) error                    { panic("not implemented") }
+func (m *mockPersistence) UpdateUser(*api.User) error                               { panic("not implemented") }
+func (m *mockPersistence) UpdateUserProfile(*api.User) error                        { panic("not implemented") }
+func (m *mockPersistence) AcceptEula(string, int) error                             { return nil }
+func (m *mockPersistence) GetLatestEula() (*api.Eula, error)                        { return nil, nil }
+func (m *mockPersistence) UpdateOnboardingProgress(string, int, *time.Time) error   { return nil }
+func (m *mockPersistence) SetChecklistFlag(string, int) error                       { return nil }
+func (m *mockPersistence) ClearChecklistFlag(string, int) error                     { return nil }
 func (m *mockPersistence) GetUserChecklistStateForOrg(string, *string) (int, error) { return 0, nil }
 func (m *mockPersistence) SetUserChecklistFlagForOrg(string, *string, int) error    { return nil }
 func (m *mockPersistence) ClearUserChecklistFlagForOrg(string, *string, int) error  { return nil }
-func (m *mockPersistence) CompleteUserWelcome(string, string, bool) error         { return nil }
-func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error               { return nil }
-func (m *mockPersistence) MarkUserMarketingSynced(string) error                   { return nil }
-func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error       { return nil }
-func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error) { return nil, nil }
+func (m *mockPersistence) CompleteUserWelcome(string, string, bool) error           { return nil }
+func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error                 { return nil }
+func (m *mockPersistence) MarkUserMarketingSynced(string) error                     { return nil }
+func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error         { return nil }
+func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error)   { return nil, nil }
 
 // Favourites stubs
 func (m *mockPersistence) GetFloFavourites(string) ([]string, error) { return nil, nil }
@@ -388,7 +454,7 @@ func (m *mockPersistence) GetGoogleAccounts(string, ...string) ([]*api.AgentUser
 	return nil, nil
 }
 func (m *mockPersistence) DeleteGoogleAccount(string, string, ...string) error { return nil }
-func (m *mockPersistence) GetGoogleAccountAccessToken(string) (string, error) { return "", nil }
+func (m *mockPersistence) GetGoogleAccountAccessToken(string) (string, error)  { return "", nil }
 
 func (m *mockPersistence) UpsertTriggerGoogleAccount(string, string, string, string, string) error {
 	return nil
@@ -397,7 +463,7 @@ func (m *mockPersistence) GetTriggerGoogleAccounts(string, ...string) ([]*api.Tr
 	return nil, nil
 }
 func (m *mockPersistence) DeleteTriggerGoogleAccount(string, string, ...string) error { return nil }
-func (m *mockPersistence) GetTriggerGoogleAccountAccessToken(string) (string, error) { return "", nil }
+func (m *mockPersistence) GetTriggerGoogleAccountAccessToken(string) (string, error)  { return "", nil }
 
 // Agent schedule stubs.
 func (m *mockPersistence) CreateAgentSchedule(api.AgentSchedule) (*string, error) { return nil, nil }
@@ -669,29 +735,55 @@ func (m *mockPersistence) UpdateMaxPinnedMemories(agentID string, limit *int) er
 
 // Subscription entitlements (billing service integration).
 func (m *mockPersistence) UpsertEntitlement(ent *api.SubscriptionEntitlement) error { return nil }
-func (m *mockPersistence) GetEntitlement(ownerID string, orgID *string, key string) (*api.SubscriptionEntitlement, error) { return nil, nil }
-func (m *mockPersistence) GetAllEntitlements(ownerID string, orgID *string) ([]*api.SubscriptionEntitlement, error) { return nil, nil }
+func (m *mockPersistence) GetEntitlement(ownerID string, orgID *string, key string) (*api.SubscriptionEntitlement, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetAllEntitlements(ownerID string, orgID *string) ([]*api.SubscriptionEntitlement, error) {
+	return nil, nil
+}
 func (m *mockPersistence) DeleteEntitlements(ownerID string, orgID *string) error { return nil }
-func (m *mockPersistence) UpsertCreditBalance(ownerID string, orgID *string, balancePence int64) error { return nil }
-func (m *mockPersistence) GetCreditBalance(ownerID string, orgID *string) (*api.CreditBalance, error) { return nil, nil }
+func (m *mockPersistence) UpsertCreditBalance(ownerID string, orgID *string, balancePence int64) error {
+	return nil
+}
+func (m *mockPersistence) GetCreditBalance(ownerID string, orgID *string) (*api.CreditBalance, error) {
+	return nil, nil
+}
 func (m *mockPersistence) RecordCreditDeduction(deduction *api.CreditDeduction) error { return nil }
-func (m *mockPersistence) GetUnsyncedDeductions() ([]*api.CreditDeduction, error) { return nil, nil }
-func (m *mockPersistence) MarkDeductionSynced(id string, amountPence int64) error { return nil }
-func (m *mockPersistence) GetCreditCostsForExecutions(executionIDs []string) (map[string]int64, error) { return nil, nil }
-func (m *mockPersistence) TouchUserActivity(userID string) {}
-func (m *mockPersistence) IncrementSuspendCount(id string) error { return nil }
+func (m *mockPersistence) GetUnsyncedDeductions() ([]*api.CreditDeduction, error)     { return nil, nil }
+func (m *mockPersistence) MarkDeductionSynced(id string, amountPence int64) error     { return nil }
+func (m *mockPersistence) GetCreditCostsForExecutions(executionIDs []string) (map[string]int64, error) {
+	return nil, nil
+}
+func (m *mockPersistence) TouchUserActivity(userID string)                               {}
+func (m *mockPersistence) IncrementSuspendCount(id string) error                         { return nil }
 func (m *mockPersistence) AccumulateBillingDuration(id string, additionalMs int64) error { return nil }
-func (m *mockPersistence) AppendExecutionSegment(id string, segmentJSON []byte) error { return nil }
-func (m *mockPersistence) ClearResumeAt(id string) error                              { return nil }
-func (m *mockPersistence) SaveExecutionCheckpoint(id string, checkpoint interface{}) error { return nil }
-func (m *mockPersistence) SetExecutionResumeAt(id string, resumeAt time.Time) error    { return nil }
-func (m *mockPersistence) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error { return nil }
+func (m *mockPersistence) AppendExecutionSegment(id string, segmentJSON []byte) error    { return nil }
+func (m *mockPersistence) ClearResumeAt(id string) error                                 { return nil }
+func (m *mockPersistence) SaveExecutionCheckpoint(id string, checkpoint interface{}) error {
+	return nil
+}
+func (m *mockPersistence) SetExecutionResumeAt(id string, resumeAt time.Time) error { return nil }
+func (m *mockPersistence) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error {
+	return nil
+}
 
 // User-declared identities (R2). No-op stubs — tests that exercise the
 // identity flow can shadow these on their concrete mock type.
-func (m *mockPersistence) CreateUserIdentity(in api.CreateUserIdentity) (*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error) { return nil, nil }
-func (m *mockPersistence) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error) { return 0, nil }
-func (m *mockPersistence) UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error) { return "", nil }
+func (m *mockPersistence) CreateUserIdentity(in api.CreateUserIdentity) (*api.UserIdentity, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetUserIdentitiesByUserAndOrg(userID string, organisationID *string) ([]*api.UserIdentity, error) {
+	return nil, nil
+}
+func (m *mockPersistence) LookupUserIdentityByChannel(organisationID *string, channelType, externalID string) (*api.UserIdentity, error) {
+	return nil, nil
+}
+func (m *mockPersistence) DeleteUserIdentity(userID string, organisationID *string, channelType, externalID string) (int64, error) {
+	return 0, nil
+}
+func (m *mockPersistence) UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error) {
+	return "", nil
+}

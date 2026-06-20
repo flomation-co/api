@@ -7,6 +7,7 @@ import (
 
 	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/agent/persistence"
+	apipersistence "flomation.app/automate/api/internal/persistence"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -35,6 +36,7 @@ type InboundPersistence interface {
 	persistence.ConversationResolver
 	persistence.MessageStore
 	persistence.HistoryFetcher
+	persistence.PriorConversationsFetcher
 	persistence.ExtractionDispatcher
 	persistence.PendingActionChecker
 	GetAgentByID(id string) (*api.Agent, error)
@@ -209,11 +211,31 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 	}
 	result.MessageID = msgID
 
+	// Step 4.5: fetch the last N prior-conversation summaries so the
+	// orchestrator flow can include them in the agent's context. Each
+	// summary carries its source conversation_id which the agent can
+	// pass to the agent/get_conversation tool when it needs the full
+	// message history behind a reference. Per-agent cap on N comes
+	// from agent.PriorConversationCount (0 disables the feature).
+	var priorConversations []apipersistence.PriorConversationSummary
+	if agent.PriorConversationCount > 0 && agentUserID != nil && *agentUserID != "" {
+		ps, err := h.persistence.GetRecentPriorConversations(agentID, *agentUserID, agent.PriorConversationCount)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"agent_id": agentID,
+				"user_id":  *agentUserID,
+				"error":    err,
+			}).Warn("failed to fetch prior conversations; continuing without")
+		} else {
+			priorConversations = ps
+		}
+	}
+
 	// Step 5: dispatch orchestrator flow. The identities snapshot was
 	// fetched in Step 1.5 via ResolveTriggeringUser — reuse it directly
 	// rather than re-querying.
 	if agent.OrchestratorFlowID != nil && *agent.OrchestratorFlowID != "" {
-		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, triggeringIdentities, conversationID, conversationHistory)
+		triggerData := h.buildTriggerData(agent, msg, msgID, agentUserID, platformUserID, triggeringIdentities, conversationID, conversationHistory, priorConversations)
 		if err := h.dispatcher.DispatchFlow(*agent.OrchestratorFlowID, nil, triggerData); err != nil {
 			log.WithFields(log.Fields{
 				"agent_id": agentID,
@@ -243,6 +265,7 @@ func (h *InboundHandler) buildTriggerData(
 	identities []*api.UserIdentity,
 	conversationID *string,
 	history []map[string]interface{},
+	priorConversations []apipersistence.PriorConversationSummary,
 ) map[string]interface{} {
 	data := map[string]interface{}{
 		"agent_id":       agent.ID,
@@ -263,11 +286,12 @@ func (h *InboundHandler) buildTriggerData(
 			persona = *agent.SystemPrompt
 		}
 		result := h.promptAssembler.AssembleSystemPrompt(SystemPromptRequest{
-			AgentID:     agent.ID,
-			Persona:     persona,
-			ChannelType: msg.ChannelType,
-			AgentUserID: userID,
-			Content:     msg.Content,
+			AgentID:            agent.ID,
+			Persona:            persona,
+			ChannelType:        msg.ChannelType,
+			AgentUserID:        userID,
+			Content:            msg.Content,
+			PriorConversations: priorConversations,
 		})
 		if result.Prompt != "" {
 			data["system_prompt"] = result.Prompt
@@ -315,6 +339,14 @@ func (h *InboundHandler) buildTriggerData(
 	}
 	if history != nil {
 		data["conversation_history"] = history
+	}
+	if len(priorConversations) > 0 {
+		// Hand the executor a JSON-friendly slice. The summaries have
+		// db tags that sqlx populated and json tags that the trigger
+		// data serialiser respects, so passing the struct slice
+		// directly produces the right shape for the orchestrator
+		// flow's trigger node outputs.
+		data["prior_conversations"] = priorConversations
 	}
 
 	// Flatten metadata into trigger data.

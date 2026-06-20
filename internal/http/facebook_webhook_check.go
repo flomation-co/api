@@ -60,9 +60,9 @@ func (s *Service) checkFacebookWebhook(c *gin.Context) {
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	type checkResult struct {
-		Name    string `json:"name"`
-		Status  string `json:"status"` // "ok", "error", "warning"
-		Detail  string `json:"detail"`
+		Name   string `json:"name"`
+		Status string `json:"status"` // "ok", "error", "warning"
+		Detail string `json:"detail"`
 	}
 
 	var checks []checkResult
@@ -76,7 +76,9 @@ func (s *Service) checkFacebookWebhook(c *gin.Context) {
 		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		if resp.StatusCode == http.StatusOK {
-			var user struct{ Name string `json:"name"` }
+			var user struct {
+				Name string `json:"name"`
+			}
 			_ = json.Unmarshal(body, &user)
 			checks = append(checks, checkResult{"User Token", "ok", fmt.Sprintf("Authenticated as %s", user.Name)})
 		} else {
@@ -155,7 +157,7 @@ func (s *Service) checkFacebookWebhook(c *gin.Context) {
 				body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 				var result struct {
 					Data []struct {
-						ID              string   `json:"id"`
+						ID               string   `json:"id"`
 						SubscribedFields []string `json:"subscribed_fields"`
 					} `json:"data"`
 				}
@@ -186,8 +188,8 @@ func (s *Service) checkFacebookWebhook(c *gin.Context) {
 				body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 				var result struct {
 					Data []struct {
-						Object    string `json:"object"`
-						Active    bool   `json:"active"`
+						Object      string `json:"object"`
+						Active      bool   `json:"active"`
 						CallbackURL string `json:"callback_url"`
 					} `json:"data"`
 				}
@@ -223,9 +225,9 @@ func (s *Service) checkFacebookWebhook(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":     allOk,
-		"checks": checks,
-		"page_name": pageName,
+		"ok":                allOk,
+		"checks":            checks,
+		"page_name":         pageName,
 		"app_dashboard_url": fmt.Sprintf("https://developers.facebook.com/apps/%s/webhooks/", appID),
 	})
 }

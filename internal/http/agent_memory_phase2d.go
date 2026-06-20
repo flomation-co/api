@@ -182,7 +182,7 @@ func (s *Service) extractAgentInternal(c *gin.Context) {
 		return
 	}
 
-	executionID, err := s.persistence.TriggerExecution(*agent.ExtractionFlowID, triggerID, json.RawMessage(raw), "")
+	executionID, err := s.persistence.TriggerExecution(*agent.ExtractionFlowID, triggerID, json.RawMessage(raw), "", nil)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":              err,

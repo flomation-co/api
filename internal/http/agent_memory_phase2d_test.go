@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/gin-gonic/gin"
@@ -80,7 +81,7 @@ func (m *phase2dMock) GetTriggersByFloID(floID string) ([]*api.Trigger, error) {
 	return m.triggerList, nil
 }
 
-func (m *phase2dMock) TriggerExecution(floID, triggerID string, data interface{}, triggererUserID string) (*string, error) {
+func (m *phase2dMock) TriggerExecution(floID, triggerID string, data interface{}, triggererUserID string, parent *persistence.ParentLink) (*string, error) {
 	m.p2dmu.Lock()
 	defer m.p2dmu.Unlock()
 	m.triggerExecCalls = append(m.triggerExecCalls, triggerExecCall{

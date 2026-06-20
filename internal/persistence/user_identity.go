@@ -37,7 +37,7 @@ func (s *Service) GetUserIdentitiesByUserID(userID string) ([]*api.UserIdentity,
 }
 
 // orgStringFromPointer normalises a nullable org pointer to the empty
-// string used by the user_identity statements' NULLIF(:organisation_id, '')
+// string used by the user_identity statements' NULLIF(:organisation_id, ”)
 // expression. nil → "" → NULLIF → SQL NULL; non-nil → the UUID string →
 // NULLIF leaves it alone → SQL NULL only when the pointer was nil.
 func orgStringFromPointer(p *string) string {
