@@ -63,20 +63,20 @@ type updateChecklistRequest struct {
 // Bitmask catalogue — must match the editor's checklist widget.
 // Splits cleanly into two scopes:
 //
-//   * GLOBAL — properties of the human, not the org. One value
+//   - GLOBAL — properties of the human, not the org. One value
 //     across every context. Lives on users.checklist_flags.
 //
-//   * ORG-SCOPED — properties of the work the user has done in
+//   - ORG-SCOPED — properties of the work the user has done in
 //     a specific (user, org) context. Lives on
 //     user_checklist_state, keyed by (user_id, organisation_id)
 //     with NULL org for personal mode.
 const (
-	checklistFlagProfileName   = 1
-	checklistFlagCreateFlow    = 2
-	checklistFlagExecuteFlow   = 4
-	checklistFlagConfigureEnv  = 8
-	checklistFlagInviteTeam    = 16
-	checklistFlagEnableMFA     = 32
+	checklistFlagProfileName  = 1
+	checklistFlagCreateFlow   = 2
+	checklistFlagExecuteFlow  = 4
+	checklistFlagConfigureEnv = 8
+	checklistFlagInviteTeam   = 16
+	checklistFlagEnableMFA    = 32
 
 	checklistGlobalMask   = checklistFlagProfileName | checklistFlagEnableMFA
 	checklistOrgMask      = checklistFlagCreateFlow | checklistFlagExecuteFlow | checklistFlagConfigureEnv | checklistFlagInviteTeam

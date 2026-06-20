@@ -29,10 +29,12 @@ import (
 // GET /api/v1/internal/agent/:id/prior-conversations
 //
 // Required query params:
-//   user_id — the agent_user_id (conversations are scoped per user)
+//
+//	user_id — the agent_user_id (conversations are scoped per user)
 //
 // Optional query params:
-//   limit   — cap on the number of summaries (default 5, max 50)
+//
+//	limit   — cap on the number of summaries (default 5, max 50)
 //
 // On success: 200 with { "summaries": [...] }.
 // On bad input: 400.

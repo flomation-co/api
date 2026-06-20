@@ -482,7 +482,7 @@ func BuildSystemPrompt(
 				b.WriteString(ended)
 				b.WriteString(", ")
 			}
-			b.WriteString(fmt.Sprintf("%d msgs", pc.MessageCount))
+			fmt.Fprintf(&b, "%d msgs", pc.MessageCount)
 			b.WriteString("\n  ")
 			// Trim summary to a single tight paragraph so a chatty
 			// summariser doesn't blow the token budget. The full

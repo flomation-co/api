@@ -42,7 +42,7 @@ func (s *Service) getCredentialProviders(c *gin.Context) {
 		}
 		result = append(result, providerResponse{
 			CredentialProvider: p,
-			Configured:        configured,
+			Configured:         configured,
 		})
 	}
 

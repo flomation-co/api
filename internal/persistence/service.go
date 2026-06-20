@@ -39,18 +39,18 @@ type Service struct {
 	stmtAcceptInvite               *sqlx.NamedStmt
 	stmtRevokeInvite               *sqlx.NamedStmt
 
-	stmtGetUserByID      *sqlx.NamedStmt
-	stmtCreateUser       *sqlx.NamedStmt
-	stmtUpdateUser                     *sqlx.NamedStmt
-	stmtUpdateUserProfile              *sqlx.NamedStmt
-	stmtAcceptEula                     *sqlx.NamedStmt
-	stmtCompleteUserWelcome            *sqlx.NamedStmt
-	stmtSetUserMarketingOptIn          *sqlx.NamedStmt
-	stmtMarkUserMarketingSynced        *sqlx.NamedStmt
-	stmtMarkUserMarketingSyncFailed    *sqlx.NamedStmt
-	stmtListUsersNeedingMarketingSync  *sqlx.NamedStmt
-	stmtGetLatestEula    *sqlx.NamedStmt
-	stmtUpdateOnboarding *sqlx.NamedStmt
+	stmtGetUserByID                   *sqlx.NamedStmt
+	stmtCreateUser                    *sqlx.NamedStmt
+	stmtUpdateUser                    *sqlx.NamedStmt
+	stmtUpdateUserProfile             *sqlx.NamedStmt
+	stmtAcceptEula                    *sqlx.NamedStmt
+	stmtCompleteUserWelcome           *sqlx.NamedStmt
+	stmtSetUserMarketingOptIn         *sqlx.NamedStmt
+	stmtMarkUserMarketingSynced       *sqlx.NamedStmt
+	stmtMarkUserMarketingSyncFailed   *sqlx.NamedStmt
+	stmtListUsersNeedingMarketingSync *sqlx.NamedStmt
+	stmtGetLatestEula                 *sqlx.NamedStmt
+	stmtUpdateOnboarding              *sqlx.NamedStmt
 
 	stmtGetMyFlos              *sqlx.NamedStmt
 	stmtGetMyFlosWithFilter    *sqlx.NamedStmt
@@ -165,27 +165,27 @@ type Service struct {
 	stmtDeleteTrigger    *sqlx.NamedStmt
 	stmtDeleteFloTrigger *sqlx.NamedStmt
 
-	stmtGetGroupsByOrgID        *sqlx.NamedStmt
-	stmtGetGroupByID            *sqlx.NamedStmt
-	stmtCreateGroup             *sqlx.NamedStmt
-	stmtUpdateGroup             *sqlx.NamedStmt
-	stmtDeleteGroup             *sqlx.NamedStmt
-	stmtGetGroupMembers         *sqlx.NamedStmt
-	stmtAddUserToGroup          *sqlx.NamedStmt
-	stmtRemoveUserFromGroup     *sqlx.NamedStmt
-	stmtGetGroupPermissions     *sqlx.NamedStmt
-	stmtDeleteGroupPermissions  *sqlx.NamedStmt
-	stmtInsertGroupPermission   *sqlx.NamedStmt
-	stmtGetUserPermissionsInOrg *sqlx.NamedStmt
-	stmtGetDefaultGroups        *sqlx.NamedStmt
-	stmtCountUserGroupsInOrg    *sqlx.NamedStmt
-	stmtAddAgentToGroup         *sqlx.NamedStmt
-	stmtRemoveAgentFromGroup    *sqlx.NamedStmt
-	stmtGetAgentGroupMembers    *sqlx.NamedStmt
+	stmtGetGroupsByOrgID         *sqlx.NamedStmt
+	stmtGetGroupByID             *sqlx.NamedStmt
+	stmtCreateGroup              *sqlx.NamedStmt
+	stmtUpdateGroup              *sqlx.NamedStmt
+	stmtDeleteGroup              *sqlx.NamedStmt
+	stmtGetGroupMembers          *sqlx.NamedStmt
+	stmtAddUserToGroup           *sqlx.NamedStmt
+	stmtRemoveUserFromGroup      *sqlx.NamedStmt
+	stmtGetGroupPermissions      *sqlx.NamedStmt
+	stmtDeleteGroupPermissions   *sqlx.NamedStmt
+	stmtInsertGroupPermission    *sqlx.NamedStmt
+	stmtGetUserPermissionsInOrg  *sqlx.NamedStmt
+	stmtGetDefaultGroups         *sqlx.NamedStmt
+	stmtCountUserGroupsInOrg     *sqlx.NamedStmt
+	stmtAddAgentToGroup          *sqlx.NamedStmt
+	stmtRemoveAgentFromGroup     *sqlx.NamedStmt
+	stmtGetAgentGroupMembers     *sqlx.NamedStmt
 	stmtGetAgentPermissionsInOrg *sqlx.NamedStmt
-	stmtCountAgentGroupsInOrg   *sqlx.NamedStmt
-	stmtGetOrgAgents            *sqlx.NamedStmt
-	stmtCreateFeedback          *sqlx.NamedStmt
+	stmtCountAgentGroupsInOrg    *sqlx.NamedStmt
+	stmtGetOrgAgents             *sqlx.NamedStmt
+	stmtCreateFeedback           *sqlx.NamedStmt
 
 	stmtGetFloFavourites   *sqlx.NamedStmt
 	stmtAddFloFavourite    *sqlx.NamedStmt
@@ -223,12 +223,12 @@ type Service struct {
 
 	// User-declared channel identities (migration 83). Methods live in
 	// internal/persistence/user_identity.go.
-	stmtCreateUserIdentity              *sqlx.NamedStmt
-	stmtGetUserIdentitiesByUserID       *sqlx.NamedStmt
-	stmtGetUserIdentitiesByUserAndOrg   *sqlx.NamedStmt
-	stmtLookupUserIdentityByChannel     *sqlx.NamedStmt
-	stmtDeleteUserIdentity              *sqlx.NamedStmt
-	stmtUpsertAnonymousUser             *sqlx.NamedStmt
+	stmtCreateUserIdentity            *sqlx.NamedStmt
+	stmtGetUserIdentitiesByUserID     *sqlx.NamedStmt
+	stmtGetUserIdentitiesByUserAndOrg *sqlx.NamedStmt
+	stmtLookupUserIdentityByChannel   *sqlx.NamedStmt
+	stmtDeleteUserIdentity            *sqlx.NamedStmt
+	stmtUpsertAnonymousUser           *sqlx.NamedStmt
 
 	// Agent Memory Phase 1: identity + conversation scoping.
 	// See plans/agent_memory.md for the design and

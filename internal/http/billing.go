@@ -13,12 +13,12 @@ import (
 // ── Internal: entitlement sync (called by billing service via mTLS) ───
 
 type entitlementSyncRequest struct {
-	OwnerID            string              `json:"owner_id" binding:"required"`
-	OrganisationID     *string             `json:"organisation_id"`
-	PlanSlug           string              `json:"plan_slug" binding:"required"`
-	SubscriptionStatus string              `json:"subscription_status" binding:"required"`
-	PeriodEnd          *string             `json:"period_end"`
-	Entitlements       []entitlementEntry  `json:"entitlements" binding:"required"`
+	OwnerID            string             `json:"owner_id" binding:"required"`
+	OrganisationID     *string            `json:"organisation_id"`
+	PlanSlug           string             `json:"plan_slug" binding:"required"`
+	SubscriptionStatus string             `json:"subscription_status" binding:"required"`
+	PeriodEnd          *string            `json:"period_end"`
+	Entitlements       []entitlementEntry `json:"entitlements" binding:"required"`
 }
 
 type entitlementEntry struct {

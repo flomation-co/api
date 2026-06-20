@@ -187,7 +187,7 @@ const MaxConsecutiveRefreshFailures = 10
 // varies across providers — Google returns the marker as
 // `"error":"invalid_grant"`, generic OAuth providers do the same.
 var permanentRefreshErrorMarkers = []string{
-	`"invalid_grant"`,      // refresh token was revoked, expired, or never valid
+	`"invalid_grant"`,       // refresh token was revoked, expired, or never valid
 	`"unauthorized_client"`, // OAuth client id changed under the refresh token
 	`"invalid_client"`,      // OAuth client deleted / secret rotated
 }

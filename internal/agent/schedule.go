@@ -175,8 +175,8 @@ func fetchUpcomingEvents(ctx context.Context, client *http.Client, accessToken s
 				DateTime string `json:"dateTime"`
 				Date     string `json:"date"`
 			} `json:"end"`
-			ID                string `json:"id"`
-			RecurringEventID  string `json:"recurringEventId,omitempty"`
+			ID               string `json:"id"`
+			RecurringEventID string `json:"recurringEventId,omitempty"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
