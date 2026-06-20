@@ -496,6 +496,8 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	environment.GET("/:environment/elevenlabs-voices/:credential", s.jwtMiddleware, s.getElevenLabsVoices)
 	environment.GET("/:environment/elevenlabs-models/:credential", s.jwtMiddleware, s.getElevenLabsModels)
+	environment.GET("/:environment/elevenlabs-shared-voices/:credential", s.jwtMiddleware, s.getElevenLabsSharedVoices)
+	environment.POST("/:environment/elevenlabs-add-voice/:credential", s.jwtMiddleware, s.addElevenLabsVoice)
 	environment.GET("/:environment/facebook-pages/:credentialName", s.jwtMiddleware, s.getFacebookPages)
 	environment.GET("/:environment/facebook-webhook-check/:credentialName/:pageId", s.jwtMiddleware, s.checkFacebookWebhook)
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
