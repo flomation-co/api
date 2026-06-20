@@ -249,12 +249,20 @@ func (s *Service) updateExecution(c *gin.Context) {
 }
 
 func (s *Service) getExecutionByID(c *gin.Context) {
-	if !s.checkPermission(c, rbac.FlowExecute) {
-		return
+	// The internal mTLS engine registers this same handler at
+	// /api/v1/internal/execution/:id for service-to-service polling
+	// (start_flow with wait_for_completion, agent dispatch, etc.).
+	// On that path there's no jwtMiddleware and no account_id —
+	// the client certificate IS the authentication. Apply the user
+	// permission/org checks only on the public engine.
+	internal := isInternalRequest(c)
+	if !internal {
+		if !s.checkPermission(c, rbac.FlowExecute) {
+			return
+		}
 	}
 
 	id := c.Param("id")
-	user := s.getUserFromContext(c)
 
 	exec, err := s.persistence.GetExecutionByID(id)
 	if err != nil {
@@ -270,9 +278,12 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 		return
 	}
 
-	if !s.verifyOrgAccess(user, exec.OrganisationID) {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
+	if !internal {
+		user := s.getUserFromContext(c)
+		if !s.verifyOrgAccess(user, exec.OrganisationID) {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
 	}
 
 	// Data and Result are json.RawMessage — they serialise as raw JSON directly

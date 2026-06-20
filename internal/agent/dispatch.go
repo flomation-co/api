@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	api "flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,7 @@ type ExecutionNotifier interface {
 
 // DispatchPersistence defines the DB methods needed for flow dispatch.
 type DispatchPersistence interface {
-	TriggerExecution(floID, triggerID string, data interface{}, triggererUserID string) (*string, error)
+	TriggerExecution(floID, triggerID string, data interface{}, triggererUserID string, parent *persistence.ParentLink) (*string, error)
 	GetTriggersByFloID(floID string) ([]*api.Trigger, error)
 	SetExecutionAgentID(executionID, agentID string) error
 	GetActiveAgentSession(agentID string) (*api.AgentSession, error)
@@ -94,7 +95,7 @@ func (d *DirectFlowDispatcher) DispatchFlow(flowID string, triggerID *string, da
 		}
 	}
 
-	executionID, err := d.persistence.TriggerExecution(flowID, tid, data, "")
+	executionID, err := d.persistence.TriggerExecution(flowID, tid, data, "", nil)
 	if err != nil {
 		return fmt.Errorf("trigger execution failed: %w", err)
 	}
@@ -248,7 +249,7 @@ func DispatchExtraction(
 		return
 	}
 
-	executionID, err := p.TriggerExecution(*agent.ExtractionFlowID, triggerID, json.RawMessage(raw), "")
+	executionID, err := p.TriggerExecution(*agent.ExtractionFlowID, triggerID, json.RawMessage(raw), "", nil)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":    err,

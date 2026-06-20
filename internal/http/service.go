@@ -451,6 +451,13 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 
 	executions.GET("", s.jwtMiddleware, s.getExecutions)
 	executions.GET("/:id", s.jwtMiddleware, s.getExecutionByID)
+	executions.GET("/:id/ancestors", s.jwtMiddleware, s.getExecutionAncestors)
+	executions.GET("/:id/children", s.jwtMiddleware, s.getExecutionChildren)
+
+	// /execution-tree/:rootID lives outside the executions group
+	// because the rootID parameter would collide with /:id otherwise
+	// (gin treats /:id and /:rootID as the same path segment).
+	v1.GET("/execution-tree/:rootID", s.jwtMiddleware, s.getExecutionTree)
 	executions.GET("/:id/status", s.executionMiddleware, s.getExecutionStatus)
 	executions.GET("/:id/stream", s.streamAuthMiddleware, s.streamExecutionLogs)
 
@@ -572,6 +579,18 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		gin.SetMode(gin.ReleaseMode)
 		s.internalEngine = gin.New()
 		internalRouter = s.internalEngine.Group("api/v1")
+		// Tag every request that arrived on the mTLS-only engine.
+		// Handlers that share a function across engines (triggerFlo,
+		// executeFlo, …) read this via isInternalRequest before
+		// honouring service-to-service-only headers like
+		// X-Flomation-Parent-Execution-ID. The middleware is
+		// intentionally NOT added in single-engine dev mode — without
+		// mTLS we cannot distinguish internal from external callers,
+		// so the safe default is "everyone is external".
+		internalRouter.Use(func(c *gin.Context) {
+			c.Set("internal_mtls", true)
+			c.Next()
+		})
 	}
 	// Trigger variable resolution (called by Launch for ${secrets.X}, ${credentials.X})
 	internalRouter.POST("/trigger/:id/resolve", s.resolveTriggerVariables)

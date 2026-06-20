@@ -170,7 +170,21 @@ type Execution struct {
 	AuthorEmail       *string          `json:"author_email,omitempty"`
 	TriggererEmail    *string          `json:"triggerer_email,omitempty"`
 	EntryNodeID       *string          `json:"entry_node_id,omitempty"`
-	ParentExecutionID *string          `json:"parent_execution_id,omitempty" db:"parent_execution_id"`
+	ParentExecutionID  *string         `json:"parent_execution_id,omitempty" db:"parent_execution_id"`
+	ParentRelationship *string         `json:"parent_relationship,omitempty" db:"parent_relationship"`
+	// Pointer rather than json.RawMessage by value: when no parent
+	// linkage exists, a nil pointer becomes SQL NULL on insert.
+	// A bare json.RawMessage zero-value would send an empty byte
+	// slice, which the jsonb column rejects with "invalid input
+	// syntax for type json".
+	ParentMetadata     *json.RawMessage `json:"parent_metadata,omitempty" db:"parent_metadata"`
+	RootExecutionID    string          `json:"root_execution_id" db:"root_execution_id"`
+	Depth              int             `json:"depth" db:"depth"`
+	// HasChildren is populated only by list/tree queries that compute
+	// it via EXISTS — point queries leave it false. The editor uses
+	// it to drive the ▶/▼ expander glyph without a per-row child
+	// count round-trip.
+	HasChildren        bool            `json:"has_children" db:"has_children"`
 	AgentID           *string          `json:"agent_id,omitempty" db:"agent_id"`
 	AgentSessionID    *string          `json:"agent_session_id,omitempty" db:"agent_session_id"`
 	TriggeringUserID  *string          `json:"triggering_user_id,omitempty" db:"triggering_user_id"`

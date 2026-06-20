@@ -11,10 +11,46 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
+
+// ParentExecutionHeader is the HTTP header internal callers set when
+// they want a triggered execution linked back to an existing one.
+// Honoured only on the mTLS-only internal engine — see
+// isInternalRequest. External requests carrying this header are
+// silently ignored so third parties can't forge parentage.
+const ParentExecutionHeader = "X-Flomation-Parent-Execution-ID"
+
+// isInternalRequest reports whether the request arrived on the
+// mTLS-only internal Gin engine. The middleware that sets this flag
+// is registered in service.go only when split-engine TLS is enabled,
+// so single-engine dev mode always returns false.
+func isInternalRequest(c *gin.Context) bool {
+	return c.GetBool("internal_mtls")
+}
+
+// parentLinkFromRequest builds a ParentLink from the
+// X-Flomation-Parent-Execution-ID header when the request came in via
+// the internal engine. Returns nil when the header is missing, when
+// the request isn't internal, or when the request is anything other
+// than a service-to-service call. The persistence layer validates
+// that the referenced execution actually exists.
+func parentLinkFromRequest(c *gin.Context) *persistence.ParentLink {
+	if !isInternalRequest(c) {
+		return nil
+	}
+	parentID := c.GetHeader(ParentExecutionHeader)
+	if parentID == "" {
+		return nil
+	}
+	return &persistence.ParentLink{
+		ExecutionID:  parentID,
+		Relationship: "remote_trigger",
+	}
+}
 
 func (s *Service) getMyFlos(c *gin.Context) {
 	if !s.checkAnyPermission(c, rbac.FlowCreate, rbac.FlowEdit, rbac.FlowExecute) {
@@ -540,7 +576,21 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	// distinguishes them from the flow author.
 	triggererUserID := c.Query("triggerer")
 
-	i, err := s.persistence.TriggerExecution(floID, triggerID, data, triggererUserID)
+	parent := parentLinkFromRequest(c)
+	if parent != nil {
+		// Silently drop unknown parent IDs rather than 4xx — a stale
+		// header from a now-deleted parent must not block the trigger.
+		// Logging keeps it diagnosable.
+		if exec, perr := s.persistence.GetExecutionByID(parent.ExecutionID); perr != nil || exec == nil {
+			log.WithFields(log.Fields{
+				"parent_execution_id": parent.ExecutionID,
+				"error":               perr,
+			}).Warn("ignoring X-Flomation-Parent-Execution-ID — parent not found")
+			parent = nil
+		}
+	}
+
+	i, err := s.persistence.TriggerExecution(floID, triggerID, data, triggererUserID, parent)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -628,7 +678,18 @@ func (s *Service) executeFlo(c *gin.Context) {
 		return
 	}
 
-	i, err := s.persistence.TriggerExecution(floID, triggerID, data, "")
+	parent := parentLinkFromRequest(c)
+	if parent != nil {
+		if exec, perr := s.persistence.GetExecutionByID(parent.ExecutionID); perr != nil || exec == nil {
+			log.WithFields(log.Fields{
+				"parent_execution_id": parent.ExecutionID,
+				"error":               perr,
+			}).Warn("ignoring X-Flomation-Parent-Execution-ID — parent not found")
+			parent = nil
+		}
+	}
+
+	i, err := s.persistence.TriggerExecution(floID, triggerID, data, "", parent)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("unable to trigger execution")
 		c.AbortWithStatus(http.StatusBadRequest)

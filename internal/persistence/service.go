@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	log "github.com/sirupsen/logrus"
 
 	"flomation.app/automate/api"
@@ -1418,6 +1420,7 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtInsertFloExecution, err = s.conn.PrepareNamed(`
 		INSERT INTO execution (
+			id,
 			flo_id,
 			name,
 		    owner_id,
@@ -1427,8 +1430,14 @@ func NewService(config *config.Config) (*Service, error) {
 		   	completion_status,
 			data,
 			agent_id,
-			triggering_user_id
+			triggering_user_id,
+			parent_execution_id,
+			parent_relationship,
+			parent_metadata,
+			root_execution_id,
+			depth
 		) VALUES (
+			:id,
 			:flo_id,
 			:name,
 		    :owner_id,
@@ -1438,7 +1447,12 @@ func NewService(config *config.Config) (*Service, error) {
 		   	:completion_status,
 			:data,
 			:agent_id,
-			:triggering_user_id
+			:triggering_user_id,
+			:parent_execution_id,
+			:parent_relationship,
+			:parent_metadata,
+			:root_execution_id,
+			:depth
 		) RETURNING id;
 	`)
 	if err != nil {
@@ -4332,25 +4346,34 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 	return results, count, nil
 }
 
-// getExecutionsRootOnly uses parameterised raw SQL to filter out child executions.
+// getExecutionsRootOnly returns top-of-tree executions only (rows
+// with no parent). Agent-launched executions are included as roots —
+// the hierarchical executions UI treats them as ordinary roots whose
+// child agent_session executions expand underneath. The EXISTS
+// subquery populates has_children so the editor can render the
+// expander glyph without a follow-up count query.
 func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string, userID string, organisationID *string, isOrg bool) ([]*api.Execution, int64, error) {
 	baseSelect := `SELECT e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		e.execution_status, e.completion_status,
 		e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
-		ROW_NUMBER() OVER (PARTITION BY e.flo_id ORDER BY e.created_at) AS sequence,
+		(SELECT COUNT(*) FROM execution e2
+			WHERE e2.flo_id = e.flo_id AND e2.created_at <= e.created_at) AS sequence,
 		tt.name AS trigger_type,
-		e.agent_id
+		e.agent_id,
+		e.parent_execution_id, e.parent_relationship, e.parent_metadata,
+		e.root_execution_id, e.depth,
+		EXISTS (SELECT 1 FROM execution c WHERE c.parent_execution_id = e.id LIMIT 1) AS has_children
 	FROM execution e
 	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	LEFT JOIN trigger_invocation ti ON ti.id = e.triggered_by
 	LEFT JOIN trigger t ON t.id = ti.trigger_id
 	LEFT JOIN trigger_type tt ON tt.id = t.type
-	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
+	WHERE e.parent_execution_id IS NULL`
 
 	baseCount := `SELECT COUNT(1) FROM execution e
 	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
-	WHERE e.parent_execution_id IS NULL AND e.agent_id IS NULL`
+	WHERE e.parent_execution_id IS NULL`
 
 	var args []interface{}
 	argIdx := 1
@@ -4390,7 +4413,14 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 	return results, count, nil
 }
 
-func (s *Service) TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string) (*string, error) {
+// TriggerExecution creates a trigger_invocation and the matching
+// execution rows for every flo bound to the trigger. When parent is
+// non-nil, every spawned execution inherits the parent's
+// root_execution_id and depth (capped at MaxExecutionDepth), and the
+// parent_relationship / parent_metadata columns are populated so
+// listing and breadcrumb queries can stitch the tree back together.
+// Pass nil for top-of-tree executions.
+func (s *Service) TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string, parent *ParentLink) (*string, error) {
 	tx, err := s.conn.Beginx()
 	if err != nil {
 		return nil, err
@@ -4473,7 +4503,15 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 			return nil, err
 		}
 
+		// Generate the execution ID in Go rather than relying on the
+		// table's uuid_generate_v4() default. The hierarchy machinery
+		// needs root_execution_id at INSERT time (NOT NULL), and a
+		// root row points at itself — so the id has to be known
+		// before the write.
+		executionID := uuid.NewString()
+
 		execution := api.Execution{
+			ID:               executionID,
 			FloID:            f,
 			Name:             flo.Name,
 			OwnerID:          derefOrEmpty(invocation.OwnerID),

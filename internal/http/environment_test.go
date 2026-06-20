@@ -40,6 +40,56 @@ func (m *mockPersistence) GetExecutionByID(ID string) (*api.Execution, error) {
 	return m.executions[ID], nil
 }
 
+func (m *mockPersistence) GetRecentPriorConversations(string, string, int) ([]persistence.PriorConversationSummary, error) {
+	return nil, nil
+}
+
+func (m *mockPersistence) GetConversationMessagesForAgent(string, string, string, int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error) {
+	return nil, nil, 0, false, nil
+}
+
+func (m *mockPersistence) GetAgentUserCalendarAccessToken(string) (string, error) {
+	return "", nil
+}
+
+func (m *mockPersistence) GetExecutionTree(rootID string) ([]*api.Execution, error) {
+	var out []*api.Execution
+	for _, e := range m.executions {
+		if e.RootExecutionID == rootID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockPersistence) GetExecutionAncestors(id string) ([]*api.Execution, error) {
+	exec := m.executions[id]
+	if exec == nil {
+		return nil, nil
+	}
+	var chain []*api.Execution
+	cursor := exec.ParentExecutionID
+	for cursor != nil {
+		p := m.executions[*cursor]
+		if p == nil {
+			break
+		}
+		chain = append([]*api.Execution{p}, chain...)
+		cursor = p.ParentExecutionID
+	}
+	return chain, nil
+}
+
+func (m *mockPersistence) GetExecutionDirectChildren(parentID string) ([]*api.Execution, error) {
+	var out []*api.Execution
+	for _, e := range m.executions {
+		if e.ParentExecutionID != nil && *e.ParentExecutionID == parentID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func (m *mockPersistence) GetFloByID(floID string) (*api.Flo, error) {
 	return m.flos[floID], nil
 }
@@ -207,7 +257,7 @@ func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string
 func (m *mockPersistence) GetCredentialByName(string, string, string) (*string, error) { return nil, nil }
 func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persistence.CredentialRefreshRow, error) { return nil, nil }
 
-func (m *mockPersistence) TriggerExecution(string, string, interface{}, string) (*string, error) {
+func (m *mockPersistence) TriggerExecution(string, string, interface{}, string, *persistence.ParentLink) (*string, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }

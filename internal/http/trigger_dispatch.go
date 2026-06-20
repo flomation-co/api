@@ -172,7 +172,7 @@ func (s *Service) dispatchTrigger(c *gin.Context) {
 	// the Executions UI's Triggered By column populate correctly for
 	// inbound webhook / channel-driven flows.
 	triggererUserID, _ := triggerData["user_id"].(string)
-	executionID, err := s.persistence.TriggerExecution(flowID, triggerID, triggerData, triggererUserID)
+	executionID, err := s.persistence.TriggerExecution(flowID, triggerID, triggerData, triggererUserID, nil)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"trigger_id": triggerID,
