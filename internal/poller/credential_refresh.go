@@ -17,6 +17,7 @@ type CredentialRefreshPersistence interface {
 	GetCredentialsNeedingRefresh(within time.Duration) ([]persistence.CredentialRefreshRow, error)
 	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken, clientID, clientSecret string, expiresAt *time.Time) error
 	UpdateCredentialStatus(id, status string, lastError *string) error
+	RecordCredentialRefreshFailure(id, lastError string, permanent bool, threshold int) (string, error)
 }
 
 // CredentialRefreshPoller proactively refreshes OAuth tokens before they expire.
@@ -64,12 +65,24 @@ func (rp *CredentialRefreshPoller) poll() {
 
 		if err := rp.refreshToken(row); err != nil {
 			errMsg := err.Error()
-			log.WithFields(log.Fields{
+			permanent := classifyRefreshError(err)
+			newStatus, dbErr := rp.persistence.RecordCredentialRefreshFailure(
+				row.ID, errMsg, permanent, MaxConsecutiveRefreshFailures)
+			if dbErr != nil {
+				log.WithError(dbErr).Warn("credential refresh: failed to record failure")
+			}
+			fields := log.Fields{
 				"credential_id": row.ID,
 				"provider":      row.ProviderSlug,
+				"permanent":     permanent,
+				"new_status":    newStatus,
 				"error":         errMsg,
-			}).Warn("credential refresh failed")
-			_ = rp.persistence.UpdateCredentialStatus(row.ID, "error", &errMsg)
+			}
+			if newStatus == "revoked" {
+				log.WithFields(fields).Error("credential marked revoked — refresh attempts will stop until the user re-authorises")
+			} else {
+				log.WithFields(fields).Warn("credential refresh failed")
+			}
 		}
 	}
 }
@@ -157,4 +170,54 @@ func (e *refreshError) Error() string {
 		return "token refresh returned " + http.StatusText(e.StatusCode) + ": " + e.Body
 	}
 	return e.Body
+}
+
+// MaxConsecutiveRefreshFailures is the upper bound on transient
+// failures we'll tolerate before treating a credential as permanently
+// broken and surrendering. At a 60s poll interval, 10 failures is
+// about 10 minutes of OAuth provider unavailability — comfortably
+// long enough to ride out a typical outage but short enough that a
+// truly dead token doesn't keep generating warnings forever.
+const MaxConsecutiveRefreshFailures = 10
+
+// permanentRefreshErrorMarkers are substrings the OAuth providers we
+// integrate with use to signal that the refresh token is unusable
+// and will never work again until the user re-grants consent. We
+// match on the raw body so we don't have to parse a JSON shape that
+// varies across providers — Google returns the marker as
+// `"error":"invalid_grant"`, generic OAuth providers do the same.
+var permanentRefreshErrorMarkers = []string{
+	`"invalid_grant"`,      // refresh token was revoked, expired, or never valid
+	`"unauthorized_client"`, // OAuth client id changed under the refresh token
+	`"invalid_client"`,      // OAuth client deleted / secret rotated
+}
+
+// IsPermanent reports whether the refresh failure should immediately
+// transition the credential to status='revoked' instead of being
+// counted against the consecutive-failure threshold. A nil receiver
+// is treated as transient (network errors, malformed JSON) — those
+// are the textbook case for retrying.
+func (e *refreshError) IsPermanent() bool {
+	if e == nil {
+		return false
+	}
+	for _, marker := range permanentRefreshErrorMarkers {
+		if strings.Contains(e.Body, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// classifyRefreshError reports whether err is a permanent OAuth
+// failure. Wraps the type-assertion so callers can pass plain `error`
+// without having to know about refreshError's concrete shape.
+func classifyRefreshError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if rerr, ok := err.(*refreshError); ok {
+		return rerr.IsPermanent()
+	}
+	return false
 }

@@ -14,16 +14,32 @@ import (
 
 const googleTokenURL = "https://oauth2.googleapis.com/token" // #nosec G101 — public endpoint
 
+// googleTokenURLOverride is the test seam for redirecting the refresh
+// POST at a stub server. Empty in production; tests set it before
+// invoking poll() and restore the original after. Keeping it as a
+// package-level var rather than wiring a constructor argument means
+// the production startup path stays unchanged.
+var googleTokenURLOverride string
+
+func googleTokenEndpoint() string {
+	if googleTokenURLOverride != "" {
+		return googleTokenURLOverride
+	}
+	return googleTokenURL
+}
+
 // GoogleAccountRefreshPersistence defines the DB methods the poller needs.
 type GoogleAccountRefreshPersistence interface {
 	// Agent-user scoped accounts
 	GetGoogleAccountsNeedingRefresh(within time.Duration) ([]persistence.GoogleAccountRefreshRow, error)
 	StoreGoogleAccountAccessToken(id, accessToken string, expiresAt *time.Time) error
 	UpdateGoogleAccountStatus(id, status string, lastError *string) error
+	RecordGoogleAccountRefreshFailure(id, lastError string, permanent bool, threshold int) (string, error)
 	// Trigger-scoped accounts
 	GetTriggerGoogleAccountsNeedingRefresh(within time.Duration) ([]persistence.GoogleAccountRefreshRow, error)
 	StoreTriggerGoogleAccountAccessToken(id, accessToken string, expiresAt *time.Time) error
 	UpdateTriggerGoogleAccountStatus(id, status string, lastError *string) error
+	RecordTriggerGoogleAccountRefreshFailure(id, lastError string, permanent bool, threshold int) (string, error)
 }
 
 // GoogleAccountRefreshPoller proactively refreshes Google account tokens.
@@ -100,15 +116,7 @@ func (rp *GoogleAccountRefreshPoller) poll() {
 				continue
 			}
 			if err := rp.refreshAccount(row, false); err != nil {
-				errMsg := err.Error()
-				log.WithFields(log.Fields{
-					"account_id": row.ID,
-					"email":      row.Email,
-					"purpose":    row.Purpose,
-					"scope":      "agent_user",
-					"error":      errMsg,
-				}).Warn("Google account refresh failed")
-				_ = rp.persistence.UpdateGoogleAccountStatus(row.ID, "error", &errMsg)
+				rp.handleRefreshFailure(row, err, false)
 			}
 		}
 	}
@@ -123,17 +131,52 @@ func (rp *GoogleAccountRefreshPoller) poll() {
 				continue
 			}
 			if err := rp.refreshAccount(row, true); err != nil {
-				errMsg := err.Error()
-				log.WithFields(log.Fields{
-					"account_id": row.ID,
-					"email":      row.Email,
-					"purpose":    row.Purpose,
-					"scope":      "trigger",
-					"error":      errMsg,
-				}).Warn("Google account refresh failed")
-				_ = rp.persistence.UpdateTriggerGoogleAccountStatus(row.ID, "error", &errMsg)
+				rp.handleRefreshFailure(row, err, true)
 			}
 		}
+	}
+}
+
+// handleRefreshFailure records the failure (incrementing the
+// consecutive counter, potentially flipping to 'revoked') and logs
+// it. The log line is WARN for transient failures (status='error')
+// and ERROR for the moment a row transitions to revoked — operators
+// generally want to see a one-time error rather than dig through
+// 60s-cadence WARN spam to notice their integration is broken.
+func (rp *GoogleAccountRefreshPoller) handleRefreshFailure(row persistence.GoogleAccountRefreshRow, err error, isTrigger bool) {
+	errMsg := err.Error()
+	permanent := classifyRefreshError(err)
+	scope := "agent_user"
+	if isTrigger {
+		scope = "trigger"
+	}
+
+	var newStatus string
+	var dbErr error
+	if isTrigger {
+		newStatus, dbErr = rp.persistence.RecordTriggerGoogleAccountRefreshFailure(
+			row.ID, errMsg, permanent, MaxConsecutiveRefreshFailures)
+	} else {
+		newStatus, dbErr = rp.persistence.RecordGoogleAccountRefreshFailure(
+			row.ID, errMsg, permanent, MaxConsecutiveRefreshFailures)
+	}
+	if dbErr != nil {
+		log.WithError(dbErr).Warn("Google account refresh: failed to record failure")
+	}
+
+	fields := log.Fields{
+		"account_id": row.ID,
+		"email":      row.Email,
+		"purpose":    row.Purpose,
+		"scope":      scope,
+		"permanent":  permanent,
+		"new_status": newStatus,
+		"error":      errMsg,
+	}
+	if newStatus == "revoked" {
+		log.WithFields(fields).Error("Google account marked revoked — refresh attempts will stop until the user re-authorises")
+	} else {
+		log.WithFields(fields).Warn("Google account refresh failed")
 	}
 }
 
@@ -145,7 +188,7 @@ func (rp *GoogleAccountRefreshPoller) refreshAccount(row persistence.GoogleAccou
 		"client_secret": {rp.clientSecret},
 	}
 
-	req, err := http.NewRequest("POST", googleTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", googleTokenEndpoint(), strings.NewReader(data.Encode()))
 	if err != nil {
 		return err
 	}

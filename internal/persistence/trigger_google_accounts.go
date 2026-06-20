@@ -27,7 +27,8 @@ func (s *Service) UpsertTriggerGoogleAccount(triggerID, email, refreshToken, lab
 		              status = 'active',
 		              last_error = NULL,
 		              access_token = NULL,
-		              token_expires_at = NULL
+		              token_expires_at = NULL,
+		              consecutive_failures = 0
 	`, triggerID, email, refreshToken, s.config.Database.EncryptionKey, label, purpose)
 	return err
 }
@@ -118,25 +119,47 @@ func (s *Service) GetTriggerGoogleAccountsNeedingRefresh(within time.Duration) (
 }
 
 // StoreTriggerGoogleAccountAccessToken caches a fresh access token.
+// See StoreGoogleAccountAccessToken for the rationale on clearing the
+// consecutive-failures counter.
 func (s *Service) StoreTriggerGoogleAccountAccessToken(id, accessToken string, expiresAt *time.Time) error {
 	_, err := s.conn.Exec(`
 		UPDATE trigger_google_account
 		SET access_token = PGP_SYM_ENCRYPT($2, $3),
 		    token_expires_at = $4,
 		    status = 'active',
-		    last_error = NULL
+		    last_error = NULL,
+		    consecutive_failures = 0
 		WHERE id = $1`,
 		id, accessToken, s.config.Database.EncryptionKey, expiresAt)
 	return err
 }
 
-// UpdateTriggerGoogleAccountStatus sets the status and optional error message.
+// UpdateTriggerGoogleAccountStatus sets the status and optional error
+// message. See UpdateGoogleAccountStatus for the policy split between
+// this method and RecordTriggerGoogleAccountRefreshFailure.
 func (s *Service) UpdateTriggerGoogleAccountStatus(id, status string, lastError *string) error {
 	_, err := s.conn.Exec(`
 		UPDATE trigger_google_account
 		SET status = $2, last_error = $3
 		WHERE id = $1`, id, status, lastError)
 	return err
+}
+
+// RecordTriggerGoogleAccountRefreshFailure mirrors
+// RecordGoogleAccountRefreshFailure for the trigger-scoped table.
+func (s *Service) RecordTriggerGoogleAccountRefreshFailure(id, lastError string, permanent bool, threshold int) (string, error) {
+	var newStatus string
+	err := s.conn.Get(&newStatus, `
+		UPDATE trigger_google_account
+		SET consecutive_failures = consecutive_failures + 1,
+		    last_error = $2,
+		    status = CASE
+		        WHEN $3::BOOLEAN OR consecutive_failures + 1 >= $4 THEN 'revoked'
+		        ELSE 'error'
+		    END
+		WHERE id = $1
+		RETURNING status`, id, lastError, permanent, threshold)
+	return newStatus, err
 }
 
 // GetTriggerGoogleAccountAccessToken returns the cached decrypted access token.
