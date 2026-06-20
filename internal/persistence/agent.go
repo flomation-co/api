@@ -122,6 +122,7 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		Channels                json.RawMessage `db:"channels"`
 		RequiresApproval        bool            `db:"requires_approval"`
 		MaxExecutionsPerHour    int             `db:"max_executions_per_hour"`
+		PriorConversationCount  int             `db:"prior_conversation_count"`
 	}{
 		Name:                    agent.Name,
 		Description:             agent.Description,
@@ -139,10 +140,25 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 		Channels:                channelsJSON,
 		RequiresApproval:        agent.RequiresApproval,
 		MaxExecutionsPerHour:    agent.MaxExecutionsPerHour,
+		PriorConversationCount:  clampPriorConversationCount(agent.PriorConversationCount),
 	}); err != nil {
 		return nil, err
 	}
 	return &id, nil
+}
+
+// clampPriorConversationCount enforces the 0..50 range the editor's
+// numeric input also enforces. Belt-and-braces — protects against
+// API calls that bypass the editor (curl, scripts, agent SDK) and
+// pass an out-of-range value into the per-message dispatch query.
+func clampPriorConversationCount(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 50 {
+		return 50
+	}
+	return n
 }
 
 // UpdateAgent updates an existing agent's configuration.
@@ -167,6 +183,7 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		Channels                json.RawMessage `db:"channels"`
 		RequiresApproval        bool            `db:"requires_approval"`
 		MaxExecutionsPerHour    int             `db:"max_executions_per_hour"`
+		PriorConversationCount  int             `db:"prior_conversation_count"`
 	}{
 		ID:                      agent.ID,
 		Name:                    agent.Name,
@@ -182,6 +199,7 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		Channels:                channelsJSON,
 		RequiresApproval:        agent.RequiresApproval,
 		MaxExecutionsPerHour:    agent.MaxExecutionsPerHour,
+		PriorConversationCount:  clampPriorConversationCount(agent.PriorConversationCount),
 	})
 	return err
 }

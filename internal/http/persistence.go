@@ -208,6 +208,9 @@ type Persistence interface {
 	ResolveOrCreateAgentConversation(agentID string, agentUserID *string, channelType, channelID string, threadID *string, idleTimeout int) (*persistence.ConversationResolution, error)
 	CloseAgentConversation(conversationID string) error
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
+	GetRecentPriorConversations(agentID, agentUserID string, limit int) ([]persistence.PriorConversationSummary, error)
+	GetConversationMessagesForAgent(conversationID, agentID, agentUserID string, maxMessages int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error)
+	GetAgentUserCalendarAccessToken(agentUserID string) (string, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 
 	// Agent Memory Phase 2: memories, pending actions, commitments. See

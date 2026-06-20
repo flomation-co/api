@@ -556,6 +556,13 @@ type Agent struct {
 	ExtractionFlowID         *string         `json:"extraction_flow_id,omitempty" db:"extraction_flow_id"`
 	AIAPIKey                 *string         `json:"ai_api_key,omitempty" db:"ai_api_key"`
 	ConversationHistoryLimit int             `json:"conversation_history_limit" db:"conversation_history_limit"`
+	// PriorConversationCount caps the number of session_summary
+	// memories surfaced to the agent in the prior_conversations
+	// trigger field. Each summary carries a conversation_id the
+	// agent can pass to the get_conversation tool when it needs
+	// the full message history behind a summary. 0 disables the
+	// feature; range enforced at 0..50 by the editor.
+	PriorConversationCount   int             `json:"prior_conversation_count" db:"prior_conversation_count"`
 	MaxConcurrentExecutions  int             `json:"max_concurrent_executions" db:"max_concurrent_executions"`
 	IdleTimeoutSeconds       int             `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
 	Channels                 json.RawMessage `json:"channels" db:"channels"`

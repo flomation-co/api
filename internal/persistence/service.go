@@ -2782,12 +2782,12 @@ func NewService(config *config.Config) (*Service, error) {
 		INSERT INTO agent (name, description, owner_id, organisation_id, environment_id, queue_id,
 			system_prompt, orchestrator_flow_id, extraction_flow_id, ai_api_key,
 			max_concurrent_executions, idle_timeout_seconds,
-			channels, requires_approval, max_executions_per_hour)
+			channels, requires_approval, max_executions_per_hour, prior_conversation_count)
 		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
 			:system_prompt, :orchestrator_flow_id, :extraction_flow_id,
 			PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
 			:max_concurrent_executions, :idle_timeout_seconds,
-			:channels, :requires_approval, :max_executions_per_hour)
+			:channels, :requires_approval, :max_executions_per_hour, :prior_conversation_count)
 		RETURNING id
 	`)
 	if err != nil {
@@ -2804,6 +2804,7 @@ func NewService(config *config.Config) (*Service, error) {
 			idle_timeout_seconds = :idle_timeout_seconds, channels = :channels,
 			requires_approval = :requires_approval,
 			max_executions_per_hour = :max_executions_per_hour,
+			prior_conversation_count = :prior_conversation_count,
 			updated_at = NOW()
 		WHERE id = :id
 	`)
@@ -4520,6 +4521,33 @@ func (s *Service) TriggerExecution(floId string, triggerId string, data interfac
 			Data:             invocation.Data,
 			ExecutionStatus:  "created",
 			CompletionStatus: "pending",
+			RootExecutionID:  executionID,
+		}
+
+		if parent != nil {
+			rootID, depth, capped, perr := s.resolveParent(tx, parent.ExecutionID)
+			if perr != nil {
+				return nil, perr
+			}
+			pid := parent.ExecutionID
+			execution.ParentExecutionID = &pid
+			if parent.Relationship != "" {
+				rel := parent.Relationship
+				execution.ParentRelationship = &rel
+			}
+			metadata := parent.Metadata
+			if capped {
+				merged, merr := mergeDepthCappedFlag(metadata)
+				if merr != nil {
+					return nil, merr
+				}
+				metadata = merged
+			}
+			if len(metadata) > 0 {
+				execution.ParentMetadata = &metadata
+			}
+			execution.RootExecutionID = rootID
+			execution.Depth = depth
 		}
 
 		// Extract agent_id from trigger data so it's set atomically

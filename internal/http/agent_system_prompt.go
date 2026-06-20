@@ -52,7 +52,7 @@ func (s *Service) assembleSystemPromptInternal(c *gin.Context) {
 	if s.promptAssembler == nil {
 		// Fallback: return persona only
 		c.JSON(http.StatusOK, agent.SystemPromptResult{
-			Prompt: agent.BuildSystemPrompt(persona, nil, nil, nil, nil, nil, body.ChannelType),
+			Prompt: agent.BuildSystemPrompt(persona, nil, nil, nil, nil, nil, body.ChannelType, nil),
 		})
 		return
 	}

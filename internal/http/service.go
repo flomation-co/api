@@ -636,6 +636,9 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// agent/recall, agent/forget. See internal/http/agent_memory_phase2.go.
 	internal.POST("/agent/:id/memory", s.createAgentMemoryInternal)
 	internal.GET("/agent/:id/memory", s.listAgentMemoriesInternal)
+	internal.GET("/agent/:id/prior-conversations", s.getAgentPriorConversationsInternal)
+	internal.POST("/agent/:id/conversation/:conv_id/messages", s.getAgentConversationMessagesInternal)
+	internal.POST("/agent/:id/calendar/events", s.getAgentCalendarEventsInternal)
 	internal.GET("/memory/:id", s.getAgentMemoryInternal)
 	internal.DELETE("/memory/:id", s.deleteAgentMemoryInternal)
 	internal.POST("/agent/:id/pending-action", s.createAgentPendingActionInternal)
