@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"time"
 
 	"flomation.app/automate/api"
@@ -222,6 +223,14 @@ type Persistence interface {
 	GetBlob(scope persistence.BlobScope, handle []byte) ([]byte, string, int64, error)
 	HeadBlob(scope persistence.BlobScope, handle []byte) (api.BlobMetadata, error)
 	DeleteBlob(scope persistence.BlobScope, handle []byte) error
+
+	// Agent Planning M1 — see plans/agent_planning_m1.md.
+	VerifyFlowRevision(flowID, revisionID string) (bool, error)
+	CreatePlanWithTasks(plan *api.Plan, tasks []*api.PlanTask) error
+	CreatePlanEvent(event *api.PlanEvent) error
+	SetPlanNextCheck(planID string, at time.Time) error
+	TickPlan(ctx context.Context, planID string) (*persistence.TickPlanResult, error)
+	HandlePlanTaskCompletion(ctx context.Context, in persistence.PlanTaskCompletionInput) (persistence.WritebackOutcome, error)
 
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.

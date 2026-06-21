@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -162,6 +163,39 @@ func (m *mockPersistence) DeleteBlob(scope persistence.BlobScope, handle []byte)
 
 func blobKey(scope persistence.BlobScope, handle []byte) string {
 	return blobScopeKey(scope) + ":" + hex.EncodeToString(handle)
+}
+
+// Agent Planning M1 stubs. The plan/create handler test in
+// agent_plan_test.go shadows these via its own recording mock that
+// embeds mockPersistence — the no-op shapes here exist purely so the
+// shared mock satisfies the Persistence interface for OTHER test
+// files that wire it up for unrelated handlers.
+
+func (m *mockPersistence) VerifyFlowRevision(flowID, revisionID string) (bool, error) {
+	return true, nil
+}
+
+func (m *mockPersistence) CreatePlanWithTasks(plan *api.Plan, tasks []*api.PlanTask) error {
+	return nil
+}
+
+func (m *mockPersistence) CreatePlanEvent(event *api.PlanEvent) error {
+	return nil
+}
+
+func (m *mockPersistence) SetPlanNextCheck(planID string, at time.Time) error {
+	return nil
+}
+
+func (m *mockPersistence) TickPlan(ctx context.Context, planID string) (*persistence.TickPlanResult, error) {
+	return &persistence.TickPlanResult{
+		PlanID:     planID,
+		PlanStatus: "active",
+	}, nil
+}
+
+func (m *mockPersistence) HandlePlanTaskCompletion(ctx context.Context, in persistence.PlanTaskCompletionInput) (persistence.WritebackOutcome, error) {
+	return persistence.WritebackNone, nil
 }
 
 func (m *mockPersistence) GetExecutionTree(rootID string) ([]*api.Execution, error) {

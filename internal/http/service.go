@@ -719,6 +719,16 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.GET("/blob/:handle/metadata", s.headBlobInternal)
 	internal.DELETE("/blob/:handle", s.deleteBlobInternal)
 
+	// Agent Planning M1 — the agent-facing plan/create endpoint.
+	// The only caller is the executor's agent/create_plan action.
+	// See plans/agent_planning_m1.md and internal/http/agent_plan.go.
+	internal.POST("/agent/:id/plan", s.createPlan)
+
+	// Agent Planning M1 — the orchestrator's tick endpoint. Polled
+	// by Launch's plan-tick service (M1 commit 8); also woken
+	// reactively by the completion writeback (M1 commit 6).
+	internal.POST("/plan/:planID/tick", s.tickPlan)
+
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)
 	internal.POST("/credit/sync", s.syncCreditBalanceInternal)

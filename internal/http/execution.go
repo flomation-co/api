@@ -15,6 +15,7 @@ import (
 
 	"flomation.app/automate/api"
 	appmetrics "flomation.app/automate/api/internal/metrics"
+	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/rbac"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -222,6 +223,40 @@ func (s *Service) updateExecution(c *gin.Context) {
 		}).Error("unable to update execution result")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	// Agent Planning M1 — plan-task completion writeback. Fires for
+	// every completed execution; persistence.HandlePlanTaskCompletion
+	// returns WritebackNone (no error) when the execution wasn't a
+	// plan task, so the common path costs one parent_metadata
+	// inspection. When it IS a plan task, the writeback transitions
+	// plan_task.status, audits the event, and bumps the plan's
+	// next_check_at so the tick poller wakes the orchestrator on its
+	// next scan.
+	if execution.ParentMetadata != nil {
+		// result.State carries the flow outputs as already-marshalled
+		// bytes (set earlier in this handler). result has no top-level
+		// error string in the M1 surface — error context lives inside
+		// the JSON state. M3 will surface a typed error here.
+		outputsRaw, _ := result.State.(json.RawMessage)
+		outcome, werr := s.persistence.HandlePlanTaskCompletion(c.Request.Context(),
+			persistence.PlanTaskCompletionInput{
+				ExecutionID:      id,
+				ParentMetadata:   *execution.ParentMetadata,
+				CompletionStatus: completion,
+				Outputs:          outputsRaw,
+			})
+		if werr != nil {
+			log.WithFields(log.Fields{
+				"execution_id": id,
+				"error":        werr,
+			}).Warn("plan-task writeback failed; plan tick will reconcile on next scan")
+		} else if outcome != persistence.WritebackNone {
+			log.WithFields(log.Fields{
+				"execution_id": id,
+				"outcome":      outcome,
+			}).Info("plan-task writeback applied")
+		}
 	}
 
 	// Notify SSE subscribers that execution is complete
@@ -766,10 +801,10 @@ func renderNotificationEmail(header, message, executionID string) string {
 		TransactionID   string
 		TransactionTime string
 	}{
-		Header:          header,
+		Header: header,
 		// #nosec G203 -- inputs are HTML-escaped via html.EscapeString before interpolation
 		// nosemgrep: go.lang.security.audit.dangerous-template-html.dangerous-template-html
-		Message: htmltemplate.HTML(message),
+		Message:         htmltemplate.HTML(message),
 		ButtonText:      "View Execution",
 		ButtonURL:       "https://www.flomation.app",
 		TransactionID:   executionID,

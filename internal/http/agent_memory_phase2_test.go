@@ -13,6 +13,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/persistence"
 	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/gin-gonic/gin"
@@ -745,3 +747,18 @@ func (m *phase2Mock) UnpinOldestMemories(agentUserID string, count int) ([]strin
 }
 func (m *phase2Mock) GetMaxPinnedMemories(agentID string) (int, error)         { return 50, nil }
 func (m *phase2Mock) UpdateMaxPinnedMemories(agentID string, limit *int) error { return nil }
+
+// Agent Planning M1 stubs — phase2Mock doesn't exercise the plan
+// endpoints, but it must satisfy the Persistence interface end-to-end.
+func (m *phase2Mock) VerifyFlowRevision(flowID, revisionID string) (bool, error) { return true, nil }
+func (m *phase2Mock) CreatePlanWithTasks(plan *api.Plan, tasks []*api.PlanTask) error {
+	return nil
+}
+func (m *phase2Mock) CreatePlanEvent(event *api.PlanEvent) error         { return nil }
+func (m *phase2Mock) SetPlanNextCheck(planID string, at time.Time) error { return nil }
+func (m *phase2Mock) TickPlan(ctx context.Context, planID string) (*persistence.TickPlanResult, error) {
+	return &persistence.TickPlanResult{PlanID: planID, PlanStatus: "active"}, nil
+}
+func (m *phase2Mock) HandlePlanTaskCompletion(ctx context.Context, in persistence.PlanTaskCompletionInput) (persistence.WritebackOutcome, error) {
+	return persistence.WritebackNone, nil
+}

@@ -89,7 +89,6 @@ func (c *Connector) Configured() bool {
 // derivation. The MD5 algorithm is mandated by EO's API contract —
 // switching to SHA-256 would produce identifiers EmailOctopus does
 // not recognise.
-//
 func contactID(email string) string {
 	// #nosec G401 -- EmailOctopus mandates MD5 for contact_id derivation
 	// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5
