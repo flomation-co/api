@@ -90,9 +90,9 @@ func (c *Connector) Configured() bool {
 // switching to SHA-256 would produce identifiers EmailOctopus does
 // not recognise.
 //
-// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5
 func contactID(email string) string {
 	// #nosec G401 -- EmailOctopus mandates MD5 for contact_id derivation
+	// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5
 	sum := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(email))))
 	return hex.EncodeToString(sum[:])
 }

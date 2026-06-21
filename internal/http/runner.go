@@ -522,6 +522,9 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 
 	if rev != nil {
 		if rev.Data != nil {
+			// rev.Data is the internally-generated flow revision JSON
+			// (open-ended shape, see flow.go for the rationale).
+			// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 			var revision interface{}
 
 			if err := json.Unmarshal(rev.Data.([]byte), &revision); err != nil {

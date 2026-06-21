@@ -767,7 +767,9 @@ func renderNotificationEmail(header, message, executionID string) string {
 		TransactionTime string
 	}{
 		Header:          header,
-		Message:         htmltemplate.HTML(message), // #nosec G203 -- inputs are HTML-escaped via html.EscapeString before interpolation
+		// #nosec G203 -- inputs are HTML-escaped via html.EscapeString before interpolation
+		// nosemgrep: go.lang.security.audit.dangerous-template-html.dangerous-template-html
+		Message: htmltemplate.HTML(message),
 		ButtonText:      "View Execution",
 		ButtonURL:       "https://www.flomation.app",
 		TransactionID:   executionID,

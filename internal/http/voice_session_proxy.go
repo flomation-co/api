@@ -164,6 +164,12 @@ func (s *Service) buildLaunchVoiceWSURL(sessionID string) string {
 		return ""
 	}
 
+	// Two replacements in order: https → wss (production), then http → ws.
+	// The ws:// fallback exists for local dev where the internal Launch
+	// URL is plain http (no TLS in single-host development); in any
+	// configured-TLS deployment the InternalLaunchURL is https and the
+	// first replacement catches it before this line runs.
+	// nosemgrep: go.lang.security.audit.insecure-websocket.insecure-websocket
 	wsURL := strings.Replace(launchURL, "https://", "wss://", 1)
 	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
 	return fmt.Sprintf("%s/internal/voice-session/%s", wsURL, sessionID)
