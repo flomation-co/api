@@ -213,6 +213,16 @@ type Persistence interface {
 	GetAgentUserCalendarAccessToken(agentUserID string) (string, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 
+	// Blob store service — file storage tier shared between the
+	// executor (tool-output tokenisation) and Launch (inbound
+	// attachment dispatch). The BlobScope argument is the
+	// discriminated-union auth boundary (org XOR owner). See
+	// plans/file_attachments.md and internal/persistence/blob_object.go.
+	PutBlob(scope persistence.BlobScope, content []byte, mime, purpose string, execID *string) ([]byte, []byte, error)
+	GetBlob(scope persistence.BlobScope, handle []byte) ([]byte, string, int64, error)
+	HeadBlob(scope persistence.BlobScope, handle []byte) (api.BlobMetadata, error)
+	DeleteBlob(scope persistence.BlobScope, handle []byte) error
+
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
 	CreateAgentMemory(mem api.AgentMemory) (*string, error)

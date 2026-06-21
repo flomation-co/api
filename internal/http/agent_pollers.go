@@ -50,6 +50,12 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	poller.StartConversationSweeperPoller(p, s.executionNotifier)
 	log.Info("API-side conversation sweeper registered")
 
+	// Blob GC poller (1h) — sweeps expired blob_object rows
+	// (tool_output @ 1h TTL, inbound @ 30d TTL) and prunes the
+	// blob_quota_daily counter table.
+	poller.StartBlobGCPoller(p)
+	log.Info("API-side blob GC poller registered")
+
 	// Credit deduction sync poller (30s) — pushes deductions to billing service.
 	if cfg.Billing.InternalURL != "" {
 		billingClient, err := mtls.ClientOrDefault(cfg.TLS, 15*time.Second)
