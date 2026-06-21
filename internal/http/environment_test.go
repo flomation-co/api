@@ -1,6 +1,9 @@
 package http
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,16 +26,32 @@ type mockPersistence struct {
 	users        map[string]*api.User
 	properties   map[string]*api.EnvironmentProperty
 	secrets      map[string]*api.EnvironmentSecret
+
+	// Blob store stubs. Keyed by (orgID + hex-handle) so tests can
+	// verify cross-org isolation collapses to "not found" without a
+	// separate flag. blobQuotaUsed lets blob tests inject a near-cap
+	// starting state to exercise the quota-rejection branch.
+	blobs         map[string]mockBlob
+	blobQuotaUsed map[string]int64
+	blobPutErr    error
+}
+
+type mockBlob struct {
+	content []byte
+	mime    string
+	purpose string
 }
 
 func newMockPersistence() *mockPersistence {
 	return &mockPersistence{
-		executions:   make(map[string]*api.Execution),
-		flos:         make(map[string]*api.Flo),
-		environments: make(map[string]*api.Environment),
-		users:        make(map[string]*api.User),
-		properties:   make(map[string]*api.EnvironmentProperty),
-		secrets:      make(map[string]*api.EnvironmentSecret),
+		executions:    make(map[string]*api.Execution),
+		flos:          make(map[string]*api.Flo),
+		environments:  make(map[string]*api.Environment),
+		users:         make(map[string]*api.User),
+		properties:    make(map[string]*api.EnvironmentProperty),
+		secrets:       make(map[string]*api.EnvironmentSecret),
+		blobs:         make(map[string]mockBlob),
+		blobQuotaUsed: make(map[string]int64),
 	}
 }
 
@@ -50,6 +69,99 @@ func (m *mockPersistence) GetConversationMessagesForAgent(string, string, string
 
 func (m *mockPersistence) GetAgentUserCalendarAccessToken(string) (string, error) {
 	return "", nil
+}
+
+// Blob stubs. Tests exercise these through the HTTP handlers in
+// blob_test.go. The handle is generated as 16 random bytes so each
+// PutBlob produces a unique entry even with identical content.
+//
+// Cross-org isolation is modelled by keying on orgID + hex-handle.
+// A Get/Head/Delete with a different orgID returns the same
+// ErrBlobNotFound the real persistence layer does — verified by
+// blob_test.go's TestBlob_CrossOrgRead_Returns404.
+
+// blobScopeKey collapses a BlobScope to a string used for the
+// in-memory store keying. We deliberately prefix with the scope kind
+// so an org and an owner with the same UUID can never collide (and
+// so the cross-scope-read-returns-404 invariant holds in tests too).
+func blobScopeKey(scope persistence.BlobScope) string {
+	if scope.OrgID != "" {
+		return "org:" + scope.OrgID
+	}
+	return "owner:" + scope.OwnerID
+}
+
+func (m *mockPersistence) PutBlob(scope persistence.BlobScope, content []byte, mime, purpose string, _ *string) ([]byte, []byte, error) {
+	if m.blobPutErr != nil {
+		return nil, nil, m.blobPutErr
+	}
+	if !scope.Valid() {
+		return nil, nil, persistence.ErrBlobScopeInvalid
+	}
+	switch purpose {
+	case persistence.BlobPurposeInbound, persistence.BlobPurposeToolOutput, persistence.BlobPurposeManual:
+	default:
+		return nil, nil, persistence.ErrBlobInvalidPurpose
+	}
+	quotaKey := blobScopeKey(scope)
+	used := m.blobQuotaUsed[quotaKey] + int64(len(content))
+	if used > persistence.BlobDailyQuotaPerOrg {
+		return nil, nil, persistence.ErrBlobQuotaExceeded
+	}
+	m.blobQuotaUsed[quotaKey] = used
+
+	handle := make([]byte, persistence.BlobHandleByteLen)
+	_, _ = rand.Read(handle)
+	digest := sha256.Sum256(content)
+	cp := make([]byte, len(content))
+	copy(cp, content)
+	m.blobs[blobKey(scope, handle)] = mockBlob{content: cp, mime: mime, purpose: purpose}
+	return handle, digest[:], nil
+}
+
+func (m *mockPersistence) GetBlob(scope persistence.BlobScope, handle []byte) ([]byte, string, int64, error) {
+	if !scope.Valid() {
+		return nil, "", 0, persistence.ErrBlobScopeInvalid
+	}
+	b, ok := m.blobs[blobKey(scope, handle)]
+	if !ok {
+		return nil, "", 0, persistence.ErrBlobNotFound
+	}
+	return b.content, b.mime, int64(len(b.content)), nil
+}
+
+func (m *mockPersistence) HeadBlob(scope persistence.BlobScope, handle []byte) (api.BlobMetadata, error) {
+	if !scope.Valid() {
+		return api.BlobMetadata{}, persistence.ErrBlobScopeInvalid
+	}
+	b, ok := m.blobs[blobKey(scope, handle)]
+	if !ok {
+		return api.BlobMetadata{}, persistence.ErrBlobNotFound
+	}
+	digest := sha256.Sum256(b.content)
+	return api.BlobMetadata{
+		HandleHex: hex.EncodeToString(handle),
+		Mime:      b.mime,
+		SizeBytes: int64(len(b.content)),
+		SHA256Hex: hex.EncodeToString(digest[:]),
+		Purpose:   b.purpose,
+	}, nil
+}
+
+func (m *mockPersistence) DeleteBlob(scope persistence.BlobScope, handle []byte) error {
+	if !scope.Valid() {
+		return persistence.ErrBlobScopeInvalid
+	}
+	key := blobKey(scope, handle)
+	if _, ok := m.blobs[key]; !ok {
+		return persistence.ErrBlobNotFound
+	}
+	delete(m.blobs, key)
+	return nil
+}
+
+func blobKey(scope persistence.BlobScope, handle []byte) string {
+	return blobScopeKey(scope) + ":" + hex.EncodeToString(handle)
 }
 
 func (m *mockPersistence) GetExecutionTree(rootID string) ([]*api.Execution, error) {

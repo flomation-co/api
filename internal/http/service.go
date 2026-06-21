@@ -710,6 +710,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.POST("/memory/bulk-delete", s.bulkDeleteExpiredMemoriesInternal)
 	internal.POST("/audit-log", s.createAuditLogEntryInternal)
 
+	// Blob store service — mTLS-only file storage tier used by the
+	// executor (tool-output tokenisation) and Launch (inbound
+	// attachment dispatch). See internal/http/blob.go.
+	internal.POST("/blob", s.putBlobInternal)
+	internal.GET("/blob/:handle", s.getBlobInternal)
+	internal.HEAD("/blob/:handle", s.headBlobInternal)
+	internal.GET("/blob/:handle/metadata", s.headBlobInternal)
+	internal.DELETE("/blob/:handle", s.deleteBlobInternal)
+
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)
 	internal.POST("/credit/sync", s.syncCreditBalanceInternal)

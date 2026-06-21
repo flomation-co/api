@@ -39,6 +39,7 @@ type InboundPersistence interface {
 	persistence.PriorConversationsFetcher
 	persistence.ExtractionDispatcher
 	persistence.PendingActionChecker
+	persistence.BlobUploader
 	GetAgentByID(id string) (*api.Agent, error)
 
 	// User-declared identity resolution (R2). When the agent runs in an
@@ -188,6 +189,23 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 			conversationHistory = normaliseMessages(msgs)
 		}
 	}
+
+	// Step 3.5: process inbound file attachments. Launch ships raw
+	// binaries inline as base64 (the same shape voice has used since
+	// migration 36). This step uploads each to blob_object scoped to
+	// the agent's organisation (or owner, for personal-mode agents),
+	// strips the base64 from metadata, and renders `[attached: …]`
+	// markers into msg.Content so the LLM sees the file references
+	// inside the user turn — no explicit wiring needed. Scope falls
+	// back to the agent owner when no organisation is set, so personal
+	// mode works end-to-end.
+	var inboundScope apipersistence.BlobScope
+	if agent.OrganisationID != nil && *agent.OrganisationID != "" {
+		inboundScope = apipersistence.OrgScope(*agent.OrganisationID)
+	} else if agent.OwnerID != "" {
+		inboundScope = apipersistence.OwnerScope(agent.OwnerID)
+	}
+	processInboundAttachments(h.persistence, &msg, inboundScope)
 
 	// Step 4: store the inbound message.
 	inboundMsg := api.AgentMessage{

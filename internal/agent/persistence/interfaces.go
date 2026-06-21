@@ -51,3 +51,19 @@ type PendingActionChecker interface {
 	RequestCrossChannelVerification(agentID, pendingActionID, agentUserID string)
 	TriggerIdentityMerge(agentID, pendingActionID string)
 }
+
+// BlobUploader writes inbound file bytes to the API's blob_object
+// tier. Used by the inbound pipeline when a webhook arrived with file
+// attachments base64-encoded inline (Launch can't talk to the blob
+// endpoint directly — it doesn't carry the resolved scope). After
+// upload the pipeline replaces the base64 with a flo:blob:... token
+// before the agent_message is written, so the bytes never reach the
+// LLM's context window.
+//
+// The BlobScope argument is org XOR owner — see
+// internal/persistence/blob_object.go for the discriminated-union
+// semantics. The inbound pipeline picks org when the agent is
+// organisation-scoped and owner otherwise.
+type BlobUploader interface {
+	PutBlob(scope apipersistence.BlobScope, content []byte, mime, purpose string, execID *string) ([]byte, []byte, error)
+}

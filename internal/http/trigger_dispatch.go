@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"flomation.app/automate/api/internal/agent"
+	"flomation.app/automate/api/internal/persistence"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -164,6 +165,28 @@ func (s *Service) dispatchTrigger(c *gin.Context) {
 				}
 			}
 		}
+	}
+
+	// Process any inbound file attachments. Same machinery the
+	// orchestrator-flow agent path uses (above), here applied to the
+	// standalone-trigger path so a non-agent flow still gets blob
+	// tokens + auto-promoted `[attached: …]` markers in
+	// ${flow.content}. The scope comes from the flow: organisation if
+	// set, otherwise the flow's owner_id (personal mode). When neither
+	// resolves we still strip the base64 — bytes never propagate
+	// downstream as raw metadata.
+	{
+		var dispatchScope persistence.BlobScope
+		if flo != nil {
+			if flo.OrganisationID != nil && *flo.OrganisationID != "" {
+				dispatchScope = persistence.OrgScope(*flo.OrganisationID)
+			} else if flo.AuthorID != nil && *flo.AuthorID != "" {
+				dispatchScope = persistence.OwnerScope(*flo.AuthorID)
+			}
+		}
+		contentStr, _ := triggerData["content"].(string)
+		newContent := agent.ApplyInboundAttachments(s.persistence, contentStr, triggerData, dispatchScope)
+		triggerData["content"] = newContent
 	}
 
 	// Identity resolution earlier in this handler may have set

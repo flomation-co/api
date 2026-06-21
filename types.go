@@ -928,3 +928,17 @@ type AgentDataExport struct {
 	AuditLog    []*AgentAuditLog   `json:"audit_log"`
 	ExportedAt  time.Time          `json:"exported_at"`
 }
+
+// BlobMetadata is the HEAD-only projection of a blob_object row.
+// Handle and sha256 are hex-encoded on the wire so the type round-
+// trips cleanly through JSON. Returned by /api/v1/internal/blob/:handle
+// HEAD requests and embedded in the POST upload response.
+type BlobMetadata struct {
+	HandleHex string    `json:"handle" db:"handle_hex"`
+	Mime      string    `json:"mime" db:"mime"`
+	SizeBytes int64     `json:"size" db:"size_bytes"`
+	SHA256Hex string    `json:"sha256" db:"sha256_hex"`
+	Purpose   string    `json:"purpose" db:"purpose"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+}
