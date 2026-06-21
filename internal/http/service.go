@@ -319,6 +319,17 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// HTTP calls back to the API — now they use direct DB access.
 	s.startPollers(config, persistence)
 
+	s.registerRoutes(config)
+
+	return s
+}
+
+// registerRoutes wires every HTTP route onto the service engines. It is kept
+// separate from NewService so route registration can be exercised in tests
+// without standing up persistence, pollers, or the prompt assembler — see
+// service_routes_test.go, which guards against duplicate-route panics such as
+// the /trigger/:id/resolve collision that crashed startup when mTLS was off.
+func (s *Service) registerRoutes(config *config.Config) {
 	if config.Metrics.Enabled {
 		s.engine.Use(appmetrics.RequestMetricsMiddleware())
 		s.engine.GET("metrics", appmetrics.IPRestrictionMiddleware(config.Metrics.AllowedIPs), gin.WrapH(promhttp.Handler()))
@@ -487,7 +498,10 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	triggers.POST("", s.jwtMiddleware, s.createTrigger)
 	triggers.POST("/:id", s.jwtMiddleware, s.updateTrigger)
 	triggers.DELETE("/:id", s.jwtMiddleware, s.deleteTrigger)
-	triggers.POST("/:id/resolve", s.resolveTriggerVariables)
+	// POST /trigger/:id/resolve is registered below on internalRouter so it
+	// lands on the mTLS-only engine when enabled. Registering it here too
+	// duplicates the route on the main engine and panics gin at startup when
+	// mTLS is disabled (internalRouter == v1).
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
@@ -732,8 +746,6 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	// Voice session WebSocket proxy (executor ↔ Launch)
 	internal.GET("/voice-session/:session_id", s.handleVoiceSessionProxy)
 	internal.POST("/voice-session/:session_id/register", s.handleVoiceSessionRegister)
-
-	return s
 }
 
 func (s *Service) Listen() error {
