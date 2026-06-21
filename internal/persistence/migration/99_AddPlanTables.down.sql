@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS plan_event;
+DROP TABLE IF EXISTS plan_task;
+DROP TABLE IF EXISTS plan;

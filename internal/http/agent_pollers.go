@@ -56,6 +56,14 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	poller.StartBlobGCPoller(p)
 	log.Info("API-side blob GC poller registered")
 
+	// Plan tick poller (30s) — fallback sweep for active plans whose
+	// next_check_at is past. Reactive wake-ups from plan/create, task
+	// completion writeback, and TickPlan's own not_before-aware
+	// scheduling handle the responsive cases; this catches
+	// time-gated tasks + any reactive wake-up that didn't fire.
+	poller.StartPlanTickPoller(p)
+	log.Info("API-side plan tick poller registered")
+
 	// Credit deduction sync poller (30s) — pushes deductions to billing service.
 	if cfg.Billing.InternalURL != "" {
 		billingClient, err := mtls.ClientOrDefault(cfg.TLS, 15*time.Second)

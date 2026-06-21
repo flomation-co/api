@@ -929,6 +929,72 @@ type AgentDataExport struct {
 	ExportedAt  time.Time          `json:"exported_at"`
 }
 
+// Plan is the header row for an agent-authored, multi-step plan.
+// Tasks are stored separately in plan_task and reference the plan
+// via plan_id. See plans/agent_planning.md for the design.
+//
+// The Plan moves through draft → active → (blocked|completed|cancelled)
+// driven by the Launch-side tick orchestrator and the API's task
+// completion writeback hook.
+type Plan struct {
+	ID                   string     `db:"id" json:"id"`
+	AgentID              string     `db:"agent_id" json:"agent_id"`
+	OwnerUserID          *string    `db:"owner_user_id" json:"owner_user_id,omitempty"`
+	OrganisationID       *string    `db:"organisation_id" json:"organisation_id,omitempty"`
+	CreatedByExecutionID *string    `db:"created_by_execution_id" json:"created_by_execution_id,omitempty"`
+	Title                string     `db:"title" json:"title"`
+	Goal                 string     `db:"goal" json:"goal"`
+	Status               string     `db:"status" json:"status"`
+	NextCheckAt          *time.Time `db:"next_check_at" json:"next_check_at,omitempty"`
+	SuspendCount         int        `db:"suspend_count" json:"suspend_count"`
+	CreatedAt            time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt            time.Time  `db:"updated_at" json:"updated_at"`
+	CompletedAt          *time.Time `db:"completed_at" json:"completed_at,omitempty"`
+	CancelledAt          *time.Time `db:"cancelled_at" json:"cancelled_at,omitempty"`
+	CancelledReason      *string    `db:"cancelled_reason" json:"cancelled_reason,omitempty"`
+}
+
+// PlanTask is a single dependency-graph node within a Plan. Each
+// task pins a (flow_id, flow_revision_id) so a mid-plan edit to the
+// underlying flow can't silently change the task's behaviour. The
+// graph is encoded via depends_on (an array of sibling task UUIDs)
+// — the tick endpoint walks this to find ready tasks.
+type PlanTask struct {
+	ID             string          `db:"id" json:"id"`
+	PlanID         string          `db:"plan_id" json:"plan_id"`
+	Name           string          `db:"name" json:"name"`
+	Description    *string         `db:"description" json:"description,omitempty"`
+	FlowID         string          `db:"flow_id" json:"flow_id"`
+	FlowRevisionID string          `db:"flow_revision_id" json:"flow_revision_id"`
+	Status         string          `db:"status" json:"status"`
+	DependsOn      pq.StringArray  `db:"depends_on" json:"depends_on"`
+	NotBefore      *time.Time      `db:"not_before" json:"not_before,omitempty"`
+	InputsJSON     json.RawMessage `db:"inputs_json" json:"inputs_json"`
+	OutputsJSON    json.RawMessage `db:"outputs_json" json:"outputs_json,omitempty"`
+	ExecutionID    *string         `db:"execution_id" json:"execution_id,omitempty"`
+	AttemptCount   int             `db:"attempt_count" json:"attempt_count"`
+	LastError      *string         `db:"last_error" json:"last_error,omitempty"`
+	MaxAttempts    int             `db:"max_attempts" json:"max_attempts"`
+	TimeoutSeconds *int            `db:"timeout_seconds" json:"timeout_seconds,omitempty"`
+	CreatedAt      time.Time       `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time       `db:"updated_at" json:"updated_at"`
+	StartedAt      *time.Time      `db:"started_at" json:"started_at,omitempty"`
+	CompletedAt    *time.Time      `db:"completed_at" json:"completed_at,omitempty"`
+}
+
+// PlanEvent is the append-only audit trail for a Plan's lifecycle.
+// Both plan-level events ("draft → active", "completed", "cancelled")
+// and task-level events ("dispatched", "succeeded", "failed", "retry")
+// land here so the plan-detail UI can show a unified timeline.
+type PlanEvent struct {
+	ID         int64           `db:"id" json:"id"`
+	PlanID     string          `db:"plan_id" json:"plan_id"`
+	PlanTaskID *string         `db:"plan_task_id" json:"plan_task_id,omitempty"`
+	EventType  string          `db:"event_type" json:"event_type"`
+	Data       json.RawMessage `db:"data" json:"data"`
+	CreatedAt  time.Time       `db:"created_at" json:"created_at"`
+}
+
 // BlobMetadata is the HEAD-only projection of a blob_object row.
 // Handle and sha256 are hex-encoded on the wire so the type round-
 // trips cleanly through JSON. Returned by /api/v1/internal/blob/:handle
