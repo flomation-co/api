@@ -232,6 +232,9 @@ type Persistence interface {
 	TickPlan(ctx context.Context, planID string) (*persistence.TickPlanResult, error)
 	HandlePlanTaskCompletion(ctx context.Context, in persistence.PlanTaskCompletionInput) (persistence.WritebackOutcome, error)
 
+	// Agent Planning M1.5 — AI-initiated block of an in-flight task.
+	BlockPlanTask(ctx context.Context, planTaskID, reason string) (persistence.BlockOutcome, error)
+
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
 	CreateAgentMemory(mem api.AgentMemory) (*string, error)

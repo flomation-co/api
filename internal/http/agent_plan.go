@@ -51,21 +51,54 @@ type createPlanRequest struct {
 	CreatedByExecutionID *string          `json:"created_by_execution_id,omitempty"`
 }
 
-// createPlanTask is one entry in the request's tasks array. Note
-// `DependsOn` carries names (not UUIDs) at the wire — the handler
+// createPlanTask is one entry in the request's tasks array.
+//
+// M1.5 made flow_id + flow_revision_id OPTIONAL — when present
+// together, the task dispatches via the pinned flow (kind='flow').
+// When both are absent, the task defaults to orchestrator dispatch
+// — the tick fires the agent's orchestrator flow via the Plan Task
+// Trigger, and the AI handles the work. Specifying only one of
+// flow_id / flow_revision_id is rejected with a structured 400
+// (partial_flow_ref) so the agent can fix the request.
+//
+// DependsOn carries names (not UUIDs) at the wire — the handler
 // translates name → UUID before persistence. Inputs is the raw JSON
-// object so we preserve types verbatim (numbers, nested objects, etc.)
-// across the API boundary.
+// object so types (numbers, nested objects, etc.) round-trip
+// verbatim.
 type createPlanTask struct {
 	Name           string          `json:"name"`
 	Description    *string         `json:"description,omitempty"`
-	FlowID         string          `json:"flow_id"`
-	FlowRevisionID string          `json:"flow_revision_id"`
+	FlowID         *string         `json:"flow_id,omitempty"`
+	FlowRevisionID *string         `json:"flow_revision_id,omitempty"`
 	DependsOn      []string        `json:"depends_on,omitempty"`
 	Inputs         json.RawMessage `json:"inputs,omitempty"`
 	NotBefore      *time.Time      `json:"not_before,omitempty"`
 	MaxAttempts    int             `json:"max_attempts,omitempty"`
 	TimeoutSeconds *int            `json:"timeout_seconds,omitempty"`
+}
+
+// deriveTaskKind returns the persistence-shape task_kind for a wire
+// task, or a structured error describing the discriminated-union
+// shape violation. The three legal shapes are:
+//
+//   - neither flow_id nor flow_revision_id set → "orchestrator"
+//   - both flow_id and flow_revision_id set    → "flow"
+//   - exactly one set                          → partial_flow_ref error
+func deriveTaskKind(t createPlanTask) (string, map[string]interface{}) {
+	hasFlow := t.FlowID != nil && *t.FlowID != ""
+	hasRev := t.FlowRevisionID != nil && *t.FlowRevisionID != ""
+	switch {
+	case !hasFlow && !hasRev:
+		return api.PlanTaskKindOrchestrator, nil
+	case hasFlow && hasRev:
+		return api.PlanTaskKindFlow, nil
+	default:
+		return "", map[string]interface{}{
+			"reason":    "partial_flow_ref",
+			"task_name": t.Name,
+			"detail":    "specify both flow_id and flow_revision_id, or neither",
+		}
+	}
 }
 
 // createPlan handles POST /api/v1/internal/agent/:agentID/plan.
@@ -112,16 +145,33 @@ func (s *Service) createPlan(c *gin.Context) {
 		return
 	}
 
-	// Per-task flow_revision verification — keeps a bad pin out of the
-	// transactional create.
-	for _, t := range req.Tasks {
-		ok, err := s.persistence.VerifyFlowRevision(t.FlowID, t.FlowRevisionID)
+	// Per-task kind derivation + flow_revision verification.
+	// Orchestrator-kind tasks (no flow_id / flow_revision_id) skip
+	// the verification step — there's no pin to validate. The
+	// derived kind is cached in taskKinds so the persistence-build
+	// loop below can stamp it without re-running deriveTaskKind.
+	taskKinds := make([]string, len(req.Tasks))
+	for i, t := range req.Tasks {
+		kind, kindErr := deriveTaskKind(t)
+		if kindErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "validation",
+				"detail": kindErr,
+			})
+			return
+		}
+		taskKinds[i] = kind
+		if kind != api.PlanTaskKindFlow {
+			continue
+		}
+		// kind == 'flow' — verify the pinned revision exists.
+		ok, err := s.persistence.VerifyFlowRevision(*t.FlowID, *t.FlowRevisionID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"agent_id":         agentID,
 				"task_name":        t.Name,
-				"flow_id":          t.FlowID,
-				"flow_revision_id": t.FlowRevisionID,
+				"flow_id":          *t.FlowID,
+				"flow_revision_id": *t.FlowRevisionID,
 				"error":            err,
 			}).Error("plan/create: flow revision verify failed")
 			c.AbortWithStatus(http.StatusInternalServerError)
@@ -131,8 +181,8 @@ func (s *Service) createPlan(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":            "unknown_flow_revision",
 				"task_name":        t.Name,
-				"flow_id":          t.FlowID,
-				"flow_revision_id": t.FlowRevisionID,
+				"flow_id":          *t.FlowID,
+				"flow_revision_id": *t.FlowRevisionID,
 			})
 			return
 		}
@@ -161,10 +211,17 @@ func (s *Service) createPlan(c *gin.Context) {
 		if len(inputs) == 0 {
 			inputs = json.RawMessage("{}")
 		}
+		// Stamp the persistence shape with the derived kind. For
+		// orchestrator-kind tasks FlowID and FlowRevisionID remain
+		// nil; for flow-kind they carry the validated pin. The schema
+		// CHECK constraint enforces this exactly-one shape at the
+		// row level — Go nullability + the persistence handoff
+		// keep the application side honest.
 		tasks[i] = &api.PlanTask{
 			ID:             taskIDs[t.Name],
 			Name:           t.Name,
 			Description:    t.Description,
+			TaskKind:       taskKinds[i],
 			FlowID:         t.FlowID,
 			FlowRevisionID: t.FlowRevisionID,
 			Status:         "pending",

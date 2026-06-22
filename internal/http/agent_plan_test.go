@@ -19,13 +19,19 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// ptr lifts a string literal to a *string for createPlanTask
+// field initialisation. M1.5 made FlowID and FlowRevisionID nullable
+// (orchestrator-kind tasks leave them nil); tests using the flow
+// override path need this little helper.
+func ptr(s string) *string { return &s }
+
 // === Pure validator tests ===
 
 func TestValidatePlanTasks_DuplicateName(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "a", FlowID: "f1", FlowRevisionID: "r1"},
-		{Name: "a", FlowID: "f2", FlowRevisionID: "r2"},
+		{Name: "a", FlowID: ptr("f1"), FlowRevisionID: ptr("r1")},
+		{Name: "a", FlowID: ptr("f2"), FlowRevisionID: ptr("r2")},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -36,7 +42,7 @@ func TestValidatePlanTasks_DuplicateName(t *testing.T) {
 func TestValidatePlanTasks_MissingName(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "", FlowID: "f1", FlowRevisionID: "r1"},
+		{Name: "", FlowID: ptr("f1"), FlowRevisionID: ptr("r1")},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -46,7 +52,7 @@ func TestValidatePlanTasks_MissingName(t *testing.T) {
 func TestValidatePlanTasks_SelfDependency(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "loop", FlowID: "f1", FlowRevisionID: "r1", DependsOn: []string{"loop"}},
+		{Name: "loop", FlowID: ptr("f1"), FlowRevisionID: ptr("r1"), DependsOn: []string{"loop"}},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -57,7 +63,7 @@ func TestValidatePlanTasks_SelfDependency(t *testing.T) {
 func TestValidatePlanTasks_UnknownDependency(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "second", FlowID: "f1", FlowRevisionID: "r1", DependsOn: []string{"first"}},
+		{Name: "second", FlowID: ptr("f1"), FlowRevisionID: ptr("r1"), DependsOn: []string{"first"}},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -72,9 +78,9 @@ func TestValidatePlanTasks_RefNotUpstream(t *testing.T) {
 	// yet — reject up-front so the agent can fix it.
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "later", FlowID: "f1", FlowRevisionID: "r1",
+		{Name: "later", FlowID: ptr("f1"), FlowRevisionID: ptr("r1"),
 			Inputs: json.RawMessage(`{"x":"${sibling.value}"}`)},
-		{Name: "sibling", FlowID: "f2", FlowRevisionID: "r2"},
+		{Name: "sibling", FlowID: ptr("f2"), FlowRevisionID: ptr("r2")},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -87,8 +93,8 @@ func TestValidatePlanTasks_RefToUpstreamIsAllowed(t *testing.T) {
 	// Symmetric to the above: ref to a TRUE upstream task validates.
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "upstream", FlowID: "f1", FlowRevisionID: "r1"},
-		{Name: "consumer", FlowID: "f2", FlowRevisionID: "r2",
+		{Name: "upstream", FlowID: ptr("f1"), FlowRevisionID: ptr("r1")},
+		{Name: "consumer", FlowID: ptr("f2"), FlowRevisionID: ptr("r2"),
 			DependsOn: []string{"upstream"},
 			Inputs:    json.RawMessage(`{"x":"${upstream.value}"}`)},
 	}
@@ -99,9 +105,9 @@ func TestValidatePlanTasks_TransitiveUpstreamIsAllowed(t *testing.T) {
 	// A → B → C; C refs ${A.value}. A is transitively upstream of C.
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "A", FlowID: "f", FlowRevisionID: "r"},
-		{Name: "B", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"A"}},
-		{Name: "C", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"B"},
+		{Name: "A", FlowID: ptr("f"), FlowRevisionID: ptr("r")},
+		{Name: "B", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"A"}},
+		{Name: "C", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"B"},
 			Inputs: json.RawMessage(`{"x":"${A.value}"}`)},
 	}
 	Expect(validatePlanTasks(tasks)).To(BeNil())
@@ -114,7 +120,7 @@ func TestValidatePlanTasks_NonTaskNamespaceRefsPassValidation(t *testing.T) {
 	// namespace.
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "send", FlowID: "f", FlowRevisionID: "r",
+		{Name: "send", FlowID: ptr("f"), FlowRevisionID: ptr("r"),
 			Inputs: json.RawMessage(`{"channel":"${flow.channel_id}","key":"${secrets.api_key}"}`)},
 	}
 	Expect(validatePlanTasks(tasks)).To(BeNil())
@@ -123,8 +129,8 @@ func TestValidatePlanTasks_NonTaskNamespaceRefsPassValidation(t *testing.T) {
 func TestValidatePlanTasks_Cycle(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "a", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"b"}},
-		{Name: "b", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"a"}},
+		{Name: "a", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"b"}},
+		{Name: "b", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"a"}},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -135,9 +141,9 @@ func TestValidatePlanTasks_TriangleCycle(t *testing.T) {
 	// Larger cycle to make sure detectCycle handles >2 nodes.
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "a", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"c"}},
-		{Name: "b", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"a"}},
-		{Name: "c", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"b"}},
+		{Name: "a", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"c"}},
+		{Name: "b", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"a"}},
+		{Name: "c", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"b"}},
 	}
 	detail := validatePlanTasks(tasks)
 	Expect(detail).NotTo(BeNil())
@@ -147,10 +153,10 @@ func TestValidatePlanTasks_TriangleCycle(t *testing.T) {
 func TestValidatePlanTasks_HappyPath(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
-		{Name: "ingest", FlowID: "f", FlowRevisionID: "r"},
-		{Name: "transform", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"ingest"},
+		{Name: "ingest", FlowID: ptr("f"), FlowRevisionID: ptr("r")},
+		{Name: "transform", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"ingest"},
 			Inputs: json.RawMessage(`{"src":"${ingest.rows}"}`)},
-		{Name: "send", FlowID: "f", FlowRevisionID: "r", DependsOn: []string{"transform"}},
+		{Name: "send", FlowID: ptr("f"), FlowRevisionID: ptr("r"), DependsOn: []string{"transform"}},
 	}
 	Expect(validatePlanTasks(tasks)).To(BeNil())
 }
@@ -358,4 +364,137 @@ func TestCreatePlan_Cycle_Returns400(t *testing.T) {
 	rec := postPlan(t, r, "agent-1", body)
 	Expect(rec.Code).To(Equal(http.StatusBadRequest))
 	Expect(rec.Body.String()).To(ContainSubstring("cycle"))
+}
+
+// === M1.5 commit 5: orchestrator-default validator tests ===
+
+func TestDeriveTaskKind_NoFlowID_DefaultsToOrchestrator(t *testing.T) {
+	RegisterTestingT(t)
+	kind, errDetail := deriveTaskKind(createPlanTask{Name: "x"})
+	Expect(errDetail).To(BeNil())
+	Expect(kind).To(Equal("orchestrator"))
+}
+
+func TestDeriveTaskKind_BothFlowFieldsSet_IsFlowKind(t *testing.T) {
+	RegisterTestingT(t)
+	kind, errDetail := deriveTaskKind(createPlanTask{
+		Name:           "x",
+		FlowID:         ptr("f"),
+		FlowRevisionID: ptr("r"),
+	})
+	Expect(errDetail).To(BeNil())
+	Expect(kind).To(Equal("flow"))
+}
+
+func TestDeriveTaskKind_OnlyFlowID_RejectedAsPartial(t *testing.T) {
+	// Asymmetric: flow_id without flow_revision_id is meaningless —
+	// the agent is half-way through pinning a flow and the validator
+	// surfaces the partial state so they can complete it.
+	RegisterTestingT(t)
+	kind, errDetail := deriveTaskKind(createPlanTask{
+		Name:   "x",
+		FlowID: ptr("f"),
+	})
+	Expect(kind).To(Equal(""))
+	Expect(errDetail).NotTo(BeNil())
+	Expect(errDetail["reason"]).To(Equal("partial_flow_ref"))
+	Expect(errDetail["task_name"]).To(Equal("x"))
+}
+
+func TestDeriveTaskKind_OnlyFlowRevisionID_RejectedAsPartial(t *testing.T) {
+	RegisterTestingT(t)
+	_, errDetail := deriveTaskKind(createPlanTask{
+		Name:           "x",
+		FlowRevisionID: ptr("r"),
+	})
+	Expect(errDetail).NotTo(BeNil())
+	Expect(errDetail["reason"]).To(Equal("partial_flow_ref"))
+}
+
+func TestDeriveTaskKind_EmptyStringPointersAreOrchestrator(t *testing.T) {
+	// Edge case — a wire client that JSON-marshals with empty strings
+	// instead of omitting the field. We treat empty as absent so the
+	// orchestrator default fires; the alternative would be a
+	// confusing 400 over a benign serialisation choice.
+	RegisterTestingT(t)
+	empty := ""
+	kind, errDetail := deriveTaskKind(createPlanTask{
+		Name:           "x",
+		FlowID:         &empty,
+		FlowRevisionID: &empty,
+	})
+	Expect(errDetail).To(BeNil())
+	Expect(kind).To(Equal("orchestrator"))
+}
+
+// HTTP-layer integration: orchestrator-kind tasks ship without
+// flow_id / flow_revision_id and don't trigger VerifyFlowRevision.
+func TestCreatePlan_OrchestratorKindTasksAccepted(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	mock := newPlanRecordingMock()
+	svc := &Service{persistence: mock}
+	r := setupPlanRouter(svc)
+
+	body := `{
+		"title": "Demo",
+		"goal":  "Run two orchestrator-kind tasks",
+		"tasks": [
+			{"name":"a","description":"first step"},
+			{"name":"b","description":"second step","depends_on":["a"]}
+		]
+	}`
+	rec := postPlan(t, r, "agent-1", body)
+	Expect(rec.Code).To(Equal(http.StatusCreated))
+	Expect(mock.gotPlan).NotTo(BeNil())
+	Expect(mock.gotTasks).To(HaveLen(2))
+	Expect(mock.gotTasks[0].TaskKind).To(Equal("orchestrator"))
+	Expect(mock.gotTasks[0].FlowID).To(BeNil())
+	Expect(mock.gotTasks[0].FlowRevisionID).To(BeNil())
+	Expect(mock.gotTasks[1].TaskKind).To(Equal("orchestrator"))
+}
+
+func TestCreatePlan_MixedKinds_BothShapesAccepted(t *testing.T) {
+	// A plan with one orchestrator-kind task and one flow-kind task
+	// — the escape-hatch case the M1.5 design exists to support.
+	t.Parallel()
+	RegisterTestingT(t)
+	mock := newPlanRecordingMock()
+	svc := &Service{persistence: mock}
+	r := setupPlanRouter(svc)
+
+	body := `{
+		"title": "Mixed",
+		"goal":  "AI does the analysis, curated flow does the delivery",
+		"tasks": [
+			{"name":"analyse","description":"summarise the data"},
+			{"name":"deliver","flow_id":"flow-1","flow_revision_id":"rev-1","depends_on":["analyse"]}
+		]
+	}`
+	rec := postPlan(t, r, "agent-1", body)
+	Expect(rec.Code).To(Equal(http.StatusCreated))
+	Expect(mock.gotTasks).To(HaveLen(2))
+	Expect(mock.gotTasks[0].TaskKind).To(Equal("orchestrator"))
+	Expect(mock.gotTasks[0].FlowID).To(BeNil())
+	Expect(mock.gotTasks[1].TaskKind).To(Equal("flow"))
+	Expect(*mock.gotTasks[1].FlowID).To(Equal("flow-1"))
+	Expect(*mock.gotTasks[1].FlowRevisionID).To(Equal("rev-1"))
+}
+
+func TestCreatePlan_PartialFlowRef_Returns400(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	mock := newPlanRecordingMock()
+	svc := &Service{persistence: mock}
+	r := setupPlanRouter(svc)
+
+	// flow_id present, flow_revision_id missing → partial_flow_ref.
+	body := `{
+		"title": "x", "goal": "y",
+		"tasks": [{"name":"a","flow_id":"f"}]
+	}`
+	rec := postPlan(t, r, "agent-1", body)
+	Expect(rec.Code).To(Equal(http.StatusBadRequest))
+	Expect(rec.Body.String()).To(ContainSubstring("partial_flow_ref"))
+	Expect(mock.gotPlan).To(BeNil())
 }

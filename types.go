@@ -960,12 +960,21 @@ type Plan struct {
 // graph is encoded via depends_on (an array of sibling task UUIDs)
 // — the tick endpoint walks this to find ready tasks.
 type PlanTask struct {
-	ID             string          `db:"id" json:"id"`
-	PlanID         string          `db:"plan_id" json:"plan_id"`
-	Name           string          `db:"name" json:"name"`
-	Description    *string         `db:"description" json:"description,omitempty"`
-	FlowID         string          `db:"flow_id" json:"flow_id"`
-	FlowRevisionID string          `db:"flow_revision_id" json:"flow_revision_id"`
+	ID          string  `db:"id" json:"id"`
+	PlanID      string  `db:"plan_id" json:"plan_id"`
+	Name        string  `db:"name" json:"name"`
+	Description *string `db:"description" json:"description,omitempty"`
+	// TaskKind discriminates dispatch behaviour. See M1.5 plan doc.
+	//   PlanTaskKindOrchestrator (default) — tick fires the agent's
+	//     own orchestrator_flow via the Plan Task Trigger, carrying
+	//     task context as trigger data. FlowID / FlowRevisionID are nil.
+	//   PlanTaskKindFlow — tick fires the pinned (FlowID, FlowRevisionID)
+	//     for deterministic dispatch. Both pointers non-nil.
+	// The schema CHECK constraint enforces exactly-one shape at the
+	// row level; the Go side mirrors with pointer nullability.
+	TaskKind       string          `db:"task_kind" json:"task_kind"`
+	FlowID         *string         `db:"flow_id" json:"flow_id,omitempty"`
+	FlowRevisionID *string         `db:"flow_revision_id" json:"flow_revision_id,omitempty"`
 	Status         string          `db:"status" json:"status"`
 	DependsOn      pq.StringArray  `db:"depends_on" json:"depends_on"`
 	NotBefore      *time.Time      `db:"not_before" json:"not_before,omitempty"`
@@ -981,6 +990,14 @@ type PlanTask struct {
 	StartedAt      *time.Time      `db:"started_at" json:"started_at,omitempty"`
 	CompletedAt    *time.Time      `db:"completed_at" json:"completed_at,omitempty"`
 }
+
+// PlanTaskKind constants identify how the tick endpoint dispatches a
+// plan task. Used as both the SQL CHECK-constraint values and the
+// discriminator the Go-side branches read.
+const (
+	PlanTaskKindOrchestrator = "orchestrator"
+	PlanTaskKindFlow         = "flow"
+)
 
 // PlanEvent is the append-only audit trail for a Plan's lifecycle.
 // Both plan-level events ("draft → active", "completed", "cancelled")

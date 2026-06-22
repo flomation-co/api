@@ -72,11 +72,16 @@ func (s *Service) CreatePlan(plan *api.Plan) error {
 // (gen_random_uuid()) for repair/manual flows where no sibling
 // references the new task.
 func (s *Service) CreatePlanTask(task *api.PlanTask) error {
+	kind := task.TaskKind
+	if kind == "" {
+		kind = api.PlanTaskKindOrchestrator
+	}
 	return s.conn.Get(task, planTaskInsertSQL,
 		nullableID(task.ID),
 		task.PlanID,
 		task.Name,
 		task.Description,
+		kind,
 		task.FlowID,
 		task.FlowRevisionID,
 		task.Status,
@@ -134,11 +139,16 @@ func (s *Service) CreatePlanWithTasks(plan *api.Plan, tasks []*api.PlanTask) err
 		// Bind the just-generated plan ID — the agent supplied tasks
 		// without knowing the plan ID yet, so we stamp it here.
 		t.PlanID = plan.ID
+		kind := t.TaskKind
+		if kind == "" {
+			kind = api.PlanTaskKindOrchestrator
+		}
 		if err := tx.Get(t, planTaskInsertSQL,
 			nullableID(t.ID),
 			t.PlanID,
 			t.Name,
 			t.Description,
+			kind,
 			t.FlowID,
 			t.FlowRevisionID,
 			t.Status,
@@ -261,18 +271,25 @@ const planInsertSQL = `
 // and completed_at columns deliberately use their schema defaults
 // (NULL or 0) rather than being set explicitly — they get populated
 // by the tick/completion path, not at create time.
+//
 // planTaskInsertSQL accepts an explicit id ($1) which can be NULL —
 // in which case the column DEFAULT (gen_random_uuid()) fires. The
 // plan/create handler supplies an id so depends_on UUIDs translated
 // from task names line up at insert time; CreatePlanTask (repair
 // path) leaves it nil.
+//
+// task_kind ($5) is set by the caller and must match the CHECK
+// constraint on the column (see migration 100). flow_id and
+// flow_revision_id (now nullable since M1.5) are passed via $6 and
+// $7 — Go nil → SQL NULL.
 const planTaskInsertSQL = `
 	INSERT INTO plan_task (
-		id, plan_id, name, description, flow_id, flow_revision_id, status,
+		id, plan_id, name, description, task_kind,
+		flow_id, flow_revision_id, status,
 		depends_on, not_before, inputs_json, max_attempts, timeout_seconds
 	) VALUES (
 		COALESCE($1::uuid, gen_random_uuid()),
-		$2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+		$2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 	)
 	RETURNING *`
 

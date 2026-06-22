@@ -14,7 +14,10 @@ package persistence
 
 import (
 	"strings"
+
 	"testing"
+
+	api "flomation.app/automate/api"
 
 	. "github.com/onsi/gomega"
 )
@@ -43,7 +46,8 @@ func TestPlanInsertSQL_ReferencesAllRequiredColumns(t *testing.T) {
 func TestPlanTaskInsertSQL_ReferencesAllRequiredColumns(t *testing.T) {
 	RegisterTestingT(t)
 	required := []string{
-		"plan_id", "name", "description", "flow_id", "flow_revision_id",
+		"plan_id", "name", "description", "task_kind",
+		"flow_id", "flow_revision_id",
 		"status", "depends_on", "not_before", "inputs_json",
 		"max_attempts", "timeout_seconds",
 	}
@@ -85,4 +89,14 @@ func TestErrSentinelsAreDistinct(t *testing.T) {
 	Expect(ErrPlanNotFound.Error()).To(Equal("plan not found"))
 	Expect(ErrFlowRevisionNotFound.Error()).To(Equal("flow revision not found"))
 	Expect(ErrPlanNotFound).NotTo(Equal(ErrFlowRevisionNotFound))
+}
+
+// TestPlanTaskKindConstants_StayStable pins the discriminator
+// values used both as Go constants AND as SQL CHECK-constraint
+// values in migration 100. Any drift here means the application
+// inserts a value the DB rejects (or vice versa). Cheap to assert.
+func TestPlanTaskKindConstants_StayStable(t *testing.T) {
+	RegisterTestingT(t)
+	Expect(api.PlanTaskKindOrchestrator).To(Equal("orchestrator"))
+	Expect(api.PlanTaskKindFlow).To(Equal("flow"))
 }
