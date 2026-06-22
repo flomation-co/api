@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -145,7 +146,25 @@ func (s *Service) TickPlan(ctx context.Context, planID string) (*TickPlanResult,
 				return nil, fmt.Errorf("substitute task %q: %w", task.Name, err)
 			}
 
-			execID, err := tickCreateTaskExecution(ctx, tx, plan, task, resolved)
+			// agentLookup is a lazy closure — orchestrator-kind dispatch
+			// needs the agent record (for OrchestratorFlowID), flow-kind
+			// dispatch doesn't. Lazy so we don't pay the lookup cost on
+			// flow-only plans. The closure caches the result so a plan
+			// with many orchestrator tasks only loads the agent once.
+			var cachedAgent *api.Agent
+			agentLookup := func(agentID string) (*api.Agent, error) {
+				if cachedAgent != nil {
+					return cachedAgent, nil
+				}
+				ag, lookupErr := s.GetAgentByID(agentID)
+				if lookupErr != nil {
+					return nil, lookupErr
+				}
+				cachedAgent = ag
+				return ag, nil
+			}
+
+			execID, err := tickCreateTaskExecution(ctx, tx, plan, task, resolved, outputs, agentLookup)
 			if err != nil {
 				return nil, fmt.Errorf("create execution for task %q: %w", task.Name, err)
 			}
@@ -309,12 +328,31 @@ func tickGetCompletedTaskOutputs(ctx context.Context, tx *sqlx.Tx, planID string
 // linkage flows through the existing resolveParent helper so the
 // execution slots into the hierarchical tree the same way any other
 // child execution does.
-func tickCreateTaskExecution(ctx context.Context, tx *sqlx.Tx, plan *api.Plan, task *api.PlanTask, resolvedInputs json.RawMessage) (string, error) {
-	executionID := uuid.NewString()
+func tickCreateTaskExecution(ctx context.Context, tx *sqlx.Tx, plan *api.Plan, task *api.PlanTask, resolvedInputs json.RawMessage, upstream map[string]map[string]interface{}, agentLookup func(string) (*api.Agent, error)) (string, error) {
+	switch task.TaskKind {
+	case api.PlanTaskKindFlow, "":
+		// Empty fallback preserves the pre-M1.5 row shape where
+		// task_kind didn't exist and every row was implicitly a flow.
+		return tickCreateFlowTaskExecution(ctx, tx, plan, task, resolvedInputs)
+	case api.PlanTaskKindOrchestrator:
+		return tickCreateOrchestratorTaskExecution(ctx, tx, plan, task, resolvedInputs, upstream, agentLookup)
+	default:
+		return "", fmt.Errorf("plan task %s: unknown task_kind %q", task.ID, task.TaskKind)
+	}
+}
 
+// tickCreateFlowTaskExecution preserves M1's exact behaviour for
+// kind='flow' tasks — INSERT an execution against the pinned flow
+// with parent linkage. Refactored out of the old single-branch
+// function so the orchestrator-kind sibling can sit next to it.
+func tickCreateFlowTaskExecution(ctx context.Context, tx *sqlx.Tx, plan *api.Plan, task *api.PlanTask, resolvedInputs json.RawMessage) (string, error) {
+	if task.FlowID == nil {
+		return "", fmt.Errorf("plan task %s: kind=flow but flow_id is nil — schema CHECK should prevent this", task.ID)
+	}
+	executionID := uuid.NewString()
 	execution := api.Execution{
 		ID:               executionID,
-		FloID:            task.FlowID,
+		FloID:            *task.FlowID,
 		OwnerID:          plan.AgentID, // agent owns plan executions
 		OrganisationID:   plan.OrganisationID,
 		Data:             resolvedInputs,
@@ -536,4 +574,263 @@ func derivePlanStatus(current string, counts map[string]int) string {
 		return "blocked"
 	}
 	return current
+}
+
+// === Orchestrator-kind dispatch (M1.5 commit 3) ===
+
+// tickCreateOrchestratorTaskExecution fires the agent's own
+// orchestrator flow via its Plan Task Trigger entry node. Same
+// dispatch pattern Telegram / Slack channel webhooks use — INSERT a
+// trigger_invocation, then an execution linked to it. The runner picks
+// up the execution, reads trigger_invocation.trigger_id → trigger row
+// → __node_id in trigger data, and starts the executor at the Plan
+// Task Trigger node.
+//
+// Trigger data is shaped to match the Plan Task Trigger node's
+// declared outputs (see actions/trigger/plan_task/action.go). The
+// downstream AI Prompt action reads `${flow.prompt}` and
+// `${flow.conversation_history}` the same way it reads them when a
+// Telegram or Slack trigger fired — no flow rewiring.
+func tickCreateOrchestratorTaskExecution(
+	ctx context.Context, tx *sqlx.Tx,
+	plan *api.Plan, task *api.PlanTask,
+	resolvedInputs json.RawMessage,
+	upstream map[string]map[string]interface{},
+	agentLookup func(string) (*api.Agent, error),
+) (string, error) {
+	agent, err := agentLookup(plan.AgentID)
+	if err != nil {
+		return "", fmt.Errorf("load agent %s: %w", plan.AgentID, err)
+	}
+	if agent == nil {
+		return "", fmt.Errorf("agent %s not found", plan.AgentID)
+	}
+	if agent.OrchestratorFlowID == nil || *agent.OrchestratorFlowID == "" {
+		return "", fmt.Errorf("agent %s has no orchestrator_flow_id — plan-task dispatch requires one", agent.ID)
+	}
+	flowID := *agent.OrchestratorFlowID
+
+	triggerRow, err := tickGetPlanTaskTriggerForFlow(ctx, tx, flowID)
+	if err != nil {
+		return "", fmt.Errorf("find plan_task trigger for flow %s: %w", flowID, err)
+	}
+	if triggerRow == nil {
+		return "", fmt.Errorf("agent %s's orchestrator (flow %s) does not have a Plan Task Trigger node — add one to enable orchestrator-kind plan tasks", agent.ID, flowID)
+	}
+
+	// Build the trigger data shape the Plan Task Trigger reflects as
+	// outputs. Field names match the node's declared Outputs.
+	prompt := buildPlanTaskPrompt(plan, task, resolvedInputs, upstream)
+	inputsForData := decodeInputsForTriggerData(resolvedInputs)
+	upstreamForData := upstreamSafeForTriggerData(upstream)
+
+	triggerData := map[string]interface{}{
+		// task_kind discriminator the system prompt assembler reads
+		// (M1.5 commit 4) to know whether to auto-augment with
+		// PLAN TASK MODE instructions.
+		"task_kind": "plan_task",
+
+		// Channel-shaped fields — identical to what user-message
+		// triggers populate, so the AI Prompt action wires
+		// unchanged.
+		"prompt":               prompt,
+		"channel_type":         "plan_task",
+		"channel_id":           "",
+		"conversation_history": []interface{}{}, // empty — no history bleed
+		"agent_id":             agent.ID,
+		"agent_user_id":        "",
+
+		// Plan-specific fields the AI's tools (set_output, plan/block
+		// in commit 6) reference.
+		"plan_id":               plan.ID,
+		"plan_task_id":          task.ID,
+		"plan_task_name":        task.Name,
+		"plan_task_description": strDerefOrEmpty(task.Description),
+		"plan_task_inputs":      inputsForData,
+		"upstream_outputs":      upstreamForData,
+
+		// Standard dispatch metadata the executor's runtime injects.
+		"agent_id_for_context": agent.ID,
+	}
+
+	// Insert the trigger_invocation. owner_id mirrors the trigger
+	// row's owner (system / agent owner — agent is the right answer
+	// here since plans are owned by the agent that authored them).
+	invocationData, err := json.Marshal(triggerData)
+	if err != nil {
+		return "", fmt.Errorf("marshal trigger data: %w", err)
+	}
+	var invocationID string
+	if err := tx.GetContext(ctx, &invocationID, `
+		INSERT INTO trigger_invocation (trigger_id, owner_id, organisation_id, data)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id`,
+		triggerRow.ID, agent.OwnerID, plan.OrganisationID, invocationData,
+	); err != nil {
+		return "", fmt.Errorf("insert trigger_invocation: %w", err)
+	}
+
+	// Build the execution row pointing at the orchestrator flow with
+	// parent linkage (so the executions hierarchy view shows the
+	// plan-task execution under the orchestrator turn that created
+	// the plan).
+	executionID := uuid.NewString()
+	execution := api.Execution{
+		ID:               executionID,
+		FloID:            flowID,
+		OwnerID:          agent.OwnerID,
+		OrganisationID:   plan.OrganisationID,
+		TriggeredBy:      &invocationID,
+		Data:             invocationData,
+		ExecutionStatus:  "created",
+		CompletionStatus: "pending",
+		RootExecutionID:  executionID,
+		Name:             fmt.Sprintf("plan task: %s", task.Name),
+		AgentID:          &agent.ID,
+	}
+
+	// Parent linkage: same posture as flow-kind dispatch.
+	if plan.CreatedByExecutionID != nil && *plan.CreatedByExecutionID != "" {
+		rootID, depth, capped, perr := resolveParentInTx(ctx, tx, *plan.CreatedByExecutionID)
+		if perr != nil {
+			return "", perr
+		}
+		parentID := *plan.CreatedByExecutionID
+		execution.ParentExecutionID = &parentID
+		rel := "plan_task"
+		execution.ParentRelationship = &rel
+		metadata, _ := json.Marshal(map[string]interface{}{
+			"plan_id":        plan.ID,
+			"plan_title":     plan.Title,
+			"plan_task_id":   task.ID,
+			"plan_task_name": task.Name,
+		})
+		if capped {
+			merged, _ := mergeDepthCappedFlag(metadata)
+			metadata = merged
+		}
+		raw := json.RawMessage(metadata)
+		execution.ParentMetadata = &raw
+		execution.RootExecutionID = rootID
+		execution.Depth = depth
+	} else {
+		metadata, _ := json.Marshal(map[string]interface{}{
+			"plan_id":        plan.ID,
+			"plan_task_id":   task.ID,
+			"plan_task_name": task.Name,
+		})
+		raw := json.RawMessage(metadata)
+		execution.ParentMetadata = &raw
+	}
+
+	if _, err := tx.NamedExecContext(ctx, `
+		INSERT INTO execution (
+			id, flo_id, name, owner_id, organisation_id, agent_id,
+			triggered_by, data,
+			execution_status, completion_status,
+			root_execution_id, depth,
+			parent_execution_id, parent_relationship, parent_metadata
+		) VALUES (
+			:id, :flo_id, :name, :owner_id, :organisation_id, :agent_id,
+			:triggered_by, :data,
+			:execution_status, :completion_status,
+			:root_execution_id, :depth,
+			:parent_execution_id, :parent_relationship, :parent_metadata
+		)`, execution); err != nil {
+		return "", fmt.Errorf("insert execution: %w", err)
+	}
+	return executionID, nil
+}
+
+// tickGetPlanTaskTriggerForFlow finds the Plan Task Trigger row
+// (type 'plan-task' — see the typeName mangling in
+// internal/http/flow.go's createFloRevision sync) registered for
+// the given flow. Returns (nil, nil) when no plan_task trigger is
+// configured — the caller surfaces that as a clear error so the
+// agent author knows to add the Plan Task Trigger node to their
+// orchestrator flow.
+func tickGetPlanTaskTriggerForFlow(ctx context.Context, tx *sqlx.Tx, flowID string) (*api.Trigger, error) {
+	var trigger api.Trigger
+	err := tx.GetContext(ctx, &trigger, `
+		SELECT t.*
+		FROM trigger t
+		JOIN flo_trigger ft ON ft.trigger_id = t.id
+		WHERE ft.flo_id = $1 AND t.type = 'plan-task'
+		ORDER BY t.created_at DESC
+		LIMIT 1`, flowID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &trigger, nil
+}
+
+// buildPlanTaskPrompt formats the user-message-equivalent string the
+// AI Prompt action consumes via ${flow.prompt}. Mirrors the framing
+// the plan doc specifies — task name, description, inputs, upstream
+// outputs, plus a terminator hint pointing the AI at set_output /
+// plan/block.
+func buildPlanTaskPrompt(plan *api.Plan, task *api.PlanTask, inputs json.RawMessage, upstream map[string]map[string]interface{}) string {
+	var sb strings.Builder
+	sb.WriteString("Progress plan task '")
+	sb.WriteString(task.Name)
+	sb.WriteString("' of plan '")
+	sb.WriteString(plan.Title)
+	sb.WriteString("'.\n\n")
+	if task.Description != nil && *task.Description != "" {
+		sb.WriteString("Description: ")
+		sb.WriteString(*task.Description)
+		sb.WriteString("\n\n")
+	}
+	if len(inputs) > 0 && string(inputs) != "{}" && string(inputs) != "null" {
+		sb.WriteString("Inputs: ")
+		sb.Write(inputs)
+		sb.WriteString("\n\n")
+	}
+	if len(upstream) > 0 {
+		b, err := json.Marshal(upstream)
+		if err == nil {
+			sb.WriteString("Upstream outputs: ")
+			sb.Write(b)
+			sb.WriteString("\n\n")
+		}
+	}
+	sb.WriteString("Complete this task and call set_output with what downstream tasks need. If you cannot make progress, call plan/block with the reason.")
+	return sb.String()
+}
+
+// decodeInputsForTriggerData turns the substituted inputs JSONB into
+// a Go map for embedding in the trigger data. On any decode failure
+// returns an empty map — the AI sees no inputs rather than a malformed
+// payload.
+func decodeInputsForTriggerData(inputs json.RawMessage) map[string]interface{} {
+	if len(inputs) == 0 {
+		return map[string]interface{}{}
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(inputs, &out); err != nil {
+		return map[string]interface{}{}
+	}
+	if out == nil {
+		return map[string]interface{}{}
+	}
+	return out
+}
+
+// upstreamSafeForTriggerData ensures a non-nil map lands in the
+// trigger data even when no upstream tasks completed.
+func upstreamSafeForTriggerData(upstream map[string]map[string]interface{}) map[string]map[string]interface{} {
+	if upstream == nil {
+		return map[string]map[string]interface{}{}
+	}
+	return upstream
+}
+
+func strDerefOrEmpty(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }

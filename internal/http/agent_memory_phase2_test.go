@@ -762,3 +762,6 @@ func (m *phase2Mock) TickPlan(ctx context.Context, planID string) (*persistence.
 func (m *phase2Mock) HandlePlanTaskCompletion(ctx context.Context, in persistence.PlanTaskCompletionInput) (persistence.WritebackOutcome, error) {
 	return persistence.WritebackNone, nil
 }
+func (m *phase2Mock) BlockPlanTask(ctx context.Context, planTaskID, reason string) (persistence.BlockOutcome, error) {
+	return persistence.BlockOutcomeBlocked, nil
+}

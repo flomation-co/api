@@ -157,8 +157,13 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 
 	// Without an agent_user_id, degrade to persona + honesty + channel.
 	if req.AgentUserID == "" {
+		prompt := BuildSystemPrompt(req.Persona, nil, nil, nil, nil, toolSummary, req.ChannelType, nil)
+		// Plan-task augmentation lands even on the degraded path —
+		// the Plan Task Trigger may dispatch with no agent_user_id
+		// and the AI still needs to know it's in autonomous mode.
+		prompt = AppendPlanTaskInstructions(prompt, req.ChannelType)
 		return SystemPromptResult{
-			Prompt: BuildSystemPrompt(req.Persona, nil, nil, nil, nil, toolSummary, req.ChannelType, nil),
+			Prompt: prompt,
 		}
 	}
 
@@ -205,6 +210,11 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 	}).Info("system prompt assembly complete (API-side)")
 
 	prompt := BuildSystemPrompt(req.Persona, pinnedMem, relevantMem, pending, schedules, toolSummary, req.ChannelType, req.PriorConversations)
+
+	// Plan-task augmentation (M1.5 commit 4) — invisible to flow
+	// authors. Detection via the channel_type field the Plan Task
+	// Trigger populates; no new SystemPromptRequest field needed.
+	prompt = AppendPlanTaskInstructions(prompt, req.ChannelType)
 
 	return SystemPromptResult{
 		Prompt:            prompt,
@@ -642,4 +652,63 @@ func ChannelDirective(channelType string) string {
 	default:
 		return ""
 	}
+}
+
+// === Agent Planning M1.5: invisible plan-task augmentation ===
+//
+// When an inbound execution carries channel_type='plan_task' (set by
+// the Plan Task Trigger node — see actions/trigger/plan_task in the
+// executor), the agent is running autonomously to progress a plan
+// task rather than responding to a user message. The system prompt
+// gets an additional block telling the model:
+//
+//   1. Do NOT message any user-facing channel.
+//   2. Terminate via set_output when done (downstream tasks may
+//      depend on the outputs).
+//   3. If genuinely stuck, call plan/block with a clear reason.
+//
+// Augmentation is invisible to flow authors — they don't need to
+// edit the orchestrator's prompt template. Same posture as the
+// existing blob-token instruction append on the AI side.
+
+// ChannelTypePlanTask is the channel_type value the Plan Task
+// Trigger populates. Pinned as a constant so the detection in
+// AppendPlanTaskInstructions and the populator in the tick endpoint
+// can't drift.
+const ChannelTypePlanTask = "plan_task"
+
+// PlanTaskInstructions is the focused instruction block appended to
+// the system prompt when the active turn is a plan-task invocation.
+// Order matters: this lands BEFORE the AI vendor actions' BlobToken
+// instructions so the model reads "this is autonomous mode" before
+// the mechanics of large-output handling.
+const PlanTaskInstructions = `
+
+PLAN TASK MODE — this invocation is the agent progressing a plan
+task autonomously. Do NOT message any user-facing channel; the user
+is not waiting on a reply.
+
+Complete the work the task describes. Terminate the execution by
+calling set_output with whatever downstream tasks need to consume
+(an object whose keys are referenceable via ` + "`${this_task.X.output}`" + `).
+
+If you genuinely cannot make progress (missing data, ambiguous
+instruction, external dependency unreachable), call plan/block with
+a clear reason. The user will see the blocked plan and can revise.
+`
+
+// AppendPlanTaskInstructions adds the PLAN TASK MODE block to the
+// supplied system prompt when channel_type indicates a plan-task
+// invocation. Idempotent — calling twice does not duplicate the
+// block. Order-aware — callers should invoke this BEFORE any AI-
+// vendor blob-token instruction append so the framing precedes the
+// mechanics.
+func AppendPlanTaskInstructions(systemPrompt, channelType string) string {
+	if channelType != ChannelTypePlanTask {
+		return systemPrompt
+	}
+	if strings.Contains(systemPrompt, "PLAN TASK MODE") {
+		return systemPrompt
+	}
+	return systemPrompt + PlanTaskInstructions
 }

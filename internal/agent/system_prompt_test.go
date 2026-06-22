@@ -261,3 +261,70 @@ func TestChannelDirective_AllTypes(t *testing.T) {
 	Expect(ChannelDirective("unknown")).To(Equal(""))
 	Expect(ChannelDirective("")).To(Equal(""))
 }
+
+// === M1.5 commit 4: plan-task augmentation ===
+
+func TestAppendPlanTaskInstructions_AppendsWhenPlanTask(t *testing.T) {
+	RegisterTestingT(t)
+	got := AppendPlanTaskInstructions("base prompt", "plan_task")
+	Expect(got).To(ContainSubstring("base prompt"))
+	Expect(got).To(ContainSubstring("PLAN TASK MODE"))
+	Expect(got).To(ContainSubstring("set_output"))
+	Expect(got).To(ContainSubstring("plan/block"))
+}
+
+func TestAppendPlanTaskInstructions_NoOpForUserChannels(t *testing.T) {
+	// Augmentation must NOT fire for normal channel turns —
+	// otherwise the AI would refuse to message the user during a
+	// Telegram conversation.
+	RegisterTestingT(t)
+	for _, channel := range []string{"telegram", "slack", "telegram_voice", "email", "webhook", ""} {
+		got := AppendPlanTaskInstructions("base prompt", channel)
+		Expect(got).To(Equal("base prompt"), "channel %q should not get plan-task augmentation", channel)
+	}
+}
+
+func TestAppendPlanTaskInstructions_Idempotent(t *testing.T) {
+	// Calling twice doesn't duplicate the block — defends against a
+	// future refactor that accidentally wires the augmentation in
+	// two places (e.g. once in AssembleSystemPrompt + once in a
+	// caller). Same idempotency posture the BlobToken append uses.
+	RegisterTestingT(t)
+	once := AppendPlanTaskInstructions("base", "plan_task")
+	twice := AppendPlanTaskInstructions(once, "plan_task")
+	Expect(twice).To(Equal(once))
+}
+
+func TestChannelTypePlanTask_ConstantMatchesTickValue(t *testing.T) {
+	// Pin the constant value — the tick endpoint's trigger_data
+	// populates channel_type with the literal "plan_task". Drift in
+	// either side would silently disable the augmentation.
+	RegisterTestingT(t)
+	Expect(ChannelTypePlanTask).To(Equal("plan_task"))
+}
+
+func TestAssembleSystemPrompt_AppliesAugmentationForPlanTask(t *testing.T) {
+	// Integration through the assembler — minimum-config path with
+	// no user_id (degraded branch). The augmentation should still
+	// fire because plan tasks have no user identity.
+	RegisterTestingT(t)
+	asm := NewSystemPromptAssembler(nil, nil, nil, 10)
+	res := asm.AssembleSystemPrompt(SystemPromptRequest{
+		AgentID:     "agent-1",
+		Persona:     "You are a planning agent.",
+		ChannelType: "plan_task",
+	})
+	Expect(res.Prompt).To(ContainSubstring("PLAN TASK MODE"))
+	Expect(res.Prompt).To(ContainSubstring("You are a planning agent."))
+}
+
+func TestAssembleSystemPrompt_NoAugmentationForChannelTurns(t *testing.T) {
+	RegisterTestingT(t)
+	asm := NewSystemPromptAssembler(nil, nil, nil, 10)
+	res := asm.AssembleSystemPrompt(SystemPromptRequest{
+		AgentID:     "agent-1",
+		Persona:     "You are a chat agent.",
+		ChannelType: "telegram",
+	})
+	Expect(res.Prompt).NotTo(ContainSubstring("PLAN TASK MODE"))
+}

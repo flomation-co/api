@@ -729,6 +729,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// reactively by the completion writeback (M1 commit 6).
 	internal.POST("/plan/:planID/tick", s.tickPlan)
 
+	// Agent Planning M1.5 — the plan/block AI escape hatch. Called
+	// by the executor's plan/block action when the AI decides it
+	// cannot make progress. See internal/http/plan_block.go.
+	internal.POST("/plan_task/:planTaskID/block", s.blockPlanTask)
+
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)
 	internal.POST("/credit/sync", s.syncCreditBalanceInternal)
