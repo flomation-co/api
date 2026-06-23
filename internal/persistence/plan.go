@@ -222,6 +222,83 @@ func (s *Service) GetPlanTasksByPlanID(planID string) ([]*api.PlanTask, error) {
 	return tasks, nil
 }
 
+// ListPlansByAgentID returns the page of plans for one agent plus the
+// total matching count (so the HTTP layer can set the x-total-items
+// header for pagination). The optional statusFilter narrows by the
+// plan.status enum; empty string returns all statuses.
+//
+// Ordered newest-first to match the editor's typical "what happened
+// most recently?" framing — opposite to GetPlanTasksByPlanID, which
+// sorts oldest-first because the task ordering carries semantic
+// meaning (dependencies and dispatch order).
+func (s *Service) ListPlansByAgentID(agentID, statusFilter string, limit, offset int) ([]*api.Plan, int, error) {
+	var (
+		plans []*api.Plan
+		total int
+	)
+
+	whereClause := "agent_id = $1"
+	args := []interface{}{agentID}
+	if statusFilter != "" {
+		whereClause += " AND status = $2"
+		args = append(args, statusFilter)
+	}
+
+	countQuery := "SELECT COUNT(*) FROM plan WHERE " + whereClause
+	if err := s.conn.Get(&total, countQuery, args...); err != nil {
+		return nil, 0, err
+	}
+
+	// Limit + offset land at the end of the argument list. Built
+	// dynamically because the optional status filter changes the
+	// placeholder index.
+	listQuery := "SELECT * FROM plan WHERE " + whereClause +
+		" ORDER BY created_at DESC LIMIT $" + intToPlaceholder(len(args)+1) +
+		" OFFSET $" + intToPlaceholder(len(args)+2)
+	args = append(args, limit, offset)
+
+	if err := s.conn.Select(&plans, listQuery, args...); err != nil {
+		return nil, 0, err
+	}
+	return plans, total, nil
+}
+
+// ListPlanEventsByPlanID returns up to `limit` events for the plan,
+// newest-first. The optional `before` cursor lets the editor page
+// backwards through history without scanning the full event table —
+// callers pass the timestamp of the oldest event currently shown to
+// fetch the next page.
+//
+// The event_id PK is BIGSERIAL so a strict (created_at, id) tiebreak
+// is safe — two events with the same created_at are still ordered
+// deterministically by ID.
+func (s *Service) ListPlanEventsByPlanID(planID string, limit int, before *time.Time) ([]*api.PlanEvent, error) {
+	var events []*api.PlanEvent
+
+	if before == nil {
+		err := s.conn.Select(&events, `
+			SELECT * FROM plan_event
+			WHERE plan_id = $1
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2`, planID, limit)
+		return events, err
+	}
+
+	err := s.conn.Select(&events, `
+		SELECT * FROM plan_event
+		WHERE plan_id = $1 AND created_at < $2
+		ORDER BY created_at DESC, id DESC
+		LIMIT $3`, planID, *before, limit)
+	return events, err
+}
+
+// intToPlaceholder formats an integer as the Postgres placeholder
+// suffix (the digits after the $). Kept inline rather than importing
+// strconv at the top of the file to keep this file's import set tight.
+func intToPlaceholder(n int) string {
+	return fmt.Sprintf("%d", n)
+}
+
 // VerifyFlowRevision checks that (flow_id, revision_id) exists. The
 // plan/create handler calls this for every task before inserting, so
 // a wrong revision id surfaces as a clean 400 rather than failing
@@ -297,3 +374,27 @@ const planEventInsertSQL = `
 	INSERT INTO plan_event (plan_id, plan_task_id, event_type, data)
 	VALUES ($1, $2, $3, $4)
 	RETURNING *`
+
+// SetPlanEventListener wires the post-commit publish hook used by
+// the transactional plan helpers (TickPlan, HandlePlanTaskCompletion,
+// BlockPlanTask). Called once at HTTP service startup to bind
+// PlanEventHub.Publish. Safe to leave unset — persistence functions
+// check the field for nil before invoking.
+func (s *Service) SetPlanEventListener(fn PlanEventListener) {
+	s.planEventListener = fn
+}
+
+// publishPlanEvents fans out a slice of inserted PlanEvent rows to
+// the listener. Called only AFTER tx.Commit() returns nil so a
+// rollback never leaks phantom events. No-op when the listener is
+// nil or the slice is empty.
+func (s *Service) publishPlanEvents(events []*api.PlanEvent) {
+	if s.planEventListener == nil {
+		return
+	}
+	for _, ev := range events {
+		if ev != nil {
+			s.planEventListener(ev)
+		}
+	}
+}

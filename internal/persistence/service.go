@@ -20,9 +20,20 @@ import (
 // ErrInviteAlreadyAccepted is returned when an invite has already been accepted.
 var ErrInviteAlreadyAccepted = errors.New("invite has already been accepted")
 
+// PlanEventListener is called after a successful tx.Commit() for
+// each plan_event row inserted during the transaction. Wired by the
+// HTTP layer to publish events through PlanEventHub for SSE
+// subscribers. Nil at startup; SetPlanEventListener installs it.
+type PlanEventListener func(*api.PlanEvent)
+
 type Service struct {
 	config *config.Config
 	conn   *sqlx.DB
+
+	// planEventListener is invoked post-commit for plan_event rows
+	// inserted during transactional helpers (tick / writeback /
+	// block). Nil-safe — persistence functions check before calling.
+	planEventListener PlanEventListener
 
 	stmtGetOrganisations           *sqlx.NamedStmt
 	stmtGetOrganisationByID        *sqlx.NamedStmt
