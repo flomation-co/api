@@ -40,6 +40,7 @@ type Service struct {
 	streamTokens      *StreamTokenStore
 	executionNotifier *ExecutionNotifier
 	agentSessionHub   *AgentSessionHub
+	planEventHub      *PlanEventHub
 	promptAssembler   *agent.SystemPromptAssembler
 	embeddingProvider embedding.Provider
 	inboundHandler    *agent.InboundHandler
@@ -301,7 +302,15 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		streamTokens:      NewStreamTokenStore(),
 		executionNotifier: NewExecutionNotifier(),
 		agentSessionHub:   NewAgentSessionHub(),
+		planEventHub:      NewPlanEventHub(),
 	}
+
+	// Agent Planning M2 — wire the persistence layer's post-commit
+	// event listener to the hub. Persistence calls this listener
+	// only AFTER successful tx.Commit() so SSE subscribers see only
+	// events that actually persisted (a rollback path silently
+	// drops them).
+	persistence.SetPlanEventListener(s.planEventHub.Publish)
 
 	// Initialise the system prompt assembler with optional embedding provider.
 	s.promptAssembler = s.initPromptAssembler(config)
@@ -562,6 +571,21 @@ func (s *Service) registerRoutes(config *config.Config) {
 	agents.POST("/:id/message", s.createAgentMessage)
 	agents.GET("/:id/execution", s.getAgentExecutions)
 	agents.GET("/:id/session/:sessionId/stream", s.streamAgentSession)
+
+	// Agent Planning M2 — editor-facing plan reads. SSE stream lives
+	// alongside these in M2 commit 3. See internal/http/agent_plan_read.go.
+	agents.GET("/:id/plan", s.getAgentPlans)
+	agents.GET("/:id/plan/:planID", s.getAgentPlan)
+	agents.GET("/:id/plan/:planID/event", s.getAgentPlanEvents)
+
+	// SSE — browsers' EventSource can't set Authorization headers, so
+	// streamAuthMiddleware exchanges a JWT for a short-lived opaque
+	// token via POST /auth/stream-token (same pattern as
+	// /execution/:id/stream). Mounted on v1 directly (NOT inside the
+	// agents group) so the group-level jwtMiddleware doesn't 401
+	// before streamAuthMiddleware has a chance to read the token
+	// from the query string. See internal/http/plan_stream.go.
+	v1.GET("/agent/:id/plan/:planID/stream", s.streamAuthMiddleware, s.streamAgentPlan)
 
 	// Agent Memory Phase 6: user-facing memory management.
 	agents.GET("/:id/my-memories", s.getMyAgentMemories)

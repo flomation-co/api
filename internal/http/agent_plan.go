@@ -265,12 +265,19 @@ func (s *Service) createPlan(c *gin.Context) {
 	eventData, _ := json.Marshal(map[string]interface{}{
 		"task_count": len(tasks),
 	})
-	if err := s.persistence.CreatePlanEvent(&api.PlanEvent{
+	auditEvent := &api.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_created",
 		Data:      eventData,
-	}); err != nil {
+	}
+	if err := s.persistence.CreatePlanEvent(auditEvent); err != nil {
 		log.WithField("plan_id", plan.ID).Warn("plan/create: audit event insert failed")
+	} else if s.planEventHub != nil {
+		// Agent Planning M2 — publish to SSE subscribers. CreatePlanEvent
+		// is a single-statement insert (no tx), so we publish inline
+		// rather than via the persistence-layer listener path used by
+		// the transactional helpers.
+		s.planEventHub.Publish(auditEvent)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

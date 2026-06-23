@@ -126,6 +126,12 @@ func (s *Service) TickPlan(ctx context.Context, planID string) (*TickPlanResult,
 		budget = 0
 	}
 
+	// pendingEvents collects rows inserted during this tick. Published
+	// via planEventListener AFTER tx.Commit() so a rollback never
+	// leaks phantom events to SSE subscribers. See plan.go's
+	// SetPlanEventListener for the wiring.
+	var pendingEvents []*api.PlanEvent
+
 	var fired []FiredTask
 	if budget > 0 {
 		ready, err := tickGetReadyTasks(ctx, tx, planID, budget)
@@ -176,9 +182,11 @@ func (s *Service) TickPlan(ctx context.Context, planID string) (*TickPlanResult,
 			eventData, _ := json.Marshal(map[string]interface{}{
 				"execution_id": execID,
 			})
-			if err := tickInsertPlanEvent(ctx, tx, plan.ID, &task.ID, "task_started", eventData); err != nil {
-				return nil, fmt.Errorf("audit task_started: %w", err)
+			ev, evErr := tickInsertPlanEvent(ctx, tx, plan.ID, &task.ID, "task_started", eventData)
+			if evErr != nil {
+				return nil, fmt.Errorf("audit task_started: %w", evErr)
 			}
+			pendingEvents = append(pendingEvents, ev)
 
 			fired = append(fired, FiredTask{
 				TaskID:      task.ID,
@@ -210,14 +218,21 @@ func (s *Service) TickPlan(ctx context.Context, planID string) (*TickPlanResult,
 	}
 
 	if newStatus != plan.Status {
-		if err := tickInsertPlanEvent(ctx, tx, planID, nil, "plan_"+newStatus, nil); err != nil {
-			return nil, fmt.Errorf("audit plan status change: %w", err)
+		ev, evErr := tickInsertPlanEvent(ctx, tx, planID, nil, "plan_"+newStatus, nil)
+		if evErr != nil {
+			return nil, fmt.Errorf("audit plan status change: %w", evErr)
 		}
+		pendingEvents = append(pendingEvents, ev)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit tick: %w", err)
 	}
+
+	// Tx committed — safe to publish. publishPlanEvents is a no-op
+	// when no listener is wired (e.g. background poller startup
+	// before HTTP service init).
+	s.publishPlanEvents(pendingEvents)
 
 	return &TickPlanResult{
 		PlanID:      planID,
@@ -527,14 +542,25 @@ func tickUpdatePlanStatusAndNextCheck(ctx context.Context, tx *sqlx.Tx, planID, 
 	return err
 }
 
-func tickInsertPlanEvent(ctx context.Context, tx *sqlx.Tx, planID string, taskID *string, eventType string, data json.RawMessage) error {
+// tickInsertPlanEvent inserts an audit row and returns it with the
+// server-generated columns (id, created_at) populated. Callers
+// COLLECT the returned events into a local slice and publish them
+// via Service.planEventListener AFTER successful tx.Commit() — that
+// ordering guarantees rollbacks don't leak phantom events into the
+// SSE stream.
+func tickInsertPlanEvent(ctx context.Context, tx *sqlx.Tx, planID string, taskID *string, eventType string, data json.RawMessage) (*api.PlanEvent, error) {
 	if len(data) == 0 {
 		data = json.RawMessage("{}")
 	}
-	_, err := tx.ExecContext(ctx, `
+	var ev api.PlanEvent
+	err := tx.GetContext(ctx, &ev, `
 		INSERT INTO plan_event (plan_id, plan_task_id, event_type, data)
-		VALUES ($1, $2, $3, $4)`, planID, taskID, eventType, data)
-	return err
+		VALUES ($1, $2, $3, $4)
+		RETURNING *`, planID, taskID, eventType, data)
+	if err != nil {
+		return nil, err
+	}
+	return &ev, nil
 }
 
 // isPlanTerminal returns true when there's nothing more to do.

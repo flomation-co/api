@@ -765,3 +765,13 @@ func (m *phase2Mock) HandlePlanTaskCompletion(ctx context.Context, in persistenc
 func (m *phase2Mock) BlockPlanTask(ctx context.Context, planTaskID, reason string) (persistence.BlockOutcome, error) {
 	return persistence.BlockOutcomeBlocked, nil
 }
+func (m *phase2Mock) GetPlanByID(id string) (*api.Plan, error) { return nil, nil }
+func (m *phase2Mock) GetPlanTasksByPlanID(planID string) ([]*api.PlanTask, error) {
+	return nil, nil
+}
+func (m *phase2Mock) ListPlansByAgentID(agentID, statusFilter string, limit, offset int) ([]*api.Plan, int, error) {
+	return nil, 0, nil
+}
+func (m *phase2Mock) ListPlanEventsByPlanID(planID string, limit int, before *time.Time) ([]*api.PlanEvent, error) {
+	return nil, nil
+}

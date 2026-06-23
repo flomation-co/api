@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"flomation.app/automate/api"
 )
 
 // BlockOutcome reports what happened. NotFound and Idempotent let the
@@ -84,8 +86,9 @@ func (s *Service) BlockPlanTask(ctx context.Context, planTaskID, reason string) 
 	eventData, _ := json.Marshal(map[string]interface{}{
 		"reason": blockedReason,
 	})
-	if err := tickInsertPlanEvent(ctx, tx, task.PlanID, &task.ID, "task_blocked", eventData); err != nil {
-		return BlockOutcomeBlocked, fmt.Errorf("audit task_blocked: %w", err)
+	ev, evErr := tickInsertPlanEvent(ctx, tx, task.PlanID, &task.ID, "task_blocked", eventData)
+	if evErr != nil {
+		return BlockOutcomeBlocked, fmt.Errorf("audit task_blocked: %w", evErr)
 	}
 
 	// Poke the plan so the orchestrator tick re-derives status on the
@@ -100,6 +103,11 @@ func (s *Service) BlockPlanTask(ctx context.Context, planTaskID, reason string) 
 	if err := tx.Commit(); err != nil {
 		return BlockOutcomeBlocked, fmt.Errorf("commit block: %w", err)
 	}
+
+	// Tx committed — publish the task_blocked event to SSE
+	// subscribers. No-op when no listener is wired.
+	s.publishPlanEvents([]*api.PlanEvent{ev})
+
 	return BlockOutcomeBlocked, nil
 }
 

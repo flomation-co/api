@@ -235,6 +235,12 @@ type Persistence interface {
 	// Agent Planning M1.5 — AI-initiated block of an in-flight task.
 	BlockPlanTask(ctx context.Context, planTaskID, reason string) (persistence.BlockOutcome, error)
 
+	// Agent Planning M2 — editor-facing read endpoints.
+	GetPlanByID(id string) (*api.Plan, error)
+	GetPlanTasksByPlanID(planID string) ([]*api.PlanTask, error)
+	ListPlansByAgentID(agentID, statusFilter string, limit, offset int) ([]*api.Plan, int, error)
+	ListPlanEventsByPlanID(planID string, limit int, before *time.Time) ([]*api.PlanEvent, error)
+
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
 	CreateAgentMemory(mem api.AgentMemory) (*string, error)

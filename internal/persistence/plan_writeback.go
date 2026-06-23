@@ -92,16 +92,20 @@ func (s *Service) HandlePlanTaskCompletion(ctx context.Context, in PlanTaskCompl
 		return WritebackNone, err
 	}
 
-	// Audit event with the specific transition.
+	// Audit event with the specific transition. Collected for post-
+	// commit publish (see end of function).
+	var pendingEvents []*api.PlanEvent
 	eventType := writebackEventName(outcome)
 	if eventType != "" {
 		eventData, _ := json.Marshal(map[string]interface{}{
 			"execution_id":  in.ExecutionID,
 			"attempt_count": task.AttemptCount,
 		})
-		if err := tickInsertPlanEvent(ctx, tx, task.PlanID, &task.ID, eventType, eventData); err != nil {
-			return outcome, fmt.Errorf("audit %s: %w", eventType, err)
+		ev, evErr := tickInsertPlanEvent(ctx, tx, task.PlanID, &task.ID, eventType, eventData)
+		if evErr != nil {
+			return outcome, fmt.Errorf("audit %s: %w", eventType, evErr)
 		}
+		pendingEvents = append(pendingEvents, ev)
 	}
 
 	// Poke the plan: the next poller tick (or a manual tick) should
@@ -117,6 +121,10 @@ func (s *Service) HandlePlanTaskCompletion(ctx context.Context, in PlanTaskCompl
 	if err := tx.Commit(); err != nil {
 		return outcome, fmt.Errorf("commit writeback: %w", err)
 	}
+
+	// Tx committed — publish to SSE subscribers. No-op when no
+	// listener is wired.
+	s.publishPlanEvents(pendingEvents)
 	return outcome, nil
 }
 

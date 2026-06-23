@@ -80,6 +80,16 @@ func TestPlanEventInsertSQL_References(t *testing.T) {
 	}
 }
 
+// TestIntToPlaceholder pins the placeholder helper used by
+// ListPlansByAgentID to assemble Postgres `$N` parameter suffixes
+// when the optional status filter changes the argument index.
+func TestIntToPlaceholder(t *testing.T) {
+	RegisterTestingT(t)
+	Expect(intToPlaceholder(1)).To(Equal("1"))
+	Expect(intToPlaceholder(2)).To(Equal("2"))
+	Expect(intToPlaceholder(10)).To(Equal("10"))
+}
+
 // TestErrSentinelsAreDistinct ensures the two error sentinels remain
 // distinct values — the HTTP layer pattern-matches on each
 // independently (plan-not-found → 404, flow-revision-not-found → 400).
