@@ -418,3 +418,48 @@ func (s *Service) publishPlanEvents(events []*api.PlanEvent) {
 		}
 	}
 }
+
+// PlanSummary is an aggregate snapshot of one agent's in-flight
+// plans. Used by the system-prompt assembler (M6) to inject
+// ambient awareness into the AI's prompt every turn — the AI sees
+// the counts without having to call plan/get_status to find out.
+//
+// Only non-terminal statuses are counted; completed + cancelled
+// belong to history, not in-flight state.
+type PlanSummary struct {
+	Draft        int
+	Active       int
+	Blocked      int
+	LastActivity *time.Time
+}
+
+// Total returns the sum of all counted statuses. A zero total
+// means this agent has no in-flight plans, and the system-prompt
+// assembler will skip the M6 block entirely (no noise for agents
+// not using plans).
+func (s PlanSummary) Total() int {
+	return s.Draft + s.Active + s.Blocked
+}
+
+// GetAgentPlanSummary returns the in-flight plan headcount for one
+// agent in a single round-trip. FILTER aggregation collapses three
+// COUNTs + one MAX into a single row — sub-millisecond at our
+// volume even without a status index, since each agent has at most
+// a few dozen plans in flight.
+func (s *Service) GetAgentPlanSummary(agentID string) (PlanSummary, error) {
+	var summary PlanSummary
+	err := s.conn.QueryRowx(`
+		SELECT
+			COUNT(*) FILTER (WHERE status = 'draft')   AS draft,
+			COUNT(*) FILTER (WHERE status = 'active')  AS active,
+			COUNT(*) FILTER (WHERE status = 'blocked') AS blocked,
+			MAX(updated_at)                            AS last_activity
+		FROM plan
+		WHERE agent_id = $1
+		  AND status IN ('draft', 'active', 'blocked')`, agentID).
+		Scan(&summary.Draft, &summary.Active, &summary.Blocked, &summary.LastActivity)
+	if err != nil {
+		return PlanSummary{}, err
+	}
+	return summary, nil
+}
