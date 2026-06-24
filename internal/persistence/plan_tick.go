@@ -776,12 +776,18 @@ func tickCreateOrchestratorTaskExecution(
 // agent author knows to add the Plan Task Trigger node to their
 // orchestrator flow.
 func tickGetPlanTaskTriggerForFlow(ctx context.Context, tx *sqlx.Tx, flowID string) (*api.Trigger, error) {
+	// trigger.type is a UUID FK to trigger_type(id), not a text
+	// column. M1.5 originally wrote `WHERE t.type = 'plan-task'`
+	// which made Postgres try to cast the string literal to UUID
+	// and fail at runtime. The fix joins through trigger_type so
+	// the lookup happens via the human-readable name.
 	var trigger api.Trigger
 	err := tx.GetContext(ctx, &trigger, `
 		SELECT t.*
 		FROM trigger t
 		JOIN flo_trigger ft ON ft.trigger_id = t.id
-		WHERE ft.flo_id = $1 AND t.type = 'plan-task'
+		JOIN trigger_type tt ON tt.id = t.type
+		WHERE ft.flo_id = $1 AND tt.name = 'plan-task'
 		ORDER BY t.created_at DESC
 		LIMIT 1`, flowID)
 	if err != nil {

@@ -212,6 +212,15 @@ func (m *mockPersistence) ListPlansByAgentID(agentID, statusFilter string, limit
 func (m *mockPersistence) ListPlanEventsByPlanID(planID string, limit int, before *time.Time) ([]*api.PlanEvent, error) {
 	return nil, nil
 }
+func (m *mockPersistence) CancelPlan(ctx context.Context, planID, reason string) (persistence.CancelOutcome, error) {
+	return persistence.CancelOutcomeCancelled, nil
+}
+func (m *mockPersistence) CountPlansCreatedByAgentSince(agentID string, since time.Time) (int, error) {
+	return 0, nil
+}
+func (m *mockPersistence) StartPlan(ctx context.Context, planID string) (persistence.StartOutcome, error) {
+	return persistence.StartOutcomeStarted, nil
+}
 
 func (m *mockPersistence) GetExecutionTree(rootID string) ([]*api.Execution, error) {
 	var out []*api.Execution

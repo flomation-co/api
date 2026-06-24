@@ -43,7 +43,27 @@ func NewConnector(cfg *config.Config) *Connector {
 	}
 }
 
+// internalTriggerTypes are trigger kinds the Launch service does NOT
+// poll or dispatch — they're fired by API-side machinery instead.
+// Sending them to Launch would either fail with a 400 (Launch's
+// `triggertype` enum doesn't know about them) or, worse, succeed and
+// have Launch start polling something it doesn't understand.
+//
+// Currently only 'plan-task' (Agent Planning M1.5) — fired by the
+// API's plan tick poller (internal/poller/plan_tick.go). Future
+// internal-only triggers add their type name here.
+var internalTriggerTypes = map[string]struct{}{
+	"plan-task": {},
+}
+
 func (c *Connector) RegisterTrigger(id, typeName string, data []byte, flowID string, authToken string) error {
+	if _, internal := internalTriggerTypes[typeName]; internal {
+		// Skip the Launch round-trip entirely — these triggers
+		// don't participate in Launch's polling model. Returning
+		// nil keeps the caller's "registered OK" code path happy.
+		return nil
+	}
+
 	payload := triggerPayload{
 		ID:     id,
 		Type:   typeName,

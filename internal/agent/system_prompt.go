@@ -162,6 +162,7 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 		// the Plan Task Trigger may dispatch with no agent_user_id
 		// and the AI still needs to know it's in autonomous mode.
 		prompt = AppendPlanTaskInstructions(prompt, req.ChannelType)
+		prompt = AppendPlanAuthoringInstructions(prompt, req.ChannelType)
 		return SystemPromptResult{
 			Prompt: prompt,
 		}
@@ -711,4 +712,47 @@ func AppendPlanTaskInstructions(systemPrompt, channelType string) string {
 		return systemPrompt
 	}
 	return systemPrompt + PlanTaskInstructions
+}
+
+// PlanAuthoringInstructions is the M4 draft-first guidance appended
+// for USER-CHANNEL turns. Tells the AI that plan/create now produces
+// drafts and that it must summarise + await approval before calling
+// plan/start. Lands on every turn that isn't plan-task mode (we
+// don't know the agent's tool list from inside the assembler; the
+// guidance is harmless if the agent has no plan tools wired).
+//
+// The instruction order — "create → summarise → wait → start" — is
+// load-bearing. Without it, an over-eager model will create + start
+// in the same tool turn and we lose the human-in-the-loop checkpoint
+// the whole milestone is about.
+const PlanAuthoringInstructions = `
+
+PLAN AUTHORING — plan/create produces a DRAFT plan, not an active
+one. When the user asks you to plan something:
+
+  1. Call plan/create to author the plan (it persists as a draft).
+  2. Summarise the plan back to the user in their channel — the
+     title, goal, and each task's name + a one-line description.
+  3. Ask the user to confirm before starting.
+  4. ONLY after explicit user approval ("go ahead", "start it",
+     "proceed", "looks good", "yes"), call plan/start with the
+     plan_id from step 1.
+
+Do NOT call plan/start immediately after plan/create. The draft
+phase is the user's checkpoint to revise scope, cancel, or approve.
+`
+
+// AppendPlanAuthoringInstructions adds the M4 draft-first guidance
+// when the agent is NOT in plan-task mode. Idempotent.
+func AppendPlanAuthoringInstructions(systemPrompt, channelType string) string {
+	if channelType == ChannelTypePlanTask {
+		// Plan-task turns already get PLAN TASK MODE which forbids
+		// plan/create entirely. Adding draft-authoring guidance on
+		// top would be confusing.
+		return systemPrompt
+	}
+	if strings.Contains(systemPrompt, "PLAN AUTHORING") {
+		return systemPrompt
+	}
+	return systemPrompt + PlanAuthoringInstructions
 }

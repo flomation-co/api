@@ -27,6 +27,22 @@ func ptr(s string) *string { return &s }
 
 // === Pure validator tests ===
 
+// TestNilIfEmptyPtr pins the helper that normalises *string fields
+// whose downstream column is a UUID. Without this, the executor's
+// plan/create action sending `"owner_user_id": ""` arrives as a
+// non-nil pointer-to-empty-string and the persistence layer hands
+// it to Postgres, which rejects "" as an invalid UUID.
+func TestNilIfEmptyPtr(t *testing.T) {
+	RegisterTestingT(t)
+	Expect(nilIfEmptyPtr(nil)).To(BeNil())
+	empty := ""
+	Expect(nilIfEmptyPtr(&empty)).To(BeNil())
+	val := "uuid-123"
+	got := nilIfEmptyPtr(&val)
+	Expect(got).NotTo(BeNil())
+	Expect(*got).To(Equal("uuid-123"))
+}
+
 func TestValidatePlanTasks_DuplicateName(t *testing.T) {
 	RegisterTestingT(t)
 	tasks := []createPlanTask{
@@ -176,6 +192,11 @@ type planRecordingMock struct {
 	nextCheckCalled bool
 	eventCalled     bool
 	createErr       error
+	// M3.5 rate cap: countRecent is what CountPlansCreatedByAgentSince
+	// returns. Defaults to 0 (no recent plans) so existing tests keep
+	// passing untouched; rate-cap tests set this to a positive value
+	// to assert the 429 path.
+	countRecent int
 }
 
 func newPlanRecordingMock() *planRecordingMock {
@@ -183,6 +204,10 @@ func newPlanRecordingMock() *planRecordingMock {
 		mockPersistence: newMockPersistence(),
 		verifyAlways:    true,
 	}
+}
+
+func (m *planRecordingMock) CountPlansCreatedByAgentSince(_ string, _ time.Time) (int, error) {
+	return m.countRecent, nil
 }
 
 func (m *planRecordingMock) VerifyFlowRevision(_, revisionID string) (bool, error) {
@@ -231,6 +256,49 @@ func postPlan(t *testing.T, router *gin.Engine, agentID, body string) *httptest.
 	return rec
 }
 
+// TestCreatePlan_RateLimited_Returns429 pins the M3.5 rate cap. A
+// second plan/create from the same agent within 10s — even with a
+// valid body — returns 429 with a detail string the AI is supposed
+// to read and self-correct from.
+func TestCreatePlan_RateLimited_Returns429(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	mock := newPlanRecordingMock()
+	mock.countRecent = 1 // simulate "one plan created in the window"
+	svc := &Service{persistence: mock}
+	r := setupPlanRouter(svc)
+
+	body := `{"title":"x","goal":"y","tasks":[{"name":"a","description":"d"}]}`
+	rec := postPlan(t, r, "agent-1", body)
+	Expect(rec.Code).To(Equal(http.StatusTooManyRequests))
+
+	var resp map[string]interface{}
+	Expect(json.Unmarshal(rec.Body.Bytes(), &resp)).To(Succeed())
+	Expect(resp["error"]).To(Equal("rate_limited"))
+	Expect(resp["detail"]).To(ContainSubstring("plan/get_status"))
+	Expect(resp["retry_after_seconds"]).To(BeNumerically(">=", 1))
+
+	// The persistence layer must NOT have been asked to create.
+	Expect(mock.gotPlan).To(BeNil())
+}
+
+// TestCreatePlan_RateCap_PassesOnZeroRecent confirms the happy path
+// still flows when CountPlansCreatedByAgentSince returns 0 — the
+// rate cap is purely additive and must not block normal use.
+func TestCreatePlan_RateCap_PassesOnZeroRecent(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	mock := newPlanRecordingMock()
+	mock.countRecent = 0
+	svc := &Service{persistence: mock}
+	r := setupPlanRouter(svc)
+
+	body := `{"title":"x","goal":"y","tasks":[{"name":"a","description":"d"}]}`
+	rec := postPlan(t, r, "agent-1", body)
+	Expect(rec.Code).To(Equal(http.StatusCreated))
+	Expect(mock.gotPlan).NotTo(BeNil())
+}
+
 func TestCreatePlan_HappyPath_Returns201(t *testing.T) {
 	t.Parallel()
 	RegisterTestingT(t)
@@ -255,11 +323,13 @@ func TestCreatePlan_HappyPath_Returns201(t *testing.T) {
 	Expect(json.Unmarshal(rec.Body.Bytes(), &resp)).To(Succeed())
 	Expect(resp["plan_id"]).To(Equal("plan-stamped-by-mock"))
 	Expect(resp["task_count"]).To(BeNumerically("==", 2))
-	Expect(resp["status"]).To(Equal("active"))
+	// M4: plans are created as drafts. The agent (or user) must
+	// call plan/start to transition draft → active.
+	Expect(resp["status"]).To(Equal("draft"))
 
 	Expect(mock.gotPlan).NotTo(BeNil())
 	Expect(mock.gotPlan.AgentID).To(Equal("agent-1"))
-	Expect(mock.gotPlan.Status).To(Equal("active"))
+	Expect(mock.gotPlan.Status).To(Equal("draft"))
 	Expect(mock.gotTasks).To(HaveLen(2))
 
 	// The depends_on field on the persisted second task should carry
@@ -269,7 +339,9 @@ func TestCreatePlan_HappyPath_Returns201(t *testing.T) {
 	Expect(mock.gotTasks[1].DependsOn).To(HaveLen(1))
 	Expect(mock.gotTasks[1].DependsOn[0]).To(Equal(mock.gotTasks[0].ID))
 
-	Expect(mock.nextCheckCalled).To(BeTrue())
+	// M4: SetPlanNextCheck is no longer called at create time —
+	// drafts don't tick. The poker fires inside StartPlan instead.
+	Expect(mock.nextCheckCalled).To(BeFalse())
 	Expect(mock.eventCalled).To(BeTrue())
 }
 

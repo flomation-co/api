@@ -979,7 +979,13 @@ type PlanTask struct {
 	DependsOn      pq.StringArray  `db:"depends_on" json:"depends_on"`
 	NotBefore      *time.Time      `db:"not_before" json:"not_before,omitempty"`
 	InputsJSON     json.RawMessage `db:"inputs_json" json:"inputs_json"`
-	OutputsJSON    json.RawMessage `db:"outputs_json" json:"outputs_json,omitempty"`
+	// OutputsJSON is *json.RawMessage (not json.RawMessage) because
+	// the column is nullable — fresh tasks have no outputs until
+	// the completion writeback runs. A non-pointer json.RawMessage
+	// can't represent NULL, and sql.Scan fails with "unsupported
+	// Scan, storing driver.Value type <nil> into type *json.RawMessage"
+	// when reading a row that hasn't been written-back yet.
+	OutputsJSON    *json.RawMessage `db:"outputs_json" json:"outputs_json,omitempty"`
 	ExecutionID    *string         `db:"execution_id" json:"execution_id,omitempty"`
 	AttemptCount   int             `db:"attempt_count" json:"attempt_count"`
 	LastError      *string         `db:"last_error" json:"last_error,omitempty"`

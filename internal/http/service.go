@@ -577,6 +577,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	agents.GET("/:id/plan", s.getAgentPlans)
 	agents.GET("/:id/plan/:planID", s.getAgentPlan)
 	agents.GET("/:id/plan/:planID/event", s.getAgentPlanEvents)
+	// Agent Planning M3 — editor-facing cancel button.
+	agents.POST("/:id/plan/:planID/cancel", s.cancelAgentPlan)
+	// Agent Planning M4 — editor-facing Start button (transitions
+	// a draft plan to active).
+	agents.POST("/:id/plan/:planID/start", s.startAgentPlan)
 
 	// SSE — browsers' EventSource can't set Authorization headers, so
 	// streamAuthMiddleware exchanges a JWT for a short-lived opaque
@@ -757,6 +762,17 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// by the executor's plan/block action when the AI decides it
 	// cannot make progress. See internal/http/plan_block.go.
 	internal.POST("/plan_task/:planTaskID/block", s.blockPlanTask)
+
+	// Agent Planning M3 — AI-facing cancel + get-status. mTLS twins
+	// of the editor's cancel POST and M2's plan-read GET. Both
+	// still verify plan.agent_id == :id (mTLS proves "an executor",
+	// not "the right executor"). See internal/http/agent_plan_cancel.go.
+	internal.POST("/agent/:id/plan/:planID/cancel", s.cancelAgentPlanInternal)
+	internal.GET("/agent/:id/plan/:planID", s.getAgentPlanInternal)
+
+	// Agent Planning M4 — AI-facing start (transitions a draft
+	// plan to active). mTLS twin of the editor's start POST.
+	internal.POST("/agent/:id/plan/:planID/start", s.startAgentPlanInternal)
 
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)

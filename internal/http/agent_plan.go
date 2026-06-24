@@ -106,10 +106,45 @@ func deriveTaskKind(t createPlanTask) (string, map[string]interface{}) {
 // On success returns 201 with the new plan_id and task count. On
 // validation failure returns 400 with a structured detail object;
 // on unexpected DB failure returns 500.
+// planCreateRateCapWindow is how recently another plan_create from
+// this agent counts as "too recent". 10s is well above any
+// legitimate use case (no human asks the agent to make two
+// distinct plans in 10 seconds) and tight enough to catch the
+// LLM-second-guesses-itself pattern where the model fires
+// plan/create twice on a single user turn.
+const planCreateRateCapWindow = 10 * time.Second
+
 func (s *Service) createPlan(c *gin.Context) {
 	agentID := c.Param("id")
 	if agentID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "agent id required"})
+		return
+	}
+
+	// Agent Planning M3.5 — per-agent rate cap on plan/create. If
+	// the agent created ANY plan in the last 10s, reject with 429
+	// and a clear tool_result body so the executor's plan/create
+	// action surfaces it to the AI verbatim and the model
+	// self-corrects (calls plan/get_status instead of trying again).
+	since := time.Now().Add(-planCreateRateCapWindow)
+	if recent, err := s.persistence.CountPlansCreatedByAgentSince(agentID, since); err != nil {
+		log.WithFields(log.Fields{"error": err, "agent_id": agentID}).
+			Error("plan/create: rate-cap query failed")
+		// Fail closed: if we can't check the cap, accept the call
+		// rather than blocking legitimate creates. The orchestrator
+		// loop's other defences (tool filtering, depth caps) still
+		// apply.
+	} else if recent > 0 {
+		log.WithFields(log.Fields{
+			"agent_id": agentID,
+			"window":   planCreateRateCapWindow.String(),
+			"recent":   recent,
+		}).Warn("plan/create rate-capped")
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":               "rate_limited",
+			"detail":              fmt.Sprintf("agent already created %d plan(s) within the last %s — call plan/get_status to check existing plans before creating another", recent, planCreateRateCapWindow),
+			"retry_after_seconds": int(planCreateRateCapWindow.Seconds()),
+		})
 		return
 	}
 
@@ -234,13 +269,27 @@ func (s *Service) createPlan(c *gin.Context) {
 	}
 
 	plan := &api.Plan{
-		AgentID:              agentID,
-		OwnerUserID:          req.OwnerUserID,
-		OrganisationID:       req.OrganisationID,
-		CreatedByExecutionID: req.CreatedByExecutionID,
+		AgentID: agentID,
+		// Normalise empty-string pointers to nil. The executor's
+		// plan/create action sends `"owner_user_id": ""` when
+		// ctx.UserID is empty (e.g. org-level agent runs with no
+		// declared owner); JSON unmarshal then produces a *string
+		// pointing to "" rather than nil, and Postgres rejects "" as
+		// a UUID value. Mapping empty → nil here lets the schema's
+		// NULL-allowed columns accept the absence cleanly.
+		OwnerUserID:          nilIfEmptyPtr(req.OwnerUserID),
+		OrganisationID:       nilIfEmptyPtr(req.OrganisationID),
+		CreatedByExecutionID: nilIfEmptyPtr(req.CreatedByExecutionID),
 		Title:                req.Title,
 		Goal:                 req.Goal,
-		Status:               "active",
+		// M4: plans are created as drafts. The agent (or user)
+		// explicitly calls plan/start to transition draft → active
+		// and start dispatching tasks. This gives the user a
+		// "propose then approve" checkpoint that M3.5 + earlier
+		// milestones lacked. Drafts have NULL next_check_at, so
+		// the tick poller never picks them up — they sit idle
+		// until started or cancelled.
+		Status: "draft",
 	}
 	if err := s.persistence.CreatePlanWithTasks(plan, tasks); err != nil {
 		log.WithFields(log.Fields{
@@ -251,13 +300,9 @@ func (s *Service) createPlan(c *gin.Context) {
 		return
 	}
 
-	// Wake the orchestrator immediately. SetPlanNextCheck failure is
-	// logged but doesn't abort — the next poller scan will pick the
-	// plan up either way (the plan_ready_tick_idx partial index covers
-	// next_check_at NULL via NULLS FIRST).
-	if err := s.persistence.SetPlanNextCheck(plan.ID, time.Now()); err != nil {
-		log.WithField("plan_id", plan.ID).Warn("plan/create: SetPlanNextCheck failed; relying on next poller scan")
-	}
+	// M4: NO automatic SetPlanNextCheck call here. The tick poker
+	// fires inside StartPlan when the draft is explicitly started.
+	// Authoring a plan no longer kicks off task dispatch.
 
 	// Audit event. Same fire-and-forget posture as the next-check
 	// poke — losing this row is annoying for the timeline view but
@@ -456,4 +501,20 @@ func detectCycle(tasks []createPlanTask) (string, bool) {
 		}
 	}
 	return fmt.Sprintf("unknown (%d unprocessed)", len(tasks)-processed), true
+}
+
+// nilIfEmptyPtr returns nil when the input is nil OR points to an
+// empty string; otherwise returns the input untouched. Used to
+// normalise *string fields whose downstream column is a UUID — an
+// empty pointer dereferences to "" which Postgres can't cast.
+//
+// Callers receive these *strings via JSON unmarshal, so an absent
+// field arrives as nil but an explicit `""` arrives as a non-nil
+// pointer-to-empty. This helper collapses both into nil at the
+// persistence boundary.
+func nilIfEmptyPtr(p *string) *string {
+	if p == nil || *p == "" {
+		return nil
+	}
+	return p
 }
