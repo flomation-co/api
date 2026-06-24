@@ -60,6 +60,9 @@ type Persistence interface {
 	GetOpenPendingActionsForUser(agentUserID string) ([]*api.AgentPendingAction, error)
 	SearchMemoriesByEmbedding(agentID, agentUserID string, emb pgvector.Vector, topK int, excludePinned bool) ([]*api.AgentMemory, error)
 	GetAgentSchedulesForUser(agentID, agentUserID string) ([]*api.AgentSchedule, error)
+	// Agent Planning M6 — in-flight plan summary for the
+	// PLAN STATUS block appended to user-channel system prompts.
+	GetAgentPlanSummary(agentID string) (apipersistence.PlanSummary, error)
 }
 
 // ToolSummaryProvider retrieves the tool summary for an agent.
@@ -163,6 +166,7 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 		// and the AI still needs to know it's in autonomous mode.
 		prompt = AppendPlanTaskInstructions(prompt, req.ChannelType)
 		prompt = AppendPlanAuthoringInstructions(prompt, req.ChannelType)
+		prompt = a.appendPlanStatusContext(prompt, req)
 		return SystemPromptResult{
 			Prompt: prompt,
 		}
@@ -216,11 +220,41 @@ func (a *SystemPromptAssembler) AssembleSystemPrompt(req SystemPromptRequest) Sy
 	// authors. Detection via the channel_type field the Plan Task
 	// Trigger populates; no new SystemPromptRequest field needed.
 	prompt = AppendPlanTaskInstructions(prompt, req.ChannelType)
+	// M4 draft-first authoring guidance (was missing on this full-
+	// path branch — added during M6 alongside the new plan-status
+	// context block).
+	prompt = AppendPlanAuthoringInstructions(prompt, req.ChannelType)
+	// M6 plan-status ambient context.
+	prompt = a.appendPlanStatusContext(prompt, req)
 
 	return SystemPromptResult{
 		Prompt:            prompt,
 		HasPendingActions: len(pending) > 0,
 	}
+}
+
+// appendPlanStatusContext fetches the M6 plan summary for this
+// agent and appends it to the prompt. Best-effort — on DB error
+// we log + return the prompt untouched (one turn missing the
+// awareness block is not load-bearing). nil-safe on the
+// persistence dependency for legacy test paths that construct the
+// assembler without one.
+func (a *SystemPromptAssembler) appendPlanStatusContext(prompt string, req SystemPromptRequest) string {
+	if a.persistence == nil {
+		return prompt
+	}
+	if req.AgentID == "" || req.ChannelType == ChannelTypePlanTask {
+		return prompt
+	}
+	summary, err := a.persistence.GetAgentPlanSummary(req.AgentID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err,
+			"agent_id": req.AgentID,
+		}).Warn("plan summary fetch failed; skipping M6 block")
+		return prompt
+	}
+	return AppendPlanStatusContext(prompt, req.ChannelType, summary)
 }
 
 // fetchPinnedMemories loads pinned memories directly from the DB.
@@ -755,4 +789,65 @@ func AppendPlanAuthoringInstructions(systemPrompt, channelType string) string {
 		return systemPrompt
 	}
 	return systemPrompt + PlanAuthoringInstructions
+}
+
+// AppendPlanStatusContext is the M6 ambient-awareness block —
+// injects a "PLAN STATUS" summary into the system prompt so the AI
+// knows, every turn, what plans it has in flight without needing
+// to call plan/get_status.
+//
+// Skipped when:
+//   * Channel is plan_task (PLAN TASK MODE already has full task
+//     context; adding "you have N active plans" would be noise).
+//   * Summary total is zero (no plans → no block; don't pollute the
+//     prompt for agents not using plans).
+//
+// Idempotent — if the block is already in the prompt (e.g.
+// re-assembly within one turn), we don't append twice.
+func AppendPlanStatusContext(systemPrompt, channelType string, summary apipersistence.PlanSummary) string {
+	if channelType == ChannelTypePlanTask {
+		return systemPrompt
+	}
+	if summary.Total() == 0 {
+		return systemPrompt
+	}
+	if strings.Contains(systemPrompt, "PLAN STATUS") {
+		return systemPrompt
+	}
+
+	var b strings.Builder
+	b.WriteString("\n\nPLAN STATUS — ")
+	fmt.Fprintf(&b, "%d plan(s) currently in flight:\n", summary.Total())
+	if summary.Draft > 0 {
+		fmt.Fprintf(&b, "  - %d draft (awaiting approval)\n", summary.Draft)
+	}
+	if summary.Active > 0 {
+		fmt.Fprintf(&b, "  - %d active\n", summary.Active)
+	}
+	if summary.Blocked > 0 {
+		fmt.Fprintf(&b, "  - %d blocked\n", summary.Blocked)
+	}
+	if summary.LastActivity != nil {
+		fmt.Fprintf(&b, "Last task activity: %s.\n", formatRelative(*summary.LastActivity))
+	}
+	b.WriteString("\nIf the user references one of your plans, call plan/get_status with the plan_id to check its state before acting.\n")
+
+	return systemPrompt + b.String()
+}
+
+// formatRelative renders a timestamp as "Xs ago" / "Xm ago" /
+// "Xh ago" / "Xd ago". Avoids pulling a time-formatting library
+// just for this one site.
+func formatRelative(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minute(s) ago", int(d/time.Minute))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d hour(s) ago", int(d/time.Hour))
+	default:
+		return fmt.Sprintf("%d day(s) ago", int(d/(24*time.Hour)))
+	}
 }

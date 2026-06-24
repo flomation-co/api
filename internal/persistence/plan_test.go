@@ -110,3 +110,13 @@ func TestPlanTaskKindConstants_StayStable(t *testing.T) {
 	Expect(api.PlanTaskKindOrchestrator).To(Equal("orchestrator"))
 	Expect(api.PlanTaskKindFlow).To(Equal("flow"))
 }
+
+// TestPlanSummary_Total pins the helper that the system-prompt
+// assembler uses to decide whether to emit the M6 block. Zero
+// total → no block; non-zero → block injected.
+func TestPlanSummary_Total(t *testing.T) {
+	RegisterTestingT(t)
+	Expect((PlanSummary{}).Total()).To(Equal(0))
+	Expect((PlanSummary{Draft: 1}).Total()).To(Equal(1))
+	Expect((PlanSummary{Draft: 1, Active: 2, Blocked: 3}).Total()).To(Equal(6))
+}

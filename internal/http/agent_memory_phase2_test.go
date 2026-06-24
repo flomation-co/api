@@ -787,3 +787,6 @@ func (m *phase2Mock) StartPlan(ctx context.Context, planID string) (persistence.
 func (m *phase2Mock) RevisePlan(ctx context.Context, planID string, ops persistence.RevisionOps) (persistence.RevisionResult, error) {
 	return persistence.RevisionResult{Outcome: persistence.RevisionOutcomeRevised, NewStatus: "active"}, nil
 }
+func (m *phase2Mock) GetAgentPlanSummary(agentID string) (persistence.PlanSummary, error) {
+	return persistence.PlanSummary{}, nil
+}

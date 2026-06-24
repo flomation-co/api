@@ -3,7 +3,9 @@ package agent
 import (
 	"strings"
 	"testing"
+	"time"
 
+	apipersistence "flomation.app/automate/api/internal/persistence"
 	. "github.com/onsi/gomega"
 )
 
@@ -362,5 +364,96 @@ func TestAppendPlanAuthoringInstructions_Idempotent(t *testing.T) {
 	twice := AppendPlanAuthoringInstructions(once, "telegram")
 	if once != twice {
 		t.Errorf("idempotency broken — block appended twice")
+	}
+}
+
+// === M6 — plan progress in system prompt ===
+
+func TestAppendPlanStatusContext_EmptySummary_SkipsBlock(t *testing.T) {
+	// Zero-plan agents must NOT receive an empty "PLAN STATUS — 0
+	// plans" stub. The block is only injected when the summary
+	// has at least one plan.
+	out := AppendPlanStatusContext("Persona.", "telegram", apipersistence.PlanSummary{})
+	if strings.Contains(out, "PLAN STATUS") {
+		t.Errorf("empty summary should NOT add the PLAN STATUS block, got: %s", out)
+	}
+}
+
+func TestAppendPlanStatusContext_NonEmptySummary_AppendsBlock(t *testing.T) {
+	now := time.Now().Add(-5 * time.Minute)
+	summary := apipersistence.PlanSummary{
+		Draft:        1,
+		Active:       1,
+		Blocked:      1,
+		LastActivity: &now,
+	}
+	out := AppendPlanStatusContext("Persona.", "telegram", summary)
+	if !strings.Contains(out, "PLAN STATUS") {
+		t.Errorf("missing PLAN STATUS block, got: %s", out)
+	}
+	if !strings.Contains(out, "3 plan(s)") {
+		t.Errorf("missing plan count, got: %s", out)
+	}
+	if !strings.Contains(out, "1 draft") || !strings.Contains(out, "1 active") || !strings.Contains(out, "1 blocked") {
+		t.Errorf("missing status breakdown, got: %s", out)
+	}
+	if !strings.Contains(out, "minute(s) ago") {
+		t.Errorf("missing relative time, got: %s", out)
+	}
+}
+
+func TestAppendPlanStatusContext_PlanTaskChannel_SkipsBlock(t *testing.T) {
+	// Plan-task turns already get PLAN TASK MODE — M6's ambient
+	// awareness would be confusing noise on top.
+	summary := apipersistence.PlanSummary{Active: 1}
+	out := AppendPlanStatusContext("Persona.", ChannelTypePlanTask, summary)
+	if strings.Contains(out, "PLAN STATUS") {
+		t.Errorf("plan_task channel should NOT receive the M6 block, got: %s", out)
+	}
+}
+
+func TestAppendPlanStatusContext_Idempotent(t *testing.T) {
+	summary := apipersistence.PlanSummary{Active: 1}
+	once := AppendPlanStatusContext("Persona.", "telegram", summary)
+	twice := AppendPlanStatusContext(once, "telegram", summary)
+	if once != twice {
+		t.Errorf("idempotency broken — M6 block appended twice")
+	}
+}
+
+func TestAppendPlanStatusContext_OnlyShowsNonZeroLines(t *testing.T) {
+	// One active, zero draft/blocked → only the "active" line
+	// appears in the breakdown.
+	summary := apipersistence.PlanSummary{Active: 2}
+	out := AppendPlanStatusContext("Persona.", "telegram", summary)
+	if strings.Contains(out, "draft") {
+		t.Errorf("zero drafts should not produce a draft line, got: %s", out)
+	}
+	if strings.Contains(out, "blocked") {
+		t.Errorf("zero blocked should not produce a blocked line, got: %s", out)
+	}
+	if !strings.Contains(out, "2 active") {
+		t.Errorf("missing active line, got: %s", out)
+	}
+}
+
+func TestFormatRelative_Buckets(t *testing.T) {
+	// Boundary check on the relative-time renderer. Avoids time-
+	// formatting libraries; just affirms our four buckets work.
+	cases := []struct {
+		dur     time.Duration
+		want    string
+	}{
+		{30 * time.Second, "just now"},
+		{5 * time.Minute, "minute(s) ago"},
+		{2 * time.Hour, "hour(s) ago"},
+		{3 * 24 * time.Hour, "day(s) ago"},
+	}
+	for _, c := range cases {
+		ts := time.Now().Add(-c.dur)
+		got := formatRelative(ts)
+		if !strings.Contains(got, c.want) {
+			t.Errorf("dur=%s want substring=%q got=%q", c.dur, c.want, got)
+		}
 	}
 }

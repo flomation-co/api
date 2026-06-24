@@ -256,6 +256,10 @@ type Persistence interface {
 	// tasks are removed.
 	RevisePlan(ctx context.Context, planID string, ops persistence.RevisionOps) (persistence.RevisionResult, error)
 
+	// Agent Planning M6 — in-flight plan summary for the system
+	// prompt's PLAN STATUS block.
+	GetAgentPlanSummary(agentID string) (persistence.PlanSummary, error)
+
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
 	CreateAgentMemory(mem api.AgentMemory) (*string, error)
