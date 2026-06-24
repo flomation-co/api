@@ -250,6 +250,12 @@ type Persistence interface {
 	// Agent Planning M4 — draft → active transition.
 	StartPlan(ctx context.Context, planID string) (persistence.StartOutcome, error)
 
+	// Agent Planning M5 — modify a plan's task graph (add / remove
+	// / update). Atomic, validated against the projected post-revise
+	// graph. Auto-transitions blocked → active when all failed
+	// tasks are removed.
+	RevisePlan(ctx context.Context, planID string, ops persistence.RevisionOps) (persistence.RevisionResult, error)
+
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
 	CreateAgentMemory(mem api.AgentMemory) (*string, error)

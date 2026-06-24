@@ -784,3 +784,6 @@ func (m *phase2Mock) CountPlansCreatedByAgentSince(agentID string, since time.Ti
 func (m *phase2Mock) StartPlan(ctx context.Context, planID string) (persistence.StartOutcome, error) {
 	return persistence.StartOutcomeStarted, nil
 }
+func (m *phase2Mock) RevisePlan(ctx context.Context, planID string, ops persistence.RevisionOps) (persistence.RevisionResult, error) {
+	return persistence.RevisionResult{Outcome: persistence.RevisionOutcomeRevised, NewStatus: "active"}, nil
+}

@@ -582,6 +582,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// Agent Planning M4 — editor-facing Start button (transitions
 	// a draft plan to active).
 	agents.POST("/:id/plan/:planID/start", s.startAgentPlan)
+	// Agent Planning M5 — editor-facing revise endpoint (add /
+	// remove / update tasks on non-terminal plans).
+	agents.POST("/:id/plan/:planID/revise", s.reviseAgentPlan)
 
 	// SSE — browsers' EventSource can't set Authorization headers, so
 	// streamAuthMiddleware exchanges a JWT for a short-lived opaque
@@ -773,6 +776,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// Agent Planning M4 — AI-facing start (transitions a draft
 	// plan to active). mTLS twin of the editor's start POST.
 	internal.POST("/agent/:id/plan/:planID/start", s.startAgentPlanInternal)
+
+	// Agent Planning M5 — AI-facing revise. mTLS twin of the
+	// editor's revise POST.
+	internal.POST("/agent/:id/plan/:planID/revise", s.reviseAgentPlanInternal)
 
 	// Billing: entitlement sync (pushed from billing service).
 	internal.POST("/entitlements/sync", s.syncEntitlementsInternal)

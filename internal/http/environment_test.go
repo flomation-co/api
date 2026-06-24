@@ -221,6 +221,9 @@ func (m *mockPersistence) CountPlansCreatedByAgentSince(agentID string, since ti
 func (m *mockPersistence) StartPlan(ctx context.Context, planID string) (persistence.StartOutcome, error) {
 	return persistence.StartOutcomeStarted, nil
 }
+func (m *mockPersistence) RevisePlan(ctx context.Context, planID string, ops persistence.RevisionOps) (persistence.RevisionResult, error) {
+	return persistence.RevisionResult{Outcome: persistence.RevisionOutcomeRevised, NewStatus: "active"}, nil
+}
 
 func (m *mockPersistence) GetExecutionTree(rootID string) ([]*api.Execution, error) {
 	var out []*api.Execution
