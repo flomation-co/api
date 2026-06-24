@@ -817,18 +817,18 @@ func AppendPlanStatusContext(systemPrompt, channelType string, summary apipersis
 
 	var b strings.Builder
 	b.WriteString("\n\nPLAN STATUS — ")
-	b.WriteString(fmt.Sprintf("%d plan(s) currently in flight:\n", summary.Total()))
+	fmt.Fprintf(&b, "%d plan(s) currently in flight:\n", summary.Total())
 	if summary.Draft > 0 {
-		b.WriteString(fmt.Sprintf("  - %d draft (awaiting approval)\n", summary.Draft))
+		fmt.Fprintf(&b, "  - %d draft (awaiting approval)\n", summary.Draft)
 	}
 	if summary.Active > 0 {
-		b.WriteString(fmt.Sprintf("  - %d active\n", summary.Active))
+		fmt.Fprintf(&b, "  - %d active\n", summary.Active)
 	}
 	if summary.Blocked > 0 {
-		b.WriteString(fmt.Sprintf("  - %d blocked\n", summary.Blocked))
+		fmt.Fprintf(&b, "  - %d blocked\n", summary.Blocked)
 	}
 	if summary.LastActivity != nil {
-		b.WriteString(fmt.Sprintf("Last task activity: %s.\n", formatRelative(*summary.LastActivity)))
+		fmt.Fprintf(&b, "Last task activity: %s.\n", formatRelative(*summary.LastActivity))
 	}
 	b.WriteString("\nIf the user references one of your plans, call plan/get_status with the plan_id to check its state before acting.\n")
 
