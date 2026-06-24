@@ -205,7 +205,8 @@ func (s *Service) RevisePlan(ctx context.Context, planID string, ops RevisionOps
 	// no failed tasks left. Draft and active stay where they are.
 	newStatus := plan.Status
 	pokeNextCheck := false
-	if plan.Status == "blocked" {
+	switch plan.Status {
+	case "blocked":
 		var failedCount int
 		if err := tx.GetContext(ctx, &failedCount,
 			`SELECT COUNT(*) FROM plan_task WHERE plan_id = $1 AND status = 'failed'`,
@@ -217,7 +218,7 @@ func (s *Service) RevisePlan(ctx context.Context, planID string, ops RevisionOps
 			newStatus = "active"
 			pokeNextCheck = true
 		}
-	} else if plan.Status == "active" {
+	case "active":
 		// New pending tasks in an active plan should be picked up
 		// on the next tick.
 		if len(ops.AddTasks) > 0 {
