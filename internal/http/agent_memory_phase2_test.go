@@ -775,3 +775,12 @@ func (m *phase2Mock) ListPlansByAgentID(agentID, statusFilter string, limit, off
 func (m *phase2Mock) ListPlanEventsByPlanID(planID string, limit int, before *time.Time) ([]*api.PlanEvent, error) {
 	return nil, nil
 }
+func (m *phase2Mock) CancelPlan(ctx context.Context, planID, reason string) (persistence.CancelOutcome, error) {
+	return persistence.CancelOutcomeCancelled, nil
+}
+func (m *phase2Mock) CountPlansCreatedByAgentSince(agentID string, since time.Time) (int, error) {
+	return 0, nil
+}
+func (m *phase2Mock) StartPlan(ctx context.Context, planID string) (persistence.StartOutcome, error) {
+	return persistence.StartOutcomeStarted, nil
+}

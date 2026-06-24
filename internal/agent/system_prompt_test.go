@@ -328,3 +328,39 @@ func TestAssembleSystemPrompt_NoAugmentationForChannelTurns(t *testing.T) {
 	})
 	Expect(res.Prompt).NotTo(ContainSubstring("PLAN TASK MODE"))
 }
+
+// === M4 — draft-first plan authoring guidance ===
+
+func TestAppendPlanAuthoringInstructions_AppendsForUserChannels(t *testing.T) {
+	// Telegram, Slack, Manual — any non-plan-task channel — should
+	// get the draft-first guidance so the AI knows plan/create
+	// returns drafts and a separate plan/start call is needed.
+	for _, ch := range []string{"telegram", "slack", "manual", ""} {
+		out := AppendPlanAuthoringInstructions("Persona.", ch)
+		if !strings.Contains(out, "PLAN AUTHORING") {
+			t.Errorf("channel %q: missing PLAN AUTHORING block", ch)
+		}
+		if !strings.Contains(out, "plan/start") {
+			t.Errorf("channel %q: PLAN AUTHORING block doesn't mention plan/start", ch)
+		}
+	}
+}
+
+func TestAppendPlanAuthoringInstructions_SkipsPlanTaskChannel(t *testing.T) {
+	// Plan-task turns get PLAN TASK MODE which forbids plan/create
+	// entirely. Adding draft-authoring guidance there would be
+	// confusing — the AI shouldn't be authoring plans in plan-task
+	// mode at all.
+	out := AppendPlanAuthoringInstructions("Persona.", ChannelTypePlanTask)
+	if strings.Contains(out, "PLAN AUTHORING") {
+		t.Errorf("plan_task channel should NOT receive draft-authoring guidance, got: %s", out)
+	}
+}
+
+func TestAppendPlanAuthoringInstructions_Idempotent(t *testing.T) {
+	once := AppendPlanAuthoringInstructions("Persona.", "telegram")
+	twice := AppendPlanAuthoringInstructions(once, "telegram")
+	if once != twice {
+		t.Errorf("idempotency broken — block appended twice")
+	}
+}

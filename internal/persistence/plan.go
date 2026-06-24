@@ -178,6 +178,26 @@ func (s *Service) CreatePlanEvent(event *api.PlanEvent) error {
 	)
 }
 
+// CountPlansCreatedByAgentSince returns the number of plans the
+// agent has created at or after the given timestamp. Backs the M3.5
+// per-agent rate cap on plan/create — the handler rejects creates
+// when this returns ≥ 1 within a short window (default 10s), which
+// catches the AI-second-guesses-itself pattern where the model
+// calls plan/create twice in close succession off a single user
+// message.
+//
+// Counts ALL statuses (including cancelled): the cap is about
+// creation frequency, not active-plan headcount. A user who just
+// cancelled a plan should still get rate-limited if they ask the
+// agent to immediately create another within the window.
+func (s *Service) CountPlansCreatedByAgentSince(agentID string, since time.Time) (int, error) {
+	var n int
+	err := s.conn.Get(&n,
+		`SELECT COUNT(*) FROM plan WHERE agent_id = $1 AND created_at >= $2`,
+		agentID, since)
+	return n, err
+}
+
 // GetPlanByID returns a single plan or ErrPlanNotFound. Does NOT load
 // the task list — call GetPlanTasksByPlanID separately when needed.
 func (s *Service) GetPlanByID(id string) (*api.Plan, error) {

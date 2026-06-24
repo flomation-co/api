@@ -241,6 +241,15 @@ type Persistence interface {
 	ListPlansByAgentID(agentID, statusFilter string, limit, offset int) ([]*api.Plan, int, error)
 	ListPlanEventsByPlanID(planID string, limit int, before *time.Time) ([]*api.PlanEvent, error)
 
+	// Agent Planning M3 — cancel surface (user + AI).
+	CancelPlan(ctx context.Context, planID, reason string) (persistence.CancelOutcome, error)
+
+	// Agent Planning M3.5 — per-agent rate cap on plan/create.
+	CountPlansCreatedByAgentSince(agentID string, since time.Time) (int, error)
+
+	// Agent Planning M4 — draft → active transition.
+	StartPlan(ctx context.Context, planID string) (persistence.StartOutcome, error)
+
 	// Agent Memory Phase 2: memories, pending actions, commitments. See
 	// plans/agent_memory.md and internal/persistence/agent_memory_phase2.go.
 	CreateAgentMemory(mem api.AgentMemory) (*string, error)

@@ -12,6 +12,33 @@ import (
 	"flomation.app/automate/api/internal/config"
 )
 
+// Test_RegisterTrigger_SkipsInternalTypes pins the M3 fix that
+// stops the API forwarding internal-only triggers (currently just
+// 'plan-task') to the Launch service. Launch's `triggertype` enum
+// doesn't include these so the registration would 400 — but more
+// importantly, fired-by-API-side triggers shouldn't enter Launch's
+// polling model at all.
+func Test_RegisterTrigger_SkipsInternalTypes(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Launch: config.LaunchConfig{URL: server.URL},
+	}
+	connector := NewConnector(cfg)
+
+	err := connector.RegisterTrigger("trigger-1", "plan-task", nil, "flow-1", "")
+	Expect(err).To(BeNil())
+	Expect(called).To(BeFalse(), "Launch must NOT be contacted for internal trigger types")
+}
+
 func Test_RegisterTrigger_Success(t *testing.T) {
 	t.Parallel()
 	RegisterTestingT(t)
