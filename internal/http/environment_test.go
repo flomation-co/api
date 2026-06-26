@@ -629,6 +629,9 @@ func (m *mockPersistence) UpsertGoogleAccount(string, string, string, string, st
 func (m *mockPersistence) GetGoogleAccounts(string, ...string) ([]*api.AgentUserGoogleAccount, error) {
 	return nil, nil
 }
+func (m *mockPersistence) GetGoogleAccountsForLinkedUsers(string, ...string) ([]*api.AgentUserGoogleAccount, error) {
+	return nil, nil
+}
 func (m *mockPersistence) DeleteGoogleAccount(string, string, ...string) error { return nil }
 func (m *mockPersistence) GetGoogleAccountAccessToken(string) (string, error)  { return "", nil }
 

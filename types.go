@@ -687,6 +687,28 @@ type GoogleTokenResponse struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// MicrosoftAccount represents a connected Microsoft (Outlook/Teams)
+// account for an agent_user. Mirrors AgentUserGoogleAccount in shape
+// and storage model: tokens are stored as BYTEA with PGP_SYM_ENCRYPT
+// at rest (migration 102) — decrypted via PGP_SYM_DECRYPT on SELECT,
+// re-encrypted on INSERT/UPDATE. Application-side, the fields are
+// presented as []byte so callers don't accidentally serialise raw
+// token bytes to JSON.
+type MicrosoftAccount struct {
+	ID             string     `json:"id" db:"id"`
+	AgentUserID    string     `json:"agent_user_id" db:"agent_user_id"`
+	Email          string     `json:"email" db:"email"`
+	Label          *string    `json:"label,omitempty" db:"label"`
+	Purpose        string     `json:"purpose" db:"purpose"` // "mail_read", "mail_send", "calendar", ...
+	AccessToken    []byte     `json:"-" db:"access_token"`  // PGP-encrypted at rest; never serialised to JSON
+	RefreshToken   []byte     `json:"-" db:"refresh_token"` // PGP-encrypted at rest; never serialised to JSON
+	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty" db:"token_expires_at"`
+	Status         string     `json:"status" db:"status"`
+	LastError      *string    `json:"last_error,omitempty" db:"last_error"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+}
+
 // UserIdentity is a declared mapping from a Flomation platform user to a
 // channel handle, scoped per-organisation. Replaces the AI-initiated
 // [LINK_OFFER] linking flow: users declare their identities directly

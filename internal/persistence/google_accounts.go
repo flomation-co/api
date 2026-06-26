@@ -74,6 +74,103 @@ func (s *Service) GetGoogleAccounts(agentUserID string, purpose ...string) ([]*a
 	return results, nil
 }
 
+// getGoogleAccountsCrossChannelSQL is the widened lookup query that
+// chains agent_user → declared channel identities → Flomation user →
+// sibling channels → sibling agent_users → their Google accounts. Used
+// by GetGoogleAccountsForLinkedUsers below.
+//
+// The CTE walks the identity graph:
+//
+//	source_handles  — channel handles attached to the requesting agent_user
+//	declared_user   — Flomation user_id(s) who've claimed any of those handles
+//	                  in user_identity (with their organisation_id)
+//	sibling_handles — every handle that declared user has claimed (incl. originals)
+//	sibling_users   — agent_user_ids in the SAME agent that match any handle
+//	                  in user_identity OR fall back to the requesting one
+//
+// The final SELECT pulls google accounts for the union. Falls back
+// cleanly to the original behaviour when no user_identity declaration
+// is found — the sibling_users CTE always includes the requesting
+// agent_user_id, so a user who hasn't declared their channels yet still
+// gets the lookup they had before this change.
+const getGoogleAccountsCrossChannelSQL = `
+WITH source_handles AS (
+    SELECT channel_type, channel_external_id
+    FROM agent_identity
+    WHERE agent_user_id = $1
+),
+source_agent AS (
+    SELECT agent_id FROM agent_user WHERE id = $1
+),
+declared_user AS (
+    SELECT DISTINCT ui.user_id, ui.organisation_id
+    FROM user_identity ui
+    JOIN source_handles sh
+      ON ui.channel_type = sh.channel_type
+     AND ui.external_id  = sh.channel_external_id
+),
+sibling_handles AS (
+    SELECT ui.channel_type, ui.external_id
+    FROM user_identity ui
+    JOIN declared_user du
+      ON ui.user_id        = du.user_id
+     AND ui.organisation_id = du.organisation_id
+),
+sibling_users AS (
+    SELECT DISTINCT ai.agent_user_id
+    FROM agent_identity ai
+    JOIN agent_user au ON au.id = ai.agent_user_id
+    JOIN source_agent sa ON sa.agent_id = au.agent_id
+    JOIN sibling_handles sh
+      ON ai.channel_type        = sh.channel_type
+     AND ai.channel_external_id = sh.external_id
+    UNION
+    SELECT $1::UUID
+)
+SELECT id, agent_user_id, google_email,
+       PGP_SYM_DECRYPT(refresh_token, $2) AS refresh_token,
+       scopes, label, purpose, status, last_error,
+       token_expires_at, connected_at
+FROM agent_user_google_account
+WHERE agent_user_id IN (SELECT agent_user_id FROM sibling_users)
+`
+
+// GetGoogleAccountsForLinkedUsers returns every connected Google
+// account the requesting agent_user can reach — including accounts
+// linked to a sibling agent_user that represents the SAME Flomation
+// user (via user_identity declarations).
+//
+// This is the credential lookup used by the live calendar / gmail /
+// drive tool calls. Without the widening, a user who'd linked their
+// calendar via Telegram would be asked to relink it on Slack — see
+// the original bug report. By walking through user_identity, a single
+// declaration in the user's profile bridges every channel they reach
+// the agent on.
+//
+// The query always includes the requesting agent_user's own accounts,
+// so a user without any user_identity declarations gets exactly the
+// behaviour of the legacy GetGoogleAccounts function. Backwards
+// compatible by construction.
+func (s *Service) GetGoogleAccountsForLinkedUsers(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error) {
+	var results []*api.AgentUserGoogleAccount
+	var err error
+
+	if len(purpose) > 0 && purpose[0] != "" {
+		err = s.conn.Select(&results,
+			getGoogleAccountsCrossChannelSQL+` AND purpose = $3 ORDER BY connected_at ASC`,
+			agentUserID, s.config.Database.EncryptionKey, purpose[0])
+	} else {
+		err = s.conn.Select(&results,
+			getGoogleAccountsCrossChannelSQL+` ORDER BY connected_at ASC`,
+			agentUserID, s.config.Database.EncryptionKey)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 // DeleteGoogleAccount removes a specific Google account connection.
 // When purpose is provided, only deletes that specific purpose row.
 // When purpose is empty, deletes ALL rows for that email (all purposes).

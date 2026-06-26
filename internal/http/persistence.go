@@ -322,6 +322,10 @@ type Persistence interface {
 	// Google account connections (Calendar, Gmail, etc.) — agent-user scoped
 	UpsertGoogleAccount(agentUserID, email, refreshToken, label, purpose string) error
 	GetGoogleAccounts(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)
+	// GetGoogleAccountsForLinkedUsers widens the lookup to include any
+	// agent_user that represents the same Flomation user via
+	// user_identity declarations. See persistence.go for the CTE walk.
+	GetGoogleAccountsForLinkedUsers(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error)
 	DeleteGoogleAccount(agentUserID, email string, purpose ...string) error
 	GetGoogleAccountAccessToken(id string) (string, error)
 
