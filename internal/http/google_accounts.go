@@ -90,12 +90,17 @@ func (s *Service) getGoogleRefreshTokensInternal(c *gin.Context) {
 	agentUserID := c.Param("id")
 	purpose := c.Query("purpose")
 
+	// Widened lookup: include accounts attached to any agent_user that
+	// belongs to the same Flomation user via user_identity declarations.
+	// Without this, a user who linked their calendar on Telegram would
+	// be asked to re-link it the first time the agent reaches them on
+	// Slack — same human, different agent_user_id.
 	var accounts []*api.AgentUserGoogleAccount
 	var err error
 	if purpose != "" {
-		accounts, err = s.persistence.GetGoogleAccounts(agentUserID, purpose)
+		accounts, err = s.persistence.GetGoogleAccountsForLinkedUsers(agentUserID, purpose)
 	} else {
-		accounts, err = s.persistence.GetGoogleAccounts(agentUserID)
+		accounts, err = s.persistence.GetGoogleAccountsForLinkedUsers(agentUserID)
 	}
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -144,7 +149,11 @@ func (s *Service) getGoogleAccountsInternal(c *gin.Context) {
 	agentUserID := c.Param("id")
 	agentID := c.Query("agent_id")
 
-	accounts, err := s.persistence.GetGoogleAccounts(agentUserID)
+	// Widened lookup — see getGoogleRefreshTokensInternal for the
+	// rationale. The "list accounts" view should show every account
+	// the agent_user can transparently use, not just the ones linked
+	// from this specific channel.
+	accounts, err := s.persistence.GetGoogleAccountsForLinkedUsers(agentUserID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":         err,

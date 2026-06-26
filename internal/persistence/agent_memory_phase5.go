@@ -100,7 +100,33 @@ func (s *Service) MergeAgentUsers(agentID, sourceUserID, targetUserID string) er
 		return fmt.Errorf("transfer conversations: %w", err)
 	}
 
-	// 6. Delete the source user
+	// 6. Transfer Google accounts (calendar, gmail, drive, …). Without
+	// this, the next step's DELETE would cascade and silently drop the
+	// source's connected accounts — and the user would be asked to
+	// re-link the calendar on the surviving agent_user even though
+	// they'd already done it on the merged-away side.
+	//
+	// Conflict resolution: agent_user_google_account has a unique
+	// constraint on (agent_user_id, google_email, purpose). When both
+	// sides have the same email+purpose, the target's row wins (the
+	// source's is dropped by the WHERE NOT EXISTS guard) so the
+	// transfer never violates the constraint.
+	if _, err := tx.Exec(`
+		UPDATE agent_user_google_account
+		SET agent_user_id = $1
+		WHERE agent_user_id = $2
+		  AND NOT EXISTS (
+		    SELECT 1 FROM agent_user_google_account dup
+		    WHERE dup.agent_user_id = $1
+		      AND dup.google_email = agent_user_google_account.google_email
+		      AND dup.purpose      = agent_user_google_account.purpose
+		  )
+	`, targetUserID, sourceUserID); err != nil {
+		return fmt.Errorf("transfer google accounts: %w", err)
+	}
+
+	// 7. Delete the source user (cascades through any remaining
+	// duplicate google_account rows the transfer above couldn't move).
 	if _, err := tx.Exec(`DELETE FROM agent_user WHERE id = $1`, sourceUserID); err != nil {
 		return fmt.Errorf("delete source user: %w", err)
 	}

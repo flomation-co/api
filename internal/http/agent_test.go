@@ -264,6 +264,10 @@ func (m *agentMock) GetGoogleAccounts(agentUserID string, purpose ...string) ([]
 	return nil, nil
 }
 
+func (m *agentMock) GetGoogleAccountsForLinkedUsers(agentUserID string, purpose ...string) ([]*api.AgentUserGoogleAccount, error) {
+	return nil, nil
+}
+
 func (m *agentMock) DeleteGoogleAccount(agentUserID, email string, purpose ...string) error {
 	return nil
 }
