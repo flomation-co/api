@@ -486,6 +486,14 @@ func (s *Service) registerRoutes(config *config.Config) {
 	executions.GET("/:id/environment/:environment/secret/:name", s.executionMiddleware, s.getExecutionEnvironmentSecret)
 	executions.GET("/:id/environment/:environment/credential/:name", s.executionMiddleware, s.getExecutionEnvironmentCredential)
 
+	// JWT-protected blob fetch — the editor's execution-viewer media
+	// inspector uses this to fetch off-loaded media (audio/video/image
+	// bytes that the executor tokenised into flo:blob:HANDLE references)
+	// without going through the internal mTLS endpoint. Authorisation
+	// is scope-based: the persistence layer returns 404 for blobs
+	// outside the user's org/owner scope. See blob_public.go.
+	v1.GET("blob/:handle", s.jwtMiddleware, s.getBlobPublic)
+
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)
 	runners.POST("", s.registerRunner)
