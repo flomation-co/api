@@ -142,9 +142,13 @@ func TestBlob_Put_MimeMismatch_Returns400(t *testing.T) {
 	svc, _ := newBlobService()
 	r := setupBlobRouter(svc)
 
-	// Declare image/png for content that sniffs as text/plain — a
-	// genuine category mismatch the handler should reject.
-	body, contentType := buildBlobUpload(t, []byte("this is plain text content"), "image/png", persistence.BlobPurposeInbound, "")
+	// Declare a non-media application type for content that sniffs
+	// as text/plain — a genuine category mismatch the handler must
+	// still reject. (image/png declared for text content is now
+	// ALLOWED, because base64-encoded media bytewise looks like
+	// text — covered by
+	// TestMimeCategoryMatches_MediaDeclaredAsTextDetected.)
+	body, contentType := buildBlobUpload(t, []byte("this is plain text content"), "application/x-executable", persistence.BlobPurposeInbound, "")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/internal/blob", body)
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set(OrgIDHeader, "org-1")
@@ -351,8 +355,48 @@ func TestMimeCategoryMatches_SameCategoryDifferentSubtype(t *testing.T) {
 func TestMimeCategoryMatches_DifferentCategoryRejected(t *testing.T) {
 	t.Parallel()
 	RegisterTestingT(t)
-	Expect(mimeCategoryMatches("text/plain", "image/png")).To(BeFalse())
+	// Note: text→media is now allowed (see TestMimeCategoryMatches_
+	// MediaDeclaredAsTextDetected) because base64-encoded media
+	// always sniffs as text. The "real" cross-category rejection
+	// cases are media↔media and application↔media.
 	Expect(mimeCategoryMatches("video/mp4", "audio/mpeg")).To(BeFalse())
+	Expect(mimeCategoryMatches("application/x-executable", "image/png")).To(BeFalse())
+}
+
+// TestMimeCategoryMatches_MediaDeclaredAsTextDetected is the
+// regression guard for the executor's blob off-load path. Action
+// outputs like `audio_base64` carry base64-encoded media — bytewise
+// ASCII, sniffs as text/plain — declared with the post-decode
+// semantic type (audio/mpeg, image/png, etc.). Before this
+// exception, every base64-media upload returned 400 and the agent
+// loop's manifest entry was missing, leading the AI to hallucinate
+// fake handles (production executions 9dcf8bc3 / ee749f82). The
+// fix allows declared media MIMEs paired with text/* detection.
+func TestMimeCategoryMatches_MediaDeclaredAsTextDetected(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	// All four media categories must accept the text-detected case.
+	Expect(mimeCategoryMatches("text/plain; charset=utf-8", "audio/mpeg")).To(BeTrue())
+	Expect(mimeCategoryMatches("text/plain; charset=utf-8", "image/png")).To(BeTrue())
+	Expect(mimeCategoryMatches("text/plain; charset=utf-8", "video/mp4")).To(BeTrue())
+	Expect(mimeCategoryMatches("text/plain; charset=utf-8", "application/pdf")).To(BeTrue())
+
+	// Subtypes don't matter; only the category prefix.
+	Expect(mimeCategoryMatches("text/html", "audio/ogg")).To(BeTrue())
+	Expect(mimeCategoryMatches("text/xml", "image/jpeg")).To(BeTrue())
+
+	// The exception is one-way: declared text + detected media must
+	// still be rejected (someone declaring "text/plain" for binary
+	// content is a real category swap, not a base64-encoding case).
+	Expect(mimeCategoryMatches("audio/mpeg", "text/plain")).To(BeFalse())
+	Expect(mimeCategoryMatches("image/png", "text/html")).To(BeFalse())
+
+	// Non-media declared types must still be rejected when bytes
+	// look like text. application/x-executable should never appear
+	// declared as anything but its real type.
+	Expect(mimeCategoryMatches("text/plain", "application/x-executable")).To(BeFalse())
+	Expect(mimeCategoryMatches("text/plain", "application/zip")).To(BeFalse())
 }
 
 // Ensure the formatBlobToken function emits the exact verbose format
