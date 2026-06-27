@@ -305,11 +305,24 @@ func (s *Service) deleteBlobInternal(c *gin.Context) {
 // (image/png vs image/jpeg) through while catching category swaps
 // (image/png claimed for an application/x-executable upload).
 //
-// Two exceptions: declared "application/octet-stream" is always
-// accepted (we trust the caller saying "I don't know") and detected
-// "application/octet-stream" — http.DetectContentType's default for
-// unrecognised binary — is also accepted to avoid false rejections
-// for legitimate but unusual formats.
+// Three exceptions:
+//
+//  1. Declared "application/octet-stream" is always accepted (we
+//     trust the caller saying "I don't know").
+//
+//  2. Detected "application/octet-stream" — http.DetectContentType's
+//     default for unrecognised binary — is also accepted to avoid
+//     false rejections for legitimate but unusual formats.
+//
+//  3. Declared media (audio/*, image/*, video/*, application/pdf)
+//     paired with a text/* detection is allowed. This covers the
+//     executor's TokeniseLargeOutputs path: action outputs like
+//     `audio_base64` carry base64-encoded media which is bytewise
+//     ASCII and sniffs as text/plain, even though it's semantically
+//     audio/image/video. Without this exception EVERY base64-media
+//     off-load returns 400 and the agent loop loses access to the
+//     manifest entry — which manifested as AI hallucination of fake
+//     handles in executions 9dcf8bc3, ee749f82 etc.
 func mimeCategoryMatches(detected, declared string) bool {
 	if declared == "application/octet-stream" {
 		return true
@@ -317,9 +330,26 @@ func mimeCategoryMatches(detected, declared string) bool {
 	if strings.HasPrefix(detected, "application/octet-stream") {
 		return true
 	}
+	if isMediaMime(declared) && strings.HasPrefix(detected, "text/") {
+		return true
+	}
 	dc := mimeCategory(detected)
 	dl := mimeCategory(declared)
 	return dc == dl
+}
+
+// isMediaMime returns true for MIME types whose content is commonly
+// base64-encoded before transport. The category check above relies
+// on this to recognise the "I'm uploading base64-encoded audio /
+// image / video" case where bytes sniff as text but the declared
+// type is the post-decode semantic type.
+func isMediaMime(m string) bool {
+	if strings.HasPrefix(m, "audio/") ||
+		strings.HasPrefix(m, "image/") ||
+		strings.HasPrefix(m, "video/") {
+		return true
+	}
+	return m == "application/pdf"
 }
 
 func mimeCategory(m string) string {
