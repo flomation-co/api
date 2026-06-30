@@ -46,6 +46,8 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"webflow":     {Key: "webflow", Name: "Webflow", Icon: "webflow", Description: "Manage Webflow sites, CMS collections, pages, and forms"},
 	"journey":     {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
 	"plan":        {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
+	"opentofu":    {Key: "opentofu", Name: "Infrastructure", Icon: "server", Description: "Infrastructure as Code — provision and manage infrastructure with OpenTofu"},
+	"databricks":  {Key: "databricks", Name: "Data Warehouse", Icon: "warehouse", Description: "Data warehouse and lakehouse query and job orchestration"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
