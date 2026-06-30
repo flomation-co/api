@@ -47,7 +47,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"journey":     {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
 	"plan":        {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
 	"opentofu":    {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and manage infrastructure as code", SubKey: "opentofu", SubName: "OpenTofu", SubIcon: "cube", SubDescription: "Infrastructure as Code — run OpenTofu plan, apply, and destroy"},
-	"databricks":  {Key: "databricks", Name: "Data Warehouse", Icon: "warehouse", Description: "Data warehouse and lakehouse query and job orchestration"},
+	"databricks":  {Key: "data-warehouse", Name: "Data Warehouse", Icon: "warehouse", Description: "Query and orchestrate data warehouses and lakehouses", SubKey: "databricks", SubName: "Databricks", SubIcon: "database", SubDescription: "Run SQL, jobs, and models against a Databricks lakehouse"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
