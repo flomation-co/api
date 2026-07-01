@@ -41,6 +41,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"string":      {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
 	"social":      {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
 	"google":      {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
+	"mailchimp":   {Key: "mailchimp", Name: "Mailchimp", Icon: "mailchimp", Description: "Manage audiences, members, tags, and campaigns in Mailchimp"},
 	"makefile":    {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
 	"twilio":      {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
 	"microsoft":   {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
