@@ -14,6 +14,7 @@ import (
 // categoryMetadata maps the first path segment of an action ID to its display metadata.
 var categoryMetadata = map[string]api.ActionCategory{
 	"ai":          {Key: "ai", Name: "AI", Icon: "brain", Description: "Artificial intelligence and large language model integrations"},
+	"airtable":    {Key: "airtable", Name: "Airtable", Icon: "airtable", Description: "Manage bases, tables, and records in Airtable"},
 	"arithmetic":  {Key: "arithmetic", Name: "Arithmetic", Icon: "calculator", Description: "Mathematical operations"},
 	"aws":         {Key: "aws", Name: "AWS", Icon: "cloud", Description: "Amazon Web Services integrations"},
 	"common":      {Key: "common", Name: "Common", Icon: "toolbox", Description: "General-purpose data utilities"},
