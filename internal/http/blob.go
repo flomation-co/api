@@ -126,7 +126,19 @@ func (s *Service) putBlobInternal(c *gin.Context) {
 	if scope.IsZero() {
 		return
 	}
+	s.storeMultipartBlob(c, scope)
+}
 
+// storeMultipartBlob is the shared body of every mTLS blob-put handler.
+// It parses the multipart body, validates against the blob store's
+// 25MB / MIME-sniff constraints, and writes the canonical response.
+// Writes errors directly to c; returns without side effects on success
+// after writing the 201 response.
+//
+// Extracted so that trigger-scoped anonymous uploads (putBlobForTrigger)
+// can share the exact same validation surface without duplicating ~80
+// lines of parse + sniff + quota-error mapping.
+func (s *Service) storeMultipartBlob(c *gin.Context, scope persistence.BlobScope) {
 	// 25 MB upper bound on the entire request to short-circuit DoS
 	// attempts before they touch disk. Add headroom for the multipart
 	// boundary + form fields.
@@ -217,6 +229,56 @@ func (s *Service) putBlobInternal(c *gin.Context) {
 		"mime":       mime,
 		"purpose":    purpose,
 	})
+}
+
+// putBlobForTrigger handles POST /api/v1/internal/flo/:FloID/trigger/:TriggerID/upload.
+//
+// Trigger-scoped anonymous upload endpoint. Unlike putBlobInternal, the
+// caller (Launch, proxying a public form submission) doesn't set an
+// org/owner header — the scope is derived from the flow the trigger
+// belongs to. This keeps the anonymous-form contract simple: "hand
+// Launch the file, get back a token", without leaking the flow's owner
+// identity into the browser.
+//
+// The trigger_id in the URL exists only so the API can 404 if the
+// flow/trigger pair doesn't match (defence against a crafted URL
+// hitting a flow you weren't meant to upload against). The trigger row
+// isn't otherwise consulted here — validation of the form field's
+// per-component MIME / size constraints is Launch's job, since that's
+// where the form definition lives.
+func (s *Service) putBlobForTrigger(c *gin.Context) {
+	floID := strings.TrimSpace(c.Param("FloID"))
+	triggerID := strings.TrimSpace(c.Param("TriggerID"))
+	if floID == "" || triggerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "flow_id and trigger_id required"})
+		return
+	}
+
+	flo, err := s.persistence.GetFloByID(floID)
+	if err != nil || flo == nil {
+		// 404 covers both missing flow and lookup errors — we don't
+		// want to leak the difference to an anonymous form submitter.
+		c.JSON(http.StatusNotFound, gin.H{"error": "flow not found"})
+		return
+	}
+
+	// Derive the blob scope. Organisation-mode wins if the flow is
+	// org-owned; personal-mode flows fall back to AuthorID.
+	// (Same precedence as the executor's blob path — flows with both
+	// set will always be org-mode in practice.)
+	var scope persistence.BlobScope
+	switch {
+	case flo.OrganisationID != nil && *flo.OrganisationID != "":
+		scope = persistence.OrgScope(*flo.OrganisationID)
+	case flo.AuthorID != nil && *flo.AuthorID != "":
+		scope = persistence.OwnerScope(*flo.AuthorID)
+	default:
+		// Shouldn't happen — flows must have either an org or an author.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "flow has no owner scope"})
+		return
+	}
+
+	s.storeMultipartBlob(c, scope)
 }
 
 // getBlobInternal handles GET /api/v1/internal/blob/:handle.
