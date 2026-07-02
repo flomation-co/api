@@ -20,6 +20,10 @@ import (
 // httptest server (same seam as the executor's openrouter action).
 var openRouterModelsURL = "https://openrouter.ai/api/v1/models"
 
+// openRouterModelsHTTPClient is shared across calls so connections to the
+// upstream are pooled rather than re-dialled per fetch.
+var openRouterModelsHTTPClient = &gohttp.Client{Timeout: 10 * time.Second}
+
 // The catalogue changes a handful of times a day at most; an hour keeps
 // the editor snappy without re-fetching the multi-megabyte upstream list
 // on every property-panel open.
@@ -43,28 +47,38 @@ var openRouterModelsCache struct {
 // so the editor renders the message inline.
 func (s *Service) getOpenRouterModels(c *gin.Context) {
 	openRouterModelsCache.mu.Lock()
-	defer openRouterModelsCache.mu.Unlock()
-
 	if time.Now().Before(openRouterModelsCache.expiresAt) {
-		c.JSON(gohttp.StatusOK, gin.H{"options": openRouterModelsCache.options})
+		options := openRouterModelsCache.options
+		openRouterModelsCache.mu.Unlock()
+		c.JSON(gohttp.StatusOK, gin.H{"options": options})
 		return
 	}
+	openRouterModelsCache.mu.Unlock()
 
+	// The upstream fetch runs without the lock so concurrent requests
+	// don't queue behind a slow provider. Two expired-cache requests may
+	// race and both fetch; the second write is idempotent (same public
+	// catalogue), which is cheaper than single-flight machinery here.
 	options, err := fetchOpenRouterModels(c)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Warn("unable to fetch OpenRouter models")
-		if openRouterModelsCache.options != nil {
-			c.JSON(gohttp.StatusOK, gin.H{"options": openRouterModelsCache.options})
+		openRouterModelsCache.mu.Lock()
+		stale := openRouterModelsCache.options
+		openRouterModelsCache.mu.Unlock()
+		if stale != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"options": stale})
 			return
 		}
 		c.JSON(gohttp.StatusOK, gin.H{"error": "Failed to fetch models from OpenRouter"})
 		return
 	}
 
+	openRouterModelsCache.mu.Lock()
 	openRouterModelsCache.options = options
 	openRouterModelsCache.expiresAt = time.Now().Add(openRouterModelsCacheTTL)
+	openRouterModelsCache.mu.Unlock()
 	c.JSON(gohttp.StatusOK, gin.H{"options": options})
 }
 
@@ -74,8 +88,7 @@ func fetchOpenRouterModels(c *gin.Context) ([]api.InputOption, error) {
 		return nil, err
 	}
 
-	client := &gohttp.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := openRouterModelsHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
