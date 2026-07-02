@@ -438,6 +438,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	actions := v1.Group("action")
 	actions.GET("", s.getActions)
+	// Dynamic dropdown options for action inputs — proxied and cached from
+	// public upstreams; see dynamicOptionsMetadata in action.go.
+	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)

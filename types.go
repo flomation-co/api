@@ -241,15 +241,26 @@ type InputVisibleWhen struct {
 	Values []string `json:"values"`
 }
 
+// InputDynamicOptions tells the editor to fetch this input's dropdown
+// choices from an API endpoint at edit time instead of relying solely on
+// the static Options list (which remains the fallback when the fetch
+// fails). The endpoint returns {"options": [{"name": ..., "value": ...}]}.
+// Injected at serve time from dynamicOptionsMetadata — never stored in
+// the actions table.
+type InputDynamicOptions struct {
+	Endpoint string `json:"endpoint"` // api-relative, e.g. /api/v1/action/options/openrouter-models
+}
+
 type InputDefinition struct {
-	Name        string            `json:"name" db:"name"`
-	Value       string            `json:"value" db:"value"`
-	Type        string            `json:"type" db:"type"`
-	Label       string            `json:"label"`
-	Placeholder string            `json:"placeholder"`
-	Required    bool              `json:"required,omitempty"`
-	Options     []InputOption     `json:"options,omitempty"`
-	VisibleWhen *InputVisibleWhen `json:"visible_when,omitempty"`
+	Name           string               `json:"name" db:"name"`
+	Value          string               `json:"value" db:"value"`
+	Type           string               `json:"type" db:"type"`
+	Label          string               `json:"label"`
+	Placeholder    string               `json:"placeholder"`
+	Required       bool                 `json:"required,omitempty"`
+	Options        []InputOption        `json:"options,omitempty"`
+	VisibleWhen    *InputVisibleWhen    `json:"visible_when,omitempty"`
+	DynamicOptions *InputDynamicOptions `json:"dynamic_options,omitempty"`
 }
 
 type OutputDefinition struct {

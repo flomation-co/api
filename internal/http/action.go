@@ -109,6 +109,15 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 	return &cat
 }
 
+// dynamicOptionsMetadata maps "actionID#inputName" to a dynamic-options
+// source injected at serve time — the same in-code-override pattern as
+// categoryMetadata above. The input's static Options from the manifest
+// remain the editor's fallback when the fetch fails, so entries here must
+// point at endpoints returning the same {"options": [{name, value}]} shape.
+var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
+	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
+}
+
 func (s *Service) getActions(c *gin.Context) {
 	actions, err := s.persistence.GetActions()
 	if err != nil {
@@ -132,6 +141,12 @@ func (s *Service) getActions(c *gin.Context) {
 				}).Error("unable to get actions")
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
+			}
+			for idx := range inputs {
+				if dyn, ok := dynamicOptionsMetadata[a.ID+"#"+inputs[idx].Name]; ok {
+					d := dyn
+					inputs[idx].DynamicOptions = &d
+				}
 			}
 			a.Inputs = inputs
 		}
