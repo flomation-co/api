@@ -14,6 +14,7 @@ import (
 // credentialProviderColumns is an explicit column list (rather than SELECT *)
 // so an additive column like url_variables is decoupled from the struct — a
 // binary rollback to a build without the new field can't break provider scans.
+// #nosec G101 -- this is a SQL column list, not a credential (the const name trips gosec's identifier heuristic).
 const credentialProviderColumns = `slug, name, icon, auth_url, token_url, revoke_url, default_scopes, url_variables, created_at`
 
 func (s *Service) GetCredentialProviders() ([]api.CredentialProvider, error) {
