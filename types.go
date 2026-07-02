@@ -249,6 +249,13 @@ type InputVisibleWhen struct {
 // the actions table.
 type InputDynamicOptions struct {
 	Endpoint string `json:"endpoint"` // api-relative, e.g. /api/v1/action/options/openrouter-models
+	// Params lists sibling input names whose current values the editor
+	// appends to the fetch as query parameters (plus environment=<id>),
+	// for resolvers that depend on node configuration — e.g. ai/ollama's
+	// model list lives on the user's own server, reachable only via the
+	// node's endpoint input. Secret-typed values arrive as ${secrets.X}
+	// references and are resolved server-side, never in the browser.
+	Params []string `json:"params,omitempty"`
 }
 
 type InputDefinition struct {
@@ -1024,15 +1031,15 @@ type PlanTask struct {
 	// Scan, storing driver.Value type <nil> into type *json.RawMessage"
 	// when reading a row that hasn't been written-back yet.
 	OutputsJSON    *json.RawMessage `db:"outputs_json" json:"outputs_json,omitempty"`
-	ExecutionID    *string         `db:"execution_id" json:"execution_id,omitempty"`
-	AttemptCount   int             `db:"attempt_count" json:"attempt_count"`
-	LastError      *string         `db:"last_error" json:"last_error,omitempty"`
-	MaxAttempts    int             `db:"max_attempts" json:"max_attempts"`
-	TimeoutSeconds *int            `db:"timeout_seconds" json:"timeout_seconds,omitempty"`
-	CreatedAt      time.Time       `db:"created_at" json:"created_at"`
-	UpdatedAt      time.Time       `db:"updated_at" json:"updated_at"`
-	StartedAt      *time.Time      `db:"started_at" json:"started_at,omitempty"`
-	CompletedAt    *time.Time      `db:"completed_at" json:"completed_at,omitempty"`
+	ExecutionID    *string          `db:"execution_id" json:"execution_id,omitempty"`
+	AttemptCount   int              `db:"attempt_count" json:"attempt_count"`
+	LastError      *string          `db:"last_error" json:"last_error,omitempty"`
+	MaxAttempts    int              `db:"max_attempts" json:"max_attempts"`
+	TimeoutSeconds *int             `db:"timeout_seconds" json:"timeout_seconds,omitempty"`
+	CreatedAt      time.Time        `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time        `db:"updated_at" json:"updated_at"`
+	StartedAt      *time.Time       `db:"started_at" json:"started_at,omitempty"`
+	CompletedAt    *time.Time       `db:"completed_at" json:"completed_at,omitempty"`
 }
 
 // PlanTaskKind constants identify how the tick endpoint dispatches a

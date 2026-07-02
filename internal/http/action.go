@@ -116,6 +116,10 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 // point at endpoints returning the same {"options": [{name, value}]} shape.
 var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
+	"ai/ollama#model": {
+		Endpoint: "/api/v1/action/options/ollama-models",
+		Params:   []string{"endpoint", "api_key"},
+	},
 }
 
 func (s *Service) getActions(c *gin.Context) {
