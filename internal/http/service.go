@@ -762,6 +762,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.HEAD("/blob/:handle", s.headBlobInternal)
 	internal.GET("/blob/:handle/metadata", s.headBlobInternal)
 	internal.DELETE("/blob/:handle", s.deleteBlobInternal)
+	// Trigger-scoped anonymous upload — Launch calls this when a public
+	// form submitter uploads a file (eSignature, camera photo, arbitrary
+	// file). Scope is derived server-side from the flow's owner, so
+	// Launch doesn't need to know / relay the org/owner header.
+	internal.POST("/flo/:FloID/trigger/:TriggerID/upload", s.putBlobForTrigger)
 
 	// Agent Planning M1 — the agent-facing plan/create endpoint.
 	// The only caller is the executor's agent/create_plan action.

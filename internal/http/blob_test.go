@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/gomega"
@@ -46,6 +47,7 @@ func setupBlobRouter(svc *Service) *gin.Engine {
 	r.HEAD("/api/v1/internal/blob/:handle", svc.headBlobInternal)
 	r.GET("/api/v1/internal/blob/:handle/metadata", svc.headBlobInternal)
 	r.DELETE("/api/v1/internal/blob/:handle", svc.deleteBlobInternal)
+	r.POST("/api/v1/internal/flo/:FloID/trigger/:TriggerID/upload", svc.putBlobForTrigger)
 	return r
 }
 
@@ -514,3 +516,104 @@ func TestBlob_PutWithEmptyExecutionID_Accepted(t *testing.T) {
 // Silence unused-import noise that crops up if test surface gets
 // trimmed later. io is here for future streaming variants.
 var _ = io.Copy
+
+// ── putBlobForTrigger — trigger-scoped anonymous upload ──
+
+func TestBlob_PutForTrigger_OrgScopedFlow_ReturnsToken(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	svc, mp := newBlobService()
+	orgID := "org-42"
+	// GetFloByID has to import the api package for the Flo struct type.
+	mp.flos["flow-1"] = &api.Flo{ID: "flow-1", OrganisationID: &orgID}
+	r := setupBlobRouter(svc)
+
+	body, contentType := buildBlobUpload(t, tinyPNG, "image/png", persistence.BlobPurposeInbound, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/internal/flo/flow-1/trigger/trg-1/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	Expect(rec.Code).To(Equal(http.StatusCreated))
+	var resp map[string]any
+	Expect(json.Unmarshal(rec.Body.Bytes(), &resp)).To(Succeed())
+	token, _ := resp["blob_token"].(string)
+	Expect(token).To(HavePrefix("flo:blob:"))
+	Expect(token).To(ContainSubstring("type=" + url.QueryEscape("image/png")))
+}
+
+func TestBlob_PutForTrigger_OwnerScopedFlow_ReturnsToken(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	svc, mp := newBlobService()
+	authorID := "user-9"
+	mp.flos["flow-personal"] = &api.Flo{ID: "flow-personal", AuthorID: &authorID}
+	r := setupBlobRouter(svc)
+
+	body, contentType := buildBlobUpload(t, tinyPNG, "image/png", persistence.BlobPurposeInbound, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/internal/flo/flow-personal/trigger/trg-x/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	Expect(rec.Code).To(Equal(http.StatusCreated))
+}
+
+func TestBlob_PutForTrigger_UnknownFlow_Returns404(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	svc, _ := newBlobService()
+	r := setupBlobRouter(svc)
+
+	body, contentType := buildBlobUpload(t, tinyPNG, "image/png", persistence.BlobPurposeInbound, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/internal/flo/absent-flow/trigger/trg-1/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	Expect(rec.Code).To(Equal(http.StatusNotFound))
+}
+
+func TestBlob_PutForTrigger_MimeMismatch_Returns400(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	svc, mp := newBlobService()
+	orgID := "org-42"
+	mp.flos["flow-1"] = &api.Flo{ID: "flow-1", OrganisationID: &orgID}
+	r := setupBlobRouter(svc)
+
+	// PNG bytes declared as PDF — MIME sniff must catch it. Shared
+	// pipeline means every validation rule from putBlobInternal
+	// applies to trigger uploads too.
+	body, contentType := buildBlobUpload(t, tinyPNG, "application/pdf", persistence.BlobPurposeInbound, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/internal/flo/flow-1/trigger/trg-1/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	Expect(rec.Code).To(Equal(http.StatusBadRequest))
+}
+
+func TestBlob_PutForTrigger_NoHeaderNeeded(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	// The whole point of the trigger endpoint: no org/owner header
+	// required. Scope is derived server-side from the flow.
+	svc, mp := newBlobService()
+	orgID := "org-42"
+	mp.flos["flow-1"] = &api.Flo{ID: "flow-1", OrganisationID: &orgID}
+	r := setupBlobRouter(svc)
+
+	body, contentType := buildBlobUpload(t, tinyPNG, "image/png", persistence.BlobPurposeInbound, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/internal/flo/flow-1/trigger/trg-1/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	// No X-Flomation-Org-Id / X-Flomation-Owner-Id — still succeeds.
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	Expect(rec.Code).To(Equal(http.StatusCreated))
+}
+
+// Silence unused-import noise for the api package on the trigger tests.
+var _ = api.Flo{}
