@@ -211,7 +211,17 @@ func (s *Service) reauthoriseCredential(c *gin.Context) {
 	// Get client credentials from the stored credential (if custom)
 	clientID, _, _ := s.persistence.GetDecryptedClientCredentials(credID, env.SecretKey)
 
-	authURL, err := s.buildOAuthURL(credID, environmentID, provider, env.SecretKey, clientID, cred.Scopes, api.URLVarsFromMetadata(cred.Metadata))
+	// Re-validate the stored URL variables against the provider's current
+	// declaration before rebuilding the OAuth URL: a credential created before
+	// the provider gained a required variable would otherwise fail later with a
+	// generic substitution error. Surface a clear, actionable message instead.
+	urlVars := api.URLVarsFromMetadata(cred.Metadata)
+	if err := provider.ValidateURLVars(urlVars); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	authURL, err := s.buildOAuthURL(credID, environmentID, provider, env.SecretKey, clientID, cred.Scopes, urlVars)
 	if err != nil {
 		log.WithError(err).Error("unable to build OAuth URL")
 		c.AbortWithStatus(http.StatusInternalServerError)
