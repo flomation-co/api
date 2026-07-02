@@ -85,6 +85,9 @@ type createCredentialRequest struct {
 	Scopes       *string `json:"scopes"`
 	ClientID     *string `json:"client_id"`
 	ClientSecret *string `json:"client_secret"`
+	// URLVars supplies per-tenant OAuth URL variable values (e.g.
+	// {"shop":"my-store"}) for providers that declare url_variables.
+	URLVars map[string]string `json:"url_vars"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
@@ -121,6 +124,26 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 		scopes = req.Scopes
 	}
 
+	// Validate the provider's per-tenant URL variables are all supplied and
+	// host-safe (surfaces a clear message before an OAuth round-trip).
+	for _, v := range provider.URLVariables() {
+		val := req.URLVars[v.Key]
+		if val == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is required", v.Label)})
+			return
+		}
+	}
+	if _, err := api.SubstituteURLVariables(provider.AuthURL, req.URLVars); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	metadata, err := api.MetadataWithURLVars(req.URLVars)
+	if err != nil {
+		log.WithError(err).Error("unable to encode credential metadata")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
 	cred := &api.EnvironmentCredential{
 		EnvironmentID: environmentID,
 		ProviderSlug:  req.ProviderSlug,
@@ -128,6 +151,7 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 		Scopes:        scopes,
 		ClientID:      req.ClientID,
 		ClientSecret:  req.ClientSecret,
+		Metadata:      metadata,
 	}
 
 	credID, err := s.persistence.CreateCredential(cred, env.SecretKey)
@@ -142,7 +166,7 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	}
 
 	// Build the OAuth authorization URL
-	authURL, err := s.buildOAuthURL(credID, environmentID, provider, env.SecretKey, req.ClientID, scopes)
+	authURL, err := s.buildOAuthURL(credID, environmentID, provider, env.SecretKey, req.ClientID, scopes, req.URLVars)
 	if err != nil {
 		log.WithError(err).Error("unable to build OAuth URL")
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -187,7 +211,7 @@ func (s *Service) reauthoriseCredential(c *gin.Context) {
 	// Get client credentials from the stored credential (if custom)
 	clientID, _, _ := s.persistence.GetDecryptedClientCredentials(credID, env.SecretKey)
 
-	authURL, err := s.buildOAuthURL(credID, environmentID, provider, env.SecretKey, clientID, cred.Scopes)
+	authURL, err := s.buildOAuthURL(credID, environmentID, provider, env.SecretKey, clientID, cred.Scopes, api.URLVarsFromMetadata(cred.Metadata))
 	if err != nil {
 		log.WithError(err).Error("unable to build OAuth URL")
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -288,9 +312,18 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// Substitute per-tenant URL variables (stored on the credential) into the
+	// token URL, mirroring the authorize URL.
+	tokenURL, err := api.SubstituteURLVariables(provider.TokenURL, api.URLVarsFromMetadata(cred.Metadata))
+	if err != nil {
+		log.WithError(err).Error("unable to build token URL")
+		c.Data(http.StatusBadRequest, "text/html", []byte(oauthResultPage("Configuration Error", err.Error(), true)))
+		return
+	}
+
 	// Exchange code for tokens
 	callbackURL := s.credentialCallbackURL()
-	tokenResp, err := exchangeOAuthCode(provider.TokenURL, code, *clientID, *clientSecret, callbackURL, cred.ProviderSlug)
+	tokenResp, err := exchangeOAuthCode(tokenURL, code, *clientID, *clientSecret, callbackURL, cred.ProviderSlug)
 	if err != nil {
 		log.WithError(err).Error("OAuth token exchange failed")
 		errMsg := err.Error()
@@ -328,7 +361,7 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialProvider, envKey string, clientID *string, scopes *string) (string, error) {
+func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialProvider, envKey string, clientID *string, scopes *string, urlVars map[string]string) (string, error) {
 	// Get client ID (custom or default)
 	cID := clientID
 	if cID == nil || *cID == "" {
@@ -336,6 +369,13 @@ func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialPr
 	}
 	if cID == nil || *cID == "" {
 		return "", fmt.Errorf("no client ID configured for provider %s", provider.Slug)
+	}
+
+	// Substitute per-tenant URL variables (e.g. the shop subdomain) into the
+	// provider's authorize URL. A fixed-URL provider is unaffected.
+	authURL, err := api.SubstituteURLVariables(provider.AuthURL, urlVars)
+	if err != nil {
+		return "", err
 	}
 
 	// Build state parameter
@@ -365,7 +405,7 @@ func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialPr
 		params.Set("code_challenge_method", "plain")
 	}
 
-	return provider.AuthURL + "?" + params.Encode(), nil
+	return authURL + "?" + params.Encode(), nil
 }
 
 func (s *Service) credentialCallbackURL() string {

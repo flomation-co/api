@@ -103,3 +103,18 @@ func TestGetActions_InjectsParameterisedDynamicOptions(t *testing.T) {
 	g.Expect(model.DynamicOptions.Params).To(Equal([]string{"endpoint", "api_key"}))
 	g.Expect(model.Options).To(HaveLen(1), "static options must survive as fallback")
 }
+
+// TestGetCategoryForShopify pins the E-Commerce > Shopify wiring: a 3-segment
+// ecommerce/shopify/* action resolves to the E-Commerce top-level category
+// with the Shopify sub-group (from subCategoryMetadata, not auto-titled).
+func TestGetCategoryForShopify(t *testing.T) {
+	g := NewWithT(t)
+	cat := getCategoryForAction("ecommerce/shopify/order_create")
+	g.Expect(cat).To(Not(BeNil()))
+	g.Expect(cat.Key).To(Equal("ecommerce"))
+	g.Expect(cat.Name).To(Equal("E-Commerce"))
+	g.Expect(cat.Icon).To(Equal("cart-shopping"))
+	g.Expect(cat.SubKey).To(Equal("ecommerce/shopify"))
+	g.Expect(cat.SubName).To(Equal("Shopify"))
+	g.Expect(cat.SubIcon).To(Equal("shopify"))
+}

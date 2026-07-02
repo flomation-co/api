@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	api "flomation.app/automate/api"
@@ -10,9 +11,14 @@ import (
 // ── Credential providers ────────────────────────────────────────────
 
 // GetCredentialProviders returns all configured OAuth providers.
+// credentialProviderColumns is an explicit column list (rather than SELECT *)
+// so an additive column like url_variables is decoupled from the struct — a
+// binary rollback to a build without the new field can't break provider scans.
+const credentialProviderColumns = `slug, name, icon, auth_url, token_url, revoke_url, default_scopes, url_variables, created_at`
+
 func (s *Service) GetCredentialProviders() ([]api.CredentialProvider, error) {
 	var providers []api.CredentialProvider
-	if err := s.conn.Select(&providers, `SELECT * FROM credential_provider ORDER BY name`); err != nil {
+	if err := s.conn.Select(&providers, `SELECT `+credentialProviderColumns+` FROM credential_provider ORDER BY name`); err != nil {
 		return nil, err
 	}
 	return providers, nil
@@ -21,7 +27,7 @@ func (s *Service) GetCredentialProviders() ([]api.CredentialProvider, error) {
 // GetCredentialProvider returns a single provider by slug.
 func (s *Service) GetCredentialProvider(slug string) (*api.CredentialProvider, error) {
 	var provider api.CredentialProvider
-	if err := s.conn.Get(&provider, `SELECT * FROM credential_provider WHERE slug = $1`, slug); err != nil {
+	if err := s.conn.Get(&provider, `SELECT `+credentialProviderColumns+` FROM credential_provider WHERE slug = $1`, slug); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -99,19 +105,24 @@ func (s *Service) GetCredentialByName(environmentID, name, environmentKey string
 
 // CreateCredential creates a new credential record in pending state.
 func (s *Service) CreateCredential(cred *api.EnvironmentCredential, environmentKey string) (string, error) {
+	var metadata interface{}
+	if cred.Metadata != nil {
+		metadata = []byte(*cred.Metadata)
+	}
 	var id string
 	err := s.conn.QueryRow(`
 		INSERT INTO environment_credential (
 			environment_id, provider_slug, name, scopes, status,
-			client_id, client_secret
+			client_id, client_secret, metadata
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			CASE WHEN $6 = '' THEN NULL ELSE PGP_SYM_ENCRYPT($6, $7) END,
-			CASE WHEN $8 = '' THEN NULL ELSE PGP_SYM_ENCRYPT($8, $7) END
+			CASE WHEN $8 = '' THEN NULL ELSE PGP_SYM_ENCRYPT($8, $7) END,
+			$9
 		) RETURNING id`,
 		cred.EnvironmentID, cred.ProviderSlug, cred.Name, cred.Scopes, api.CredentialStatusPending,
 		stringOrEmpty(cred.ClientID), environmentKey,
-		stringOrEmpty(cred.ClientSecret),
+		stringOrEmpty(cred.ClientSecret), metadata,
 	).Scan(&id)
 	return id, err
 }
@@ -147,6 +158,7 @@ func (s *Service) GetCredentialsNeedingRefresh(within time.Duration) ([]Credenti
 		       PGP_SYM_DECRYPT(ec.client_id, PGP_SYM_DECRYPT(e.secret_key, $2)) AS client_id,
 		       PGP_SYM_DECRYPT(ec.client_secret, PGP_SYM_DECRYPT(e.secret_key, $2)) AS client_secret,
 		       cp.token_url,
+		       ec.metadata,
 		       PGP_SYM_DECRYPT(e.secret_key, $2) AS environment_key
 		FROM environment_credential ec
 		JOIN environment e ON e.id = ec.environment_id
@@ -163,14 +175,15 @@ func (s *Service) GetCredentialsNeedingRefresh(within time.Duration) ([]Credenti
 
 // CredentialRefreshRow contains the decrypted data needed to refresh a credential.
 type CredentialRefreshRow struct {
-	ID             string  `db:"id"`
-	EnvironmentID  string  `db:"environment_id"`
-	ProviderSlug   string  `db:"provider_slug"`
-	RefreshToken   *string `db:"refresh_token"`
-	ClientID       *string `db:"client_id"`
-	ClientSecret   *string `db:"client_secret"`
-	TokenURL       string  `db:"token_url"`
-	EnvironmentKey string  `db:"environment_key"`
+	ID             string           `db:"id"`
+	EnvironmentID  string           `db:"environment_id"`
+	ProviderSlug   string           `db:"provider_slug"`
+	RefreshToken   *string          `db:"refresh_token"`
+	ClientID       *string          `db:"client_id"`
+	ClientSecret   *string          `db:"client_secret"`
+	TokenURL       string           `db:"token_url"`
+	Metadata       *json.RawMessage `db:"metadata"`
+	EnvironmentKey string           `db:"environment_key"`
 }
 
 // UpdateCredentialStatus sets the status and optional error message.

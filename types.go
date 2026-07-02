@@ -401,14 +401,18 @@ type EnvironmentSecret struct {
 
 // CredentialProvider represents an OAuth provider configuration.
 type CredentialProvider struct {
-	Slug          string    `json:"slug" db:"slug"`
-	Name          string    `json:"name" db:"name"`
-	Icon          string    `json:"icon" db:"icon"`
-	AuthURL       string    `json:"auth_url" db:"auth_url"`
-	TokenURL      string    `json:"token_url" db:"token_url"`
-	RevokeURL     *string   `json:"revoke_url,omitempty" db:"revoke_url"`
-	DefaultScopes *string   `json:"default_scopes,omitempty" db:"default_scopes"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	Slug          string  `json:"slug" db:"slug"`
+	Name          string  `json:"name" db:"name"`
+	Icon          string  `json:"icon" db:"icon"`
+	AuthURL       string  `json:"auth_url" db:"auth_url"`
+	TokenURL      string  `json:"token_url" db:"token_url"`
+	RevokeURL     *string `json:"revoke_url,omitempty" db:"revoke_url"`
+	DefaultScopes *string `json:"default_scopes,omitempty" db:"default_scopes"`
+	// URLVariablesRaw holds the provider's declared per-tenant URL variables
+	// (see URLVariable / SubstituteURLVariables). Served to the editor as
+	// url_variables so it can prompt for each value when creating a credential.
+	URLVariablesRaw *json.RawMessage `json:"url_variables,omitempty" db:"url_variables"`
+	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
 }
 
 // EnvironmentCredential represents an OAuth credential stored in an environment.
