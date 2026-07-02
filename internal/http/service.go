@@ -442,6 +442,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// in action.go. The upstream data is public, but the endpoint is
 	// auth-gated like the other editor option-fetch proxies.
 	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
+	actions.GET("/options/ollama-models", s.jwtMiddleware, s.getOllamaModels)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)

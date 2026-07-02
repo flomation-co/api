@@ -97,17 +97,17 @@ func (s *Service) getElevenLabsVoices(c *gin.Context) {
 	c.Data(gohttp.StatusOK, "application/json", body)
 }
 
-// resolveElevenLabsKey is the secret-lookup boilerplate shared by every
-// proxy in this file. Centralising it keeps the secret extraction and
+// resolveEnvironmentSecret is the secret-lookup boilerplate shared by the
+// editor option-fetch proxies (this file's ElevenLabs endpoints, the
+// ollama-models resolver). Centralising it keeps the secret extraction and
 // the various error-shape choices consistent across endpoints; small
-// new endpoints (shared-voices, add-voice) only have to call this and
-// then make the upstream request.
+// new endpoints only have to call this and then make the upstream request.
 //
 // Returns (apiKey, "") on success or ("", errorMessage) on failure.
 // The caller is responsible for writing the JSON error response — this
 // helper deliberately doesn't touch the gin.Context so unit testing the
 // resolution logic stays easy.
-func (s *Service) resolveElevenLabsKey(c *gin.Context, environmentID, credentialRef string) (string, string) {
+func (s *Service) resolveEnvironmentSecret(c *gin.Context, environmentID, credentialRef string) (string, string) {
 	user := s.getUserFromContext(c)
 	if user == nil {
 		return "", "unauthorized"
@@ -149,7 +149,7 @@ func (s *Service) getElevenLabsSharedVoices(c *gin.Context) {
 	environmentID := c.Param("environment")
 	credentialRef := c.Param("credential")
 
-	apiKey, errMsg := s.resolveElevenLabsKey(c, environmentID, credentialRef)
+	apiKey, errMsg := s.resolveEnvironmentSecret(c, environmentID, credentialRef)
 	if errMsg != "" {
 		c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
 		return
@@ -204,7 +204,7 @@ func (s *Service) addElevenLabsVoice(c *gin.Context) {
 	environmentID := c.Param("environment")
 	credentialRef := c.Param("credential")
 
-	apiKey, errMsg := s.resolveElevenLabsKey(c, environmentID, credentialRef)
+	apiKey, errMsg := s.resolveEnvironmentSecret(c, environmentID, credentialRef)
 	if errMsg != "" {
 		c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
 		return

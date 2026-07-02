@@ -67,3 +67,39 @@ func TestGetActions_InjectsDynamicOptions(t *testing.T) {
 	groqInputs := served["ai/groq"].Inputs
 	g.Expect(groqInputs[1].DynamicOptions).To(BeNil())
 }
+
+// TestGetActions_InjectsParameterisedDynamicOptions pins the params leg of
+// the marker: ai/ollama's model input declares the sibling inputs whose
+// values the editor must forward to the resolver as query parameters.
+func TestGetActions_InjectsParameterisedDynamicOptions(t *testing.T) {
+	g := NewWithT(t)
+	gin.SetMode(gin.TestMode)
+
+	inputs, _ := json.Marshal([]api.InputDefinition{
+		{Name: "endpoint", Type: "string", Label: "Ollama Server URL", Required: true},
+		{Name: "model", Type: "string", Label: "Model", Options: []api.InputOption{{Name: "Llama 3.2", Value: "llama3.2"}}},
+	})
+	mock := &actionsMockPersistence{actions: []*api.Action{
+		{ID: "ai/ollama", ActionType: "2", Inputs: inputs},
+	}}
+
+	r := gin.New()
+	svc := &Service{persistence: mock}
+	r.GET("/api/v1/action", svc.getActions)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/action", nil)
+	r.ServeHTTP(rec, req)
+	g.Expect(rec.Code).To(Equal(http.StatusOK))
+
+	var served map[string]struct {
+		Inputs []api.InputDefinition `json:"inputs"`
+	}
+	g.Expect(json.Unmarshal(rec.Body.Bytes(), &served)).To(Succeed())
+
+	model := served["ai/ollama"].Inputs[1]
+	g.Expect(model.DynamicOptions).To(Not(BeNil()))
+	g.Expect(model.DynamicOptions.Endpoint).To(Equal("/api/v1/action/options/ollama-models"))
+	g.Expect(model.DynamicOptions.Params).To(Equal([]string{"endpoint", "api_key"}))
+	g.Expect(model.Options).To(HaveLen(1), "static options must survive as fallback")
+}
