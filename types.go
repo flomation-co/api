@@ -411,6 +411,11 @@ type EnvironmentCredential struct {
 	Metadata        *json.RawMessage `json:"metadata,omitempty" db:"metadata"`
 	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time        `json:"updated_at" db:"updated_at"`
+	// ConsecutiveFailures counts recent unsuccessful token refresh
+	// attempts. Reset to 0 on any successful refresh; incremented
+	// by the refresh poller; used to escalate a credential to
+	// revoked status after a threshold. Added by migration 94.
+	ConsecutiveFailures int `json:"consecutive_failures,omitempty" db:"consecutive_failures"`
 
 	// Non-persisted: provider details joined for API responses
 	ProviderName *string `json:"provider_name,omitempty" db:"provider_name"`

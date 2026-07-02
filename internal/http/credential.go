@@ -237,7 +237,24 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 
 	// Look up credential and environment
 	cred, err := s.persistence.GetCredentialByID(stateData.CredentialID)
-	if err != nil || cred == nil {
+	if err != nil {
+		// Distinguish "actually missing" from "lookup errored" so
+		// the log surfaces schema/scan failures (missing struct
+		// field, migration-without-struct-update, etc.) rather
+		// than pretending they're routine "user's row is gone".
+		// The user-facing message stays the same to avoid leaking
+		// internal detail.
+		log.WithFields(log.Fields{
+			"credential_id": stateData.CredentialID,
+			"error":         err,
+		}).Error("credential lookup failed during OAuth callback")
+		c.Data(http.StatusNotFound, "text/html", []byte(oauthResultPage("Not Found", "Credential not found.", true)))
+		return
+	}
+	if cred == nil {
+		log.WithFields(log.Fields{
+			"credential_id": stateData.CredentialID,
+		}).Warn("credential row not found during OAuth callback")
 		c.Data(http.StatusNotFound, "text/html", []byte(oauthResultPage("Not Found", "Credential not found.", true)))
 		return
 	}
