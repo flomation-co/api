@@ -91,6 +91,7 @@ var subCategoryMetadata = map[string]struct {
 	"messaging/discord":    {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
 	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
 	"scheduling/calendly":  {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
+	"scheduling/calcom":    {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
 	"helpdesk/zendesk":     {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
 }
 
