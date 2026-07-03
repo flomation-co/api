@@ -92,6 +92,7 @@ var subCategoryMetadata = map[string]struct {
 	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
 	"scheduling/calendly":  {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
 	"scheduling/calcom":    {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
+	"scheduling/acuity":    {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
 	"helpdesk/zendesk":     {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
 }
 
