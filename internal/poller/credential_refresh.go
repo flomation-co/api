@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
 	log "github.com/sirupsen/logrus"
 )
@@ -104,7 +105,15 @@ func (rp *CredentialRefreshPoller) refreshToken(row persistence.CredentialRefres
 		"client_secret": {clientSecret},
 	}
 
-	req, err := http.NewRequest("POST", row.TokenURL, strings.NewReader(data.Encode()))
+	// Substitute per-tenant URL variables (e.g. the shop subdomain) into the
+	// token URL. Fixed-URL providers are unaffected; per-tenant providers that
+	// actually expire (unlike Shopify's permanent tokens) refresh correctly.
+	tokenURL, err := api.SubstituteURLVariables(row.TokenURL, api.URLVarsFromMetadata(row.Metadata))
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return err
 	}

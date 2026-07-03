@@ -51,6 +51,10 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"opentofu":    {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and manage infrastructure as code", SubKey: "opentofu", SubName: "OpenTofu", SubIcon: "cubes", SubDescription: "Infrastructure as Code — run OpenTofu plan, apply, and destroy"},
 	"databricks":  {Key: "data-warehouse", Name: "Data Warehouse", Icon: "cubes-stacked", Description: "Query and orchestrate data warehouses and lakehouses", SubKey: "databricks", SubName: "Databricks", SubIcon: "database", SubDescription: "Run SQL, jobs, and models against a Databricks lakehouse"},
 	"hubspot":     {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets", SubKey: "hubspot", SubName: "HubSpot", SubIcon: "hubspot", SubDescription: "Manage contacts, companies, deals, and tickets in the HubSpot CRM"},
+	// E-Commerce uses 3-segment action IDs (ecommerce/shopify/order_create),
+	// so the sub-group (Shopify) is resolved from subCategoryMetadata below —
+	// no inline Sub* fields here (getCategoryForAction would overwrite them).
+	"ecommerce": {Key: "ecommerce", Name: "E-Commerce", Icon: "cart-shopping", Description: "Online store platforms — orders, products, and customers"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -79,6 +83,7 @@ var subCategoryMetadata = map[string]struct {
 	"google/calendar":      {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
 	"messaging/telegram":   {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
 	"messaging/discord":    {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
+	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
