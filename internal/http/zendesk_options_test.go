@@ -104,3 +104,33 @@ func TestZendeskOptions_HappyPath(t *testing.T) {
 	g.Expect(first["name"]).To(Equal("Billing"))
 	g.Expect(first["value"]).To(Equal("1"))
 }
+
+// TestZendeskOptions_Paginates confirms the proxy follows Zendesk's absolute
+// next_page cursor and accumulates rows across pages (so accounts with >100
+// groups/organizations aren't silently truncated at the first page).
+func TestZendeskOptions_Paginates(t *testing.T) {
+	g := NewWithT(t)
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if req.URL.Query().Get("page") == "2" {
+			_, _ = w.Write([]byte(`{"groups":[{"id":3,"name":"Escalations"}],"next_page":null}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"groups":[{"id":2,"name":"Support"},{"id":1,"name":"Billing"}],"next_page":"` + srv.URL + `/api/v2/groups.json?page=2"}`))
+	}))
+	defer srv.Close()
+
+	prev := zendeskOptionsHostOverride
+	zendeskOptionsHostOverride = srv.URL
+	defer func() { zendeskOptionsHostOverride = prev }()
+
+	r := setupZendeskOptionsRouter(&Service{})
+	body := getZendeskOptions(r, "/api/v1/action/options/zendesk-groups", map[string]string{
+		"subdomain": "acme", "email": "a@b.com", "api_token": "plain-token",
+	})
+	opts, ok := body["options"].([]interface{})
+	g.Expect(ok).To(BeTrue(), "body: %#v", body)
+	g.Expect(opts).To(HaveLen(3)) // 2 from page 1 + 1 from page 2
+}

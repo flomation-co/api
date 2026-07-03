@@ -105,48 +105,65 @@ func (s *Service) serveZendeskOptions(c *gin.Context, path, arrayKey string) {
 
 // fetchZendeskOptions calls the account's API and maps the named array of
 // {id, name} objects into {name, value} options sorted by name.
+// maxOptionPages caps how many pages the dropdown proxies follow. Zendesk uses
+// offset pagination (100/page); a handful of pages covers realistic group /
+// organization counts while bounding an edit-time fetch. Beyond the cap the
+// list is truncated (the picker still falls back to manual entry).
+const maxOptionPages = 10
+
 func fetchZendeskOptions(c *gin.Context, subdomain, email, apiToken, path, arrayKey string) ([]api.InputOption, string) {
 	base := "https://" + subdomain + ".zendesk.com"
 	if zendeskOptionsHostOverride != "" {
 		base = zendeskOptionsHostOverride
 	}
-	url := base + "/api/v2" + path + "?per_page=100"
-	req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, url, nil)
-	if err != nil {
-		return nil, "Could not build the Zendesk request"
-	}
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(email+"/token:"+apiToken)))
-	req.Header.Set("Accept", "application/json")
+	auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(email+"/token:"+apiToken))
 
-	resp, err := zendeskOptionsHTTPClient.Do(req)
-	if err != nil {
-		log.WithField("error", err).Warn("unable to reach Zendesk for options")
-		return nil, "Could not reach Zendesk — check the Subdomain"
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == gohttp.StatusUnauthorized || resp.StatusCode == gohttp.StatusForbidden {
-		return nil, "Zendesk rejected the request as unauthorised — check the Agent Email and API Token"
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "Zendesk returned an unexpected response (HTTP " + strconv.Itoa(resp.StatusCode) + ")"
-	}
-
-	var body struct {
-		Groups        []zendeskNamed `json:"groups"`
-		Organizations []zendeskNamed `json:"organizations"`
-	}
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&body); err != nil {
-		return nil, "Failed to parse the Zendesk response"
-	}
-
+	// Follow Zendesk's absolute next_page cursor so an account with more than
+	// one page of groups/organizations isn't silently truncated at the first
+	// 100 (bounded by maxOptionPages).
 	var rows []zendeskNamed
-	switch arrayKey {
-	case "groups":
-		rows = body.Groups
-	case "organizations":
-		rows = body.Organizations
+	next := base + "/api/v2" + path + "?per_page=100"
+	for pages := 0; next != "" && pages < maxOptionPages; pages++ {
+		req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, next, nil)
+		if err != nil {
+			return nil, "Could not build the Zendesk request"
+		}
+		req.Header.Set("Authorization", auth)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := zendeskOptionsHTTPClient.Do(req)
+		if err != nil {
+			log.WithField("error", err).Warn("unable to reach Zendesk for options")
+			return nil, "Could not reach Zendesk — check the Subdomain"
+		}
+		if resp.StatusCode == gohttp.StatusUnauthorized || resp.StatusCode == gohttp.StatusForbidden {
+			_ = resp.Body.Close()
+			return nil, "Zendesk rejected the request as unauthorised — check the Agent Email and API Token"
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			code := resp.StatusCode
+			_ = resp.Body.Close()
+			return nil, "Zendesk returned an unexpected response (HTTP " + strconv.Itoa(code) + ")"
+		}
+
+		var body struct {
+			Groups        []zendeskNamed `json:"groups"`
+			Organizations []zendeskNamed `json:"organizations"`
+			NextPage      string         `json:"next_page"`
+		}
+		derr := json.NewDecoder(resp.Body).Decode(&body)
+		_ = resp.Body.Close()
+		if derr != nil {
+			return nil, "Failed to parse the Zendesk response"
+		}
+
+		switch arrayKey {
+		case "groups":
+			rows = append(rows, body.Groups...)
+		case "organizations":
+			rows = append(rows, body.Organizations...)
+		}
+		next = body.NextPage
 	}
 
 	options := make([]api.InputOption, 0, len(rows))
