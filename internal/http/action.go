@@ -55,6 +55,9 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// so the sub-group (Shopify) is resolved from subCategoryMetadata below —
 	// no inline Sub* fields here (getCategoryForAction would overwrite them).
 	"ecommerce": {Key: "ecommerce", Name: "E-Commerce", Icon: "cart-shopping", Description: "Online store platforms — orders, products, and customers"},
+	// Scheduling uses 3-segment action IDs (scheduling/calendly/event_get), so
+	// the sub-group (Calendly) is resolved from subCategoryMetadata below.
+	"scheduling": {Key: "scheduling", Name: "Scheduling", Icon: "calendar", Description: "Meeting scheduling and booking platforms"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -84,6 +87,7 @@ var subCategoryMetadata = map[string]struct {
 	"messaging/telegram":   {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
 	"messaging/discord":    {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
 	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	"scheduling/calendly":  {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
