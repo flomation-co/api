@@ -58,6 +58,9 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// Scheduling uses 3-segment action IDs (scheduling/calendly/event_get), so
 	// the sub-group (Calendly) is resolved from subCategoryMetadata below.
 	"scheduling": {Key: "scheduling", Name: "Scheduling", Icon: "calendar", Description: "Meeting scheduling and booking platforms"},
+	// Helpdesk uses 3-segment action IDs (helpdesk/zendesk/ticket_create), so
+	// the sub-group (Zendesk) is resolved from subCategoryMetadata below.
+	"helpdesk": {Key: "helpdesk", Name: "Helpdesk", Icon: "headset", Description: "Customer support and ticketing platforms"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -88,6 +91,7 @@ var subCategoryMetadata = map[string]struct {
 	"messaging/discord":    {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
 	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
 	"scheduling/calendly":  {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
+	"helpdesk/zendesk":     {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
@@ -125,6 +129,30 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 // point at endpoints returning the same {"options": [{name, value}]} shape.
 var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
+	// Zendesk live dropdowns: the Groups and Organizations pickers each resolve
+	// from a proxy endpoint, forwarding the node's subdomain/email/api_token so
+	// the api can call the account's API server-side (api_token is a secret,
+	// resolved from the environment — the plaintext never transits the browser).
+	"helpdesk/zendesk/ticket_create#group_id": {
+		Endpoint: "/api/v1/action/options/zendesk-groups",
+		Params:   []string{"subdomain", "email", "api_token"},
+	},
+	"helpdesk/zendesk/ticket_update#group_id": {
+		Endpoint: "/api/v1/action/options/zendesk-groups",
+		Params:   []string{"subdomain", "email", "api_token"},
+	},
+	"helpdesk/zendesk/ticket_get_all#group_id": {
+		Endpoint: "/api/v1/action/options/zendesk-groups",
+		Params:   []string{"subdomain", "email", "api_token"},
+	},
+	"helpdesk/zendesk/user_create#organization_id": {
+		Endpoint: "/api/v1/action/options/zendesk-organizations",
+		Params:   []string{"subdomain", "email", "api_token"},
+	},
+	"helpdesk/zendesk/user_update#organization_id": {
+		Endpoint: "/api/v1/action/options/zendesk-organizations",
+		Params:   []string{"subdomain", "email", "api_token"},
+	},
 	"ai/ollama#model": {
 		Endpoint: "/api/v1/action/options/ollama-models",
 		Params:   []string{"endpoint", "api_key"},
