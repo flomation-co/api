@@ -443,6 +443,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// auth-gated like the other editor option-fetch proxies.
 	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
 	actions.GET("/options/ollama-models", s.jwtMiddleware, s.getOllamaModels)
+	actions.GET("/options/zendesk-groups", s.jwtMiddleware, s.getZendeskGroups)
+	actions.GET("/options/zendesk-organizations", s.jwtMiddleware, s.getZendeskOrganizations)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
