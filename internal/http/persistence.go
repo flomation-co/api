@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"flomation.app/automate/api"
@@ -103,10 +104,20 @@ type Persistence interface {
 	UpdateEnvironmentProperty(environmentID string, environmentKey string, property api.EnvironmentProperty) error
 	UpdateExecutionResult(ID string, result interface{}) error
 	SaveExecutionCheckpoint(id string, checkpoint interface{}) error
+	GetExecutionCheckpoint(id string) (json.RawMessage, error)
+	SetExecutionResumeData(id string, data json.RawMessage) error
 	SetExecutionResumeAt(id string, resumeAt time.Time) error
 	ClearResumeAt(id string) error
 	SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error
 	IncrementSuspendCount(id string) error
+	// Human-in-the-Loop
+	GetHITLRequestByExecutionNode(executionID, nodeID string) (*api.HITLRequest, error)
+	InsertHITLRequest(req *api.HITLRequest, tokens []api.HITLToken) error
+	GetHITLRequestByToken(token string) (*api.HITLRequest, string, error)
+	GetHITLRequestByID(id string) (*api.HITLRequest, error)
+	SetHITLRequestChannels(id string, channels json.RawMessage) error
+	ClaimHITLResponse(requestID, option, answeredBy, channel string) (bool, *api.HITLRequest, error)
+	MarkHITLTimedOut(requestID string) (bool, error)
 	AccumulateBillingDuration(id string, additionalMs int64) error
 	AppendExecutionSegment(id string, segmentJSON []byte) error
 	UpdateExecutionRunnerID(ID string, runnerID string) error

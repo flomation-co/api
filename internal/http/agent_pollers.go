@@ -37,6 +37,12 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	poller.StartSchedulePoller(p, pollerDispatcher)
 	log.Info("API-side schedule poller registered")
 
+	// Resume poller (15s) — wakes suspended executions whose resume_at has
+	// passed: Human-in-the-Loop timeouts (routing to the timeout handle) and
+	// plain Wait-action auto-resumes.
+	poller.StartResumePoller(p, s.executionNotifier)
+	log.Info("API-side resume poller registered")
+
 	// Embedding backfill poller (15s) — generates missing embeddings.
 	if s.embeddingProvider != nil {
 		poller.StartEmbeddingBackfillPoller(p, s.embeddingProvider)

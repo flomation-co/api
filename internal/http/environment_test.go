@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -945,6 +946,25 @@ func (m *mockPersistence) SetExecutionResumeAt(id string, resumeAt time.Time) er
 func (m *mockPersistence) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error {
 	return nil
 }
+func (m *mockPersistence) GetExecutionCheckpoint(id string) (json.RawMessage, error) { return nil, nil }
+func (m *mockPersistence) SetExecutionResumeData(id string, data json.RawMessage) error { return nil }
+func (m *mockPersistence) GetHITLRequestByExecutionNode(executionID, nodeID string) (*api.HITLRequest, error) {
+	return nil, nil
+}
+func (m *mockPersistence) InsertHITLRequest(req *api.HITLRequest, tokens []api.HITLToken) error {
+	return nil
+}
+func (m *mockPersistence) GetHITLRequestByToken(token string) (*api.HITLRequest, string, error) {
+	return nil, "", nil
+}
+func (m *mockPersistence) GetHITLRequestByID(id string) (*api.HITLRequest, error) { return nil, nil }
+func (m *mockPersistence) SetHITLRequestChannels(id string, channels json.RawMessage) error {
+	return nil
+}
+func (m *mockPersistence) ClaimHITLResponse(requestID, option, answeredBy, channel string) (bool, *api.HITLRequest, error) {
+	return false, nil, nil
+}
+func (m *mockPersistence) MarkHITLTimedOut(requestID string) (bool, error) { return false, nil }
 
 // User-declared identities (R2). No-op stubs — tests that exercise the
 // identity flow can shadow these on their concrete mock type.

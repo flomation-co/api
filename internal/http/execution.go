@@ -938,10 +938,44 @@ func (s *Service) resumeExecution(c *gin.Context) {
 	var resumeData map[string]interface{}
 	_ = c.ShouldBindJSON(&resumeData)
 
-	// Re-queue: set status back to created so runner picks it up
-	if err := s.persistence.UpdateExecutionStatus(id, "created"); err != nil {
+	if err := s.resumeExecutionWithData(id, resumeData); err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
+// resumeExecutionWithData re-queues a suspended execution, optionally injecting
+// resumeData into the stored checkpoint so it reaches the executor untouched by
+// the runner (the executor reads Checkpoint.ResumeData). Shared by the resume
+// endpoint, the Human-in-the-Loop respond handler, and the timeout poller.
+func (s *Service) resumeExecutionWithData(id string, resumeData map[string]interface{}) error {
+	if len(resumeData) > 0 {
+		// Patch the checkpoint JSONB in place: unmarshal, set the top-level
+		// "resume_data" key, re-marshal, save. The runner serves this column
+		// verbatim to the executor.
+		if cpRaw, err := s.persistence.GetExecutionCheckpoint(id); err == nil && len(cpRaw) > 0 {
+			var m map[string]interface{}
+			if json.Unmarshal(cpRaw, &m) == nil {
+				m["resume_data"] = resumeData
+				if patched, err := json.Marshal(m); err == nil {
+					if err := s.persistence.SaveExecutionCheckpoint(id, patched); err != nil {
+						log.WithError(err).Error("unable to patch checkpoint with resume data")
+					}
+				}
+			}
+		} else if err != nil {
+			log.WithError(err).Error("unable to read checkpoint for resume data injection")
+		}
+		if j, err := json.Marshal(resumeData); err == nil {
+			_ = s.persistence.SetExecutionResumeData(id, j)
+		}
+	}
+
+	// Re-queue: set status back to created so runner picks it up
+	if err := s.persistence.UpdateExecutionStatus(id, "created"); err != nil {
+		return err
 	}
 	if err := s.persistence.UpdateCompletionStatus(id, "pending"); err != nil {
 		log.WithError(err).Error("unable to update completion status")
@@ -960,7 +994,7 @@ func (s *Service) resumeExecution(c *gin.Context) {
 		"execution_id": id,
 	}).Info("execution resumed")
 
-	c.Status(http.StatusOK)
+	return nil
 }
 
 // appendExecutionSegment adds a timing segment to the execution's segments array.
