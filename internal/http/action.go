@@ -62,6 +62,9 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// Helpdesk uses 3-segment action IDs (helpdesk/zendesk/ticket_create), so
 	// the sub-group (Zendesk) is resolved from subCategoryMetadata below.
 	"helpdesk": {Key: "helpdesk", Name: "Helpdesk", Icon: "headset", Description: "Customer support and ticketing platforms"},
+	// DevOps uses 3-segment action IDs (devops/jenkins/job_trigger), so the
+	// sub-group (Jenkins) is resolved from subCategoryMetadata below.
+	"devops": {Key: "devops", Name: "DevOps", Icon: "gears", Description: "Automate your build, test, and deploy workflows — trigger jobs, watch builds, and manage your CI/CD servers"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -95,6 +98,7 @@ var subCategoryMetadata = map[string]struct {
 	"scheduling/calcom":    {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
 	"scheduling/acuity":    {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
 	"helpdesk/zendesk":     {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
+	"devops/jenkins":       {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
@@ -160,6 +164,30 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 		Endpoint: "/api/v1/action/options/ollama-models",
 		Params:   []string{"endpoint", "api_key"},
 	},
+	// Jenkins "Job" pickers. Every action that targets a job resolves its
+	// dropdown from the same proxy, which forwards the node's base_url /
+	// username / api_token and lists the instance's jobs server-side (api_token
+	// is a secret resolved from the environment — the plaintext never transits
+	// the browser). The static (empty) options remain the fallback for manual
+	// entry when the fetch fails.
+	"devops/jenkins/job_trigger#job":        jenkinsJobsOption,
+	"devops/jenkins/job_trigger_params#job": jenkinsJobsOption,
+	"devops/jenkins/job_copy#job":           jenkinsJobsOption,
+	"devops/jenkins/job_get#job":            jenkinsJobsOption,
+	"devops/jenkins/job_enable#job":         jenkinsJobsOption,
+	"devops/jenkins/job_disable#job":        jenkinsJobsOption,
+	"devops/jenkins/job_delete#job":         jenkinsJobsOption,
+	"devops/jenkins/build_get_all#job":      jenkinsJobsOption,
+	"devops/jenkins/build_get#job":          jenkinsJobsOption,
+	"devops/jenkins/build_console#job":      jenkinsJobsOption,
+	"devops/jenkins/build_stop#job":         jenkinsJobsOption,
+}
+
+// jenkinsJobsOption is the shared dynamic-options marker for every Jenkins
+// "Job" input — declared once so the 11 entries above stay identical.
+var jenkinsJobsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/jenkins-jobs",
+	Params:   []string{"base_url", "username", "api_token"},
 }
 
 func (s *Service) getActions(c *gin.Context) {
