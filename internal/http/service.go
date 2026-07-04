@@ -666,6 +666,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.GET("/execution/:id", s.getExecutionByID)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
 
+	// Human-in-the-Loop: the executor registers an Await request; Launch
+	// reports the human's response. Both bypass JWT (service-to-service).
+	internal.POST("/hitl/request", s.createHITLRequestInternal)
+	internal.POST("/hitl/respond", s.respondHITLInternal)
+
 	// Agent Memory Phase 1: identity + conversation resolution endpoints.
 	// Called by Launch on every incoming webhook to resolve the identity
 	// and open conversation before dispatching the orchestrator flow.

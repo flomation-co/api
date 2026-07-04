@@ -5990,7 +5990,8 @@ func (s *Service) AppendExecutionSegment(id string, segmentJSON []byte) error {
 func (s *Service) GetSuspendedExecutionsForResume(now time.Time, limit int) ([]*api.Execution, error) {
 	var executions []*api.Execution
 	err := s.DB().Select(&executions,
-		`SELECT id, flo_id, execution_status, completion_status, checkpoint, resume_at
+		`SELECT id, flo_id, execution_status, completion_status, checkpoint, resume_at,
+		        resume_trigger_type, resume_trigger_match
 		 FROM execution
 		 WHERE execution_status = 'suspended'
 		   AND resume_at IS NOT NULL
@@ -5999,4 +6000,151 @@ func (s *Service) GetSuspendedExecutionsForResume(now time.Time, limit int) ([]*
 		 LIMIT $2
 		 FOR UPDATE SKIP LOCKED`, now, limit)
 	return executions, err
+}
+
+func (s *Service) GetExecutionCheckpoint(id string) (json.RawMessage, error) {
+	var cp json.RawMessage
+	err := s.DB().Get(&cp, "SELECT checkpoint FROM execution WHERE id = $1", id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return cp, err
+}
+
+func (s *Service) SetExecutionResumeData(id string, data json.RawMessage) error {
+	_, err := s.DB().Exec("UPDATE execution SET resume_data = $1 WHERE id = $2", data, id)
+	return err
+}
+
+// --- Human-in-the-Loop persistence methods ---
+
+func (s *Service) GetHITLRequestByExecutionNode(executionID, nodeID string) (*api.HITLRequest, error) {
+	var r api.HITLRequest
+	err := s.DB().Get(&r,
+		`SELECT * FROM hitl_request WHERE execution_id = $1 AND node_id = $2`, executionID, nodeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (s *Service) GetHITLRequestByID(id string) (*api.HITLRequest, error) {
+	var r api.HITLRequest
+	err := s.DB().Get(&r, `SELECT * FROM hitl_request WHERE id = $1`, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// InsertHITLRequest inserts a request and its per-option tokens atomically.
+// On success req.ID is populated with the generated id.
+func (s *Service) InsertHITLRequest(req *api.HITLRequest, tokens []api.HITLToken) error {
+	tx, err := s.DB().Beginx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var id string
+	err = tx.Get(&id,
+		`INSERT INTO hitl_request (execution_id, flo_id, node_id, message, options, channels, status, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, COALESCE($6, '[]'::jsonb), 'awaiting', $7)
+		 RETURNING id`,
+		req.ExecutionID, req.FloID, req.NodeID, req.Message, req.Options, nullableJSON(req.Channels), req.ExpiresAt)
+	if err != nil {
+		return err
+	}
+
+	for _, tok := range tokens {
+		if _, err := tx.Exec(
+			`INSERT INTO hitl_token (token, request_id, option_value) VALUES ($1, $2, $3)`,
+			tok.Token, id, tok.OptionValue); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	req.ID = id
+	return nil
+}
+
+func (s *Service) GetHITLRequestByToken(token string) (*api.HITLRequest, string, error) {
+	var row struct {
+		RequestID   string `db:"request_id"`
+		OptionValue string `db:"option_value"`
+	}
+	err := s.DB().Get(&row,
+		`SELECT request_id, option_value FROM hitl_token WHERE token = $1`, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	req, err := s.GetHITLRequestByID(row.RequestID)
+	if err != nil {
+		return nil, "", err
+	}
+	return req, row.OptionValue, nil
+}
+
+func (s *Service) SetHITLRequestChannels(id string, channels json.RawMessage) error {
+	_, err := s.DB().Exec(
+		`UPDATE hitl_request SET channels = COALESCE($1, '[]'::jsonb) WHERE id = $2`,
+		nullableJSON(channels), id)
+	return err
+}
+
+// ClaimHITLResponse atomically records the first response. Returns won=true and
+// the updated request only if the request was still awaiting; otherwise
+// won=false (already answered or timed out) and the caller must not resume.
+func (s *Service) ClaimHITLResponse(requestID, option, answeredBy, channel string) (bool, *api.HITLRequest, error) {
+	var r api.HITLRequest
+	err := s.DB().Get(&r,
+		`UPDATE hitl_request
+		 SET status = 'answered', answered_option = $2, answered_by = NULLIF($3, ''),
+		     answered_channel = NULLIF($4, ''), answered_at = NOW()
+		 WHERE id = $1 AND status = 'awaiting'
+		 RETURNING *`,
+		requestID, option, answeredBy, channel)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	return true, &r, nil
+}
+
+// MarkHITLTimedOut atomically flips an awaiting request to timed_out. Returns
+// false if it was already answered (the human beat the clock).
+func (s *Service) MarkHITLTimedOut(requestID string) (bool, error) {
+	var id string
+	err := s.DB().Get(&id,
+		`UPDATE hitl_request SET status = 'timed_out', answered_at = NOW()
+		 WHERE id = $1 AND status = 'awaiting' RETURNING id`, requestID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// nullableJSON returns nil for empty JSON so COALESCE applies the default.
+func nullableJSON(j json.RawMessage) interface{} {
+	if len(j) == 0 {
+		return nil
+	}
+	return j
 }

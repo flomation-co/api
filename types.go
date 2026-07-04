@@ -192,8 +192,57 @@ type Execution struct {
 	CreditCostPence           *int64           `json:"credit_cost_pence,omitempty" db:"-"`
 	Checkpoint                *json.RawMessage `json:"checkpoint,omitempty" db:"checkpoint"`
 	ResumeAt                  *time.Time       `json:"resume_at,omitempty" db:"resume_at"`
+	ResumeData                *json.RawMessage `json:"resume_data,omitempty" db:"resume_data"`
+	ResumeTriggerType         *string          `json:"resume_trigger_type,omitempty" db:"resume_trigger_type"`
+	ResumeTriggerMatch        *json.RawMessage `json:"resume_trigger_match,omitempty" db:"resume_trigger_match"`
 	SuspendCount              int              `json:"suspend_count" db:"suspend_count"`
 	Segments                  *json.RawMessage `json:"segments,omitempty" db:"segments"`
+}
+
+// HITLRequest is an outstanding Human-in-the-Loop decision, written when an
+// Await node suspends its execution and resolved when a human responds (or the
+// request times out). See migration 100.
+type HITLRequest struct {
+	ID              string           `json:"id" db:"id"`
+	ExecutionID     string           `json:"execution_id" db:"execution_id"`
+	FloID           string           `json:"flo_id" db:"flo_id"`
+	NodeID          string           `json:"node_id" db:"node_id"`
+	Message         string           `json:"message" db:"message"`
+	Options         json.RawMessage  `json:"options" db:"options"`   // []HITLOption
+	Channels        json.RawMessage  `json:"channels" db:"channels"` // []HITLChannel
+	Status          string           `json:"status" db:"status"`     // awaiting|answered|timed_out
+	AnsweredOption  *string          `json:"answered_option,omitempty" db:"answered_option"`
+	AnsweredBy      *string          `json:"answered_by,omitempty" db:"answered_by"`
+	AnsweredChannel *string          `json:"answered_channel,omitempty" db:"answered_channel"`
+	ExpiresAt       *time.Time       `json:"expires_at,omitempty" db:"expires_at"`
+	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
+	AnsweredAt      *time.Time       `json:"answered_at,omitempty" db:"answered_at"`
+}
+
+// HITLOption is a single choice presented to the human. Value drives the Await
+// node's output handle ("option_<value>"); Token is the per-option capability
+// used by the web click-link fallback and Telegram callback_data.
+type HITLOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Token string `json:"token"`
+}
+
+// HITLChannel records where a request was delivered so a losing channel can be
+// updated once the request is answered.
+type HITLChannel struct {
+	ChannelType string `json:"channel_type"`
+	NodeID      string `json:"node_id"`
+	ChannelID   string `json:"channel_id,omitempty"`
+	MessageRef  string `json:"message_ref,omitempty"`
+}
+
+// HITLToken is a row in hitl_token — an opaque token mapping to one option of
+// one request.
+type HITLToken struct {
+	Token       string `json:"token" db:"token"`
+	RequestID   string `json:"request_id" db:"request_id"`
+	OptionValue string `json:"option_value" db:"option_value"`
 }
 
 type Revision struct {
