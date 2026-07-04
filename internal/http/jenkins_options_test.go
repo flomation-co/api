@@ -63,6 +63,8 @@ func TestJenkinsJobsURL(t *testing.T) {
 		// A trailing "?" (or any query/fragment) must not displace the forced
 		// /api/json path into the query string.
 		"http://ci:8080/x?a=1#f": "http://ci:8080/x/api/json?tree=jobs%5Bname%2Curl%2Ccolor%5D",
+		// Userinfo must be stripped so a pasted URL can't smuggle credentials.
+		"http://user:pass@ci:8080": "http://ci:8080/api/json?tree=jobs%5Bname%2Curl%2Ccolor%5D",
 	} {
 		got, err := jenkinsJobsURL(input)
 		g.Expect(err).To(BeNil(), "input: %q", input)
@@ -140,6 +142,21 @@ func TestGetJenkinsJobs_UnreachableServer(t *testing.T) {
 	g := NewWithT(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	upstream.Close() // immediately closed → connection refused
+
+	r := setupJenkinsJobsRouter(&Service{})
+	body := getJenkinsJobOptions(r, map[string]string{"base_url": upstream.URL, "username": "admin", "api_token": "tok"})
+	g.Expect(body).To(HaveKey("error"))
+	g.Expect(body["error"]).To(ContainSubstring("Could not reach"))
+}
+
+// A cross-host redirect must not be followed (would let base_url bounce the
+// server-side fetch to an unvetted host past the dialer's private-range allow).
+func TestGetJenkinsJobs_CrossHostRedirectRefused(t *testing.T) {
+	g := NewWithT(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com/api/json", http.StatusFound)
+	}))
+	defer upstream.Close()
 
 	r := setupJenkinsJobsRouter(&Service{})
 	body := getJenkinsJobOptions(r, map[string]string{"base_url": upstream.URL, "username": "admin", "api_token": "tok"})

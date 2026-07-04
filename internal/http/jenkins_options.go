@@ -32,6 +32,20 @@ import (
 // make executor-side requests to the same ranges.
 var jenkinsOptionsHTTPClient = &gohttp.Client{
 	Timeout: 10 * time.Second,
+	// The dialer Control runs on every dialed address, including redirect
+	// targets, so link-local/metadata IPs are blocked even mid-redirect. But a
+	// redirect to a *different* host in an allowed (private) range would still
+	// be followed, so CheckRedirect additionally refuses cross-host redirects —
+	// the jobs endpoint returns JSON directly and never needs to leave the host.
+	CheckRedirect: func(req *gohttp.Request, via []*gohttp.Request) error {
+		if len(via) >= 5 {
+			return errors.New("stopped after too many redirects")
+		}
+		if req.URL.Host != via[0].URL.Host {
+			return errors.New("cross-host redirect not allowed")
+		}
+		return nil
+	},
 	Transport: &gohttp.Transport{
 		DialContext: (&net.Dialer{
 			Timeout: 5 * time.Second,
@@ -170,6 +184,9 @@ func jenkinsJobsURL(base string) (string, error) {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return "", errors.New("base_url must be http or https")
 	}
+	// Drop any userinfo (user:pass@host) so a pasted URL can't smuggle
+	// credentials into the server-side request.
+	u.User = nil
 	u.Path = strings.TrimRight(u.Path, "/") + "/api/json"
 	u.RawPath = ""
 	u.Fragment = ""
