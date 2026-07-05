@@ -103,12 +103,18 @@ var subCategoryMetadata = map[string]struct {
 	"scheduling/acuity":       {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
 	"helpdesk/zendesk":        {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
 	"devops/jenkins":          {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
-	"ukgov/companieshouse":    {Name: "Companies House", Icon: "building", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
-	"ukgov/dvla":              {Name: "DVLA", Icon: "car", Description: "UK vehicle data — tax, MOT status and vehicle details"},
-	"ukgov/foodstandards":     {Name: "Food Standards Agency", Icon: "utensils", Description: "UK food hygiene ratings (FHRS)"},
+	"ukgov/companieshouse":    {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
+	"ukgov/dvla":              {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
+	"ukgov/foodstandards":     {Name: "Food Standards Agency", Icon: "star", Description: "UK food hygiene ratings (FHRS)"},
 	"ukgov/police":            {Name: "Police UK", Icon: "shield-halved", Description: "UK street-level crime, stop-and-search and police force data"},
-	"ukgov/environmentagency": {Name: "Environment Agency", Icon: "water", Description: "UK flood warnings, flood areas and river/rainfall monitoring"},
-	"ukgov/postcodes":         {Name: "Postcodes", Icon: "location-dot", Description: "UK postcode lookup, validation and geocoding"},
+	"ukgov/environmentagency": {Name: "Environment Agency", Icon: "leaf", Description: "UK flood warnings, flood areas and river/rainfall monitoring"},
+	"ukgov/postcodes":         {Name: "Postcodes", Icon: "map", Description: "UK postcode lookup, validation and geocoding"},
+	"ukgov/parliament":        {Name: "UK Parliament", Icon: "landmark", Description: "UK Parliament — members, bills, Commons votes and written questions"},
+	"ukgov/ons":               {Name: "ONS", Icon: "chart-line", Description: "UK economic statistics from the Office for National Statistics"},
+	"ukgov/dvsa":              {Name: "DVSA", Icon: "wrench", Description: "UK MOT test history"},
+	"ukgov/charitycommission": {Name: "Charity Commission", Icon: "hand", Description: "The register of charities for England & Wales"},
+	"ukgov/bankholidays":      {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
+	"ukgov/landregistry":      {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
