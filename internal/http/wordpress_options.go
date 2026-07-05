@@ -114,6 +114,11 @@ func (s *Service) serveWordPressOptions(c *gin.Context, path string, extra url.V
 	}
 
 	appPassword := strings.TrimSpace(c.Query("app_password"))
+	// The canonical managed-credential reference is plural (${credentials.X}); the
+	// singular ${credential.X} is not an emitted format but is guarded leniently
+	// so a mistyped/legacy reference still fails closed with a clear message
+	// rather than being treated as a literal password. Mirrors the WooCommerce
+	// option proxy.
 	if strings.HasPrefix(appPassword, "${credentials.") || strings.HasPrefix(appPassword, "${credential.") {
 		c.JSON(gohttp.StatusOK, gin.H{"error": "Managed credentials can't be used to load this list — use an environment secret for the Application Password (the flow itself still runs)"})
 		return
@@ -172,6 +177,11 @@ func wordpressOptionsBaseURL(raw string) (string, error) {
 	}
 	u.User = nil
 	path := strings.TrimRight(u.Path, "/")
+	// Strip a pasted REST-API suffix so both a bare root and a full endpoint URL
+	// normalise to the same base. KNOWN EDGE CASE: a WordPress install literally
+	// living in a subdirectory named "wp-json" (e.g. https://site.com/wp-json)
+	// would be over-stripped to https://site.com. That's pathological and shared
+	// with the executor's NormaliseBaseURL — keep the two suffix lists in sync.
 	for _, suffix := range []string{"/wp-json/wp/v2", "/wp-json/wp/v1", "/wp-json"} {
 		if strings.HasSuffix(path, suffix) {
 			path = strings.TrimSuffix(path, suffix)
