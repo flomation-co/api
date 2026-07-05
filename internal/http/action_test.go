@@ -131,11 +131,19 @@ func TestGetCategoryForUKGov(t *testing.T) {
 	g.Expect(cat.Icon).To(Equal("landmark"))
 	g.Expect(cat.SubKey).To(Equal("ukgov/companieshouse"))
 	g.Expect(cat.SubName).To(Equal("Companies House"))
-	g.Expect(cat.SubIcon).To(Equal("building"))
+	g.Expect(cat.SubIcon).To(Equal("briefcase"))
 
 	// A different agency under the same top-level category.
 	dvla := getCategoryForAction("ukgov/dvla/vehicle_enquiry")
 	g.Expect(dvla).To(Not(BeNil()))
 	g.Expect(dvla.Key).To(Equal("ukgov"))
 	g.Expect(dvla.SubName).To(Equal("DVLA"))
+
+	// A v2 agency (Parliament) resolves under the same top-level category.
+	parl := getCategoryForAction("ukgov/parliament/search_members")
+	g.Expect(parl).To(Not(BeNil()))
+	g.Expect(parl.Key).To(Equal("ukgov"))
+	g.Expect(parl.SubKey).To(Equal("ukgov/parliament"))
+	g.Expect(parl.SubName).To(Equal("UK Parliament"))
+	g.Expect(parl.SubIcon).To(Equal("landmark"))
 }
