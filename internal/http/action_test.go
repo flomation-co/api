@@ -118,3 +118,24 @@ func TestGetCategoryForShopify(t *testing.T) {
 	g.Expect(cat.SubName).To(Equal("Shopify"))
 	g.Expect(cat.SubIcon).To(Equal("shopify"))
 }
+
+// ukgov/<agency>/* actions resolve to the UK Government top-level category with
+// the agency sub-group (from subCategoryMetadata, not auto-titled).
+func TestGetCategoryForUKGov(t *testing.T) {
+	g := NewWithT(t)
+
+	cat := getCategoryForAction("ukgov/companieshouse/get_company")
+	g.Expect(cat).To(Not(BeNil()))
+	g.Expect(cat.Key).To(Equal("ukgov"))
+	g.Expect(cat.Name).To(Equal("UK Government"))
+	g.Expect(cat.Icon).To(Equal("landmark"))
+	g.Expect(cat.SubKey).To(Equal("ukgov/companieshouse"))
+	g.Expect(cat.SubName).To(Equal("Companies House"))
+	g.Expect(cat.SubIcon).To(Equal("building"))
+
+	// A different agency under the same top-level category.
+	dvla := getCategoryForAction("ukgov/dvla/vehicle_enquiry")
+	g.Expect(dvla).To(Not(BeNil()))
+	g.Expect(dvla.Key).To(Equal("ukgov"))
+	g.Expect(dvla.SubName).To(Equal("DVLA"))
+}
