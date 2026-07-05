@@ -360,6 +360,11 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// Capture the per-account identifier that's only knowable after auth
+	// (QuickBooks realmId / Xero tenantId) into the credential metadata. No-op
+	// for every other provider. Non-fatal — see captureProviderTenant.
+	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, cred.Metadata, tokenResp.AccessToken)
+
 	log.WithFields(log.Fields{
 		"credential_id": stateData.CredentialID,
 		"provider":      cred.ProviderSlug,
@@ -447,11 +452,17 @@ type oauthTokenResponse struct {
 
 func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, providerSlug string) (*oauthTokenResponse, error) {
 	data := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"redirect_uri":  {redirectURI},
-		"client_id":     {clientID},
-		"client_secret": {clientSecret},
+		"grant_type":   {"authorization_code"},
+		"code":         {code},
+		"redirect_uri": {redirectURI},
+	}
+
+	// Intuit (and Xero) require the client credentials via HTTP Basic auth and
+	// reject them in the body; every other provider takes them in the body.
+	basicAuth := api.ProviderUsesBasicAuth(providerSlug)
+	if !basicAuth {
+		data.Set("client_id", clientID)
+		data.Set("client_secret", clientSecret)
 	}
 
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(data.Encode()))
@@ -460,6 +471,9 @@ func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, prov
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
+	if basicAuth {
+		req.SetBasicAuth(clientID, clientSecret)
+	}
 
 	// GitHub requires Accept: application/json explicitly
 	if providerSlug == "github" {

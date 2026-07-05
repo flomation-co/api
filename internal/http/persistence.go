@@ -92,9 +92,11 @@ type Persistence interface {
 	CreateCredential(cred *api.EnvironmentCredential, environmentKey string) (string, error)
 	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken, clientID, clientSecret string, expiresAt *time.Time) error
 	UpdateCredentialStatus(id, status string, lastError *string) error
+	UpdateCredentialMetadata(id string, metadata *json.RawMessage) error
 	DeleteCredential(id, environmentID string) error
 	GetDecryptedClientCredentials(credentialID, environmentKey string) (*string, *string, error)
 	GetCredentialByName(environmentID, name, environmentKey string) (*string, error)
+	GetCredentialWithMetaByName(environmentID, name, environmentKey string) (*string, *json.RawMessage, error)
 	GetCredentialsNeedingRefresh(within time.Duration) ([]persistence.CredentialRefreshRow, error)
 
 	TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string, parent *persistence.ParentLink) (*string, error)
