@@ -184,6 +184,20 @@ type wooNamedTerm struct {
 	Name string `json:"name"`
 }
 
+// redactWooOptionCreds scrubs the consumer key/secret (raw and URL-escaped) from
+// a message. In credentials-in-query mode they appear in the request URL, which
+// the net/http transport echoes into its errors; this keeps them out of logs.
+func redactWooOptionCreds(msg, key, secret string) string {
+	for _, s := range []string{secret, key} {
+		if s == "" {
+			continue
+		}
+		msg = strings.ReplaceAll(msg, url.QueryEscape(s), "REDACTED")
+		msg = strings.ReplaceAll(msg, s, "REDACTED")
+	}
+	return msg
+}
+
 func (s *Service) fetchWooCommerceOptions(c *gin.Context, base, key, secret string, inQuery bool, path string) ([]api.InputOption, string) {
 	var rows []wooNamedTerm
 	for page := 1; page <= maxWooOptionPages; page++ {
@@ -208,7 +222,10 @@ func (s *Service) fetchWooCommerceOptions(c *gin.Context, base, key, secret stri
 
 		resp, err := woocommerceOptionsHTTPClient.Do(req)
 		if err != nil {
-			log.WithField("error", err).Warn("unable to reach WooCommerce for options")
+			// In credentials-in-query mode reqURL carries the key pair, and the
+			// transport's *url.Error echoes it — scrub before logging so a secret
+			// can't leak into application logs.
+			log.WithField("error", redactWooOptionCreds(err.Error(), key, secret)).Warn("unable to reach WooCommerce for options")
 			return nil, "Could not reach WooCommerce — check the Store URL and that the store is reachable"
 		}
 		if resp.StatusCode == gohttp.StatusUnauthorized || resp.StatusCode == gohttp.StatusForbidden {
