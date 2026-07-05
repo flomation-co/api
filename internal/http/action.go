@@ -218,14 +218,17 @@ var jenkinsJobsOption = api.InputDynamicOptions{
 // woocommerceCategoriesOption / woocommerceTagsOption are the shared
 // dynamic-options markers for the WooCommerce product-taxonomy pickers. Both
 // forward the WooCommerce connection inputs; the api resolves the secret key
-// pair from the environment before calling the store.
+// pair from the environment before calling the store. "environment" is listed
+// explicitly (the editor also auto-appends it for any marker with params, but
+// making it explicit guarantees serveWooCommerceOptions can resolve a
+// ${secrets.X} consumer key/secret rather than erroring).
 var woocommerceCategoriesOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/woocommerce-categories",
-	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query"},
+	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query", "environment"},
 }
 var woocommerceTagsOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/woocommerce-tags",
-	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query"},
+	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query", "environment"},
 }
 
 func (s *Service) getActions(c *gin.Context) {

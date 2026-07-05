@@ -148,6 +148,10 @@ func (s *Service) serveWooCommerceOptions(c *gin.Context, path string) {
 // scheme+host[+path] base (no trailing slash, no REST-API suffix), defaulting to
 // https. Built via url.URL so a crafted base can't smuggle userinfo or a query
 // into the server-side request.
+//
+// NOTE: this normalisation is intentionally duplicated in launch
+// (woocommerceBaseURL) and the executor (NormaliseBaseURL) — separate Go modules
+// with no shared package. Keep the three in sync.
 func woocommerceOptionsBaseURL(raw string) (string, error) {
 	if raw == "" || strings.HasPrefix(raw, "${") {
 		return "", errors.New("url is required")
