@@ -98,6 +98,7 @@ var subCategoryMetadata = map[string]struct {
 	"messaging/telegram":      {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
 	"messaging/discord":       {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
 	"ecommerce/shopify":       {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	"ecommerce/woocommerce":   {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"scheduling/calendly":     {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
 	"scheduling/calcom":       {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
 	"scheduling/acuity":       {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
@@ -197,6 +198,14 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"devops/jenkins/build_get#job":          jenkinsJobsOption,
 	"devops/jenkins/build_console#job":      jenkinsJobsOption,
 	"devops/jenkins/build_stop#job":         jenkinsJobsOption,
+	// WooCommerce product taxonomy pickers. The Get Many Products "Category" and
+	// "Tag" filters each resolve from a proxy that forwards the node's store url /
+	// consumer key / secret and lists the store's taxonomy server-side (the key
+	// pair are secrets resolved from the environment — the plaintext never
+	// transits the browser). The static (empty) options remain the fallback for
+	// manual entry when the fetch fails.
+	"ecommerce/woocommerce/product_get_all#category": woocommerceCategoriesOption,
+	"ecommerce/woocommerce/product_get_all#tag":      woocommerceTagsOption,
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins
@@ -204,6 +213,19 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 var jenkinsJobsOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/jenkins-jobs",
 	Params:   []string{"base_url", "username", "api_token"},
+}
+
+// woocommerceCategoriesOption / woocommerceTagsOption are the shared
+// dynamic-options markers for the WooCommerce product-taxonomy pickers. Both
+// forward the WooCommerce connection inputs; the api resolves the secret key
+// pair from the environment before calling the store.
+var woocommerceCategoriesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/woocommerce-categories",
+	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query"},
+}
+var woocommerceTagsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/woocommerce-tags",
+	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query"},
 }
 
 func (s *Service) getActions(c *gin.Context) {
