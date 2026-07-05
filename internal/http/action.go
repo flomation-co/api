@@ -57,6 +57,9 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// so the sub-group (Shopify) is resolved from subCategoryMetadata below —
 	// no inline Sub* fields here (getCategoryForAction would overwrite them).
 	"ecommerce": {Key: "ecommerce", Name: "E-Commerce", Icon: "cart-shopping", Description: "Online store platforms — orders, products, and customers"},
+	// CMS uses 3-segment action IDs (cms/wordpress/post_create), so the
+	// sub-group (WordPress) is resolved from subCategoryMetadata below.
+	"cms": {Key: "cms", Name: "CMS", Icon: "newspaper", Description: "Content management systems — publish and manage posts, pages, and media"},
 	// Scheduling uses 3-segment action IDs (scheduling/calendly/event_get), so
 	// the sub-group (Calendly) is resolved from subCategoryMetadata below.
 	"scheduling": {Key: "scheduling", Name: "Scheduling", Icon: "calendar", Description: "Meeting scheduling and booking platforms"},
@@ -99,6 +102,7 @@ var subCategoryMetadata = map[string]struct {
 	"messaging/discord":       {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
 	"ecommerce/shopify":       {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
 	"ecommerce/woocommerce":   {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
+	"cms/wordpress":           {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":     {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
 	"scheduling/calcom":       {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
 	"scheduling/acuity":       {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
@@ -206,6 +210,23 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	// manual entry when the fetch fails.
 	"ecommerce/woocommerce/product_get_all#category": woocommerceCategoriesOption,
 	"ecommerce/woocommerce/product_get_all#tag":      woocommerceTagsOption,
+	// WordPress live dropdowns. Authors (single-value) get a picker on every
+	// place a post/page/comment author is chosen; categories/tags get pickers on
+	// the single-value filter and parent-category inputs (the multi-value
+	// categories/tags on create/update stay comma-separated — the editor renders
+	// dynamic options as a single select).
+	"cms/wordpress/post_create#author":      wordpressAuthorsOption,
+	"cms/wordpress/post_update#author":      wordpressAuthorsOption,
+	"cms/wordpress/post_get_all#author":     wordpressAuthorsOption,
+	"cms/wordpress/page_create#author":      wordpressAuthorsOption,
+	"cms/wordpress/page_update#author":      wordpressAuthorsOption,
+	"cms/wordpress/page_get_all#author":     wordpressAuthorsOption,
+	"cms/wordpress/comment_create#author":   wordpressAuthorsOption,
+	"cms/wordpress/post_get_all#categories": wordpressCategoriesOption,
+	"cms/wordpress/post_get_all#tags":       wordpressTagsOption,
+	"cms/wordpress/category_create#parent":  wordpressCategoriesOption,
+	"cms/wordpress/category_update#parent":  wordpressCategoriesOption,
+	"cms/wordpress/category_get_all#parent": wordpressCategoriesOption,
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins
@@ -229,6 +250,23 @@ var woocommerceCategoriesOption = api.InputDynamicOptions{
 var woocommerceTagsOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/woocommerce-tags",
 	Params:   []string{"url", "consumer_key", "consumer_secret", "credentials_in_query", "environment"},
+}
+
+// WordPress live-dropdown markers. Every WordPress action forwards the same
+// connection inputs; the api resolves the Application Password from the
+// environment before calling the site. "environment" is listed explicitly so a
+// ${secrets.X} Application Password resolves server-side.
+var wordpressAuthorsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/wordpress-authors",
+	Params:   []string{"url", "username", "app_password", "allow_insecure", "environment"},
+}
+var wordpressCategoriesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/wordpress-categories",
+	Params:   []string{"url", "username", "app_password", "allow_insecure", "environment"},
+}
+var wordpressTagsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/wordpress-tags",
+	Params:   []string{"url", "username", "app_password", "allow_insecure", "environment"},
 }
 
 func (s *Service) getActions(c *gin.Context) {

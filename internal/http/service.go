@@ -447,6 +447,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/zendesk-organizations", s.jwtMiddleware, s.getZendeskOrganizations)
 	actions.GET("/options/woocommerce-categories", s.jwtMiddleware, s.getWooCommerceCategories)
 	actions.GET("/options/woocommerce-tags", s.jwtMiddleware, s.getWooCommerceTags)
+	actions.GET("/options/wordpress-categories", s.jwtMiddleware, s.getWordPressCategories)
+	actions.GET("/options/wordpress-tags", s.jwtMiddleware, s.getWordPressTags)
+	actions.GET("/options/wordpress-authors", s.jwtMiddleware, s.getWordPressAuthors)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
 
 	flos := v1.Group("flo")
