@@ -283,6 +283,11 @@ type Port struct {
 type InputOption struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	// Group optionally places this option under a labelled, collapsible section
+	// in a multi-select input (the editor groups options sharing a Group). Empty
+	// Group renders ungrouped — backward-compatible. Passed through from the
+	// action definition's ConnectionOption.
+	Group string `json:"group,omitempty"`
 }
 
 type InputVisibleWhen struct {
