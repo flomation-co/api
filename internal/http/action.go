@@ -247,16 +247,12 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 
 // Jira live-dropdown markers. Every Jira action forwards the same connection
 // inputs (site url + email plain, api_token a secret resolved from the
-// environment — the plaintext never transits the browser). The issue-type and
-// status pickers additionally forward the dependency field they resolve against
-// (the selected project / issue). The static (empty) options remain the
-// fallback for manual entry when the fetch fails.
-// Jira live-dropdown markers. Every action forwards the same connection inputs;
-// the api resolves the api_token from the environment before calling the site.
-// "environment" is listed explicitly so a ${secrets.X} API token resolves
-// server-side (the editor also auto-appends it, but this guarantees it). The
-// dependent pickers additionally forward the parent field: issue-types needs the
-// selected "project", statuses need the selected "issue_key".
+// environment — the plaintext never transits the browser). "environment" is
+// listed explicitly so a ${secrets.X} API token resolves server-side (the editor
+// also auto-appends it, but this guarantees it). The issue-type and status
+// pickers additionally forward the dependency field they resolve against (the
+// selected project / issue). The static (empty) options remain the fallback for
+// manual entry when the fetch fails.
 var jiraProjectsOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/jira-projects",
 	Params:   []string{"url", "email", "api_token", "environment"},

@@ -368,6 +368,10 @@ func fetchJiraPriorities(c *gin.Context, base, email, apiToken string) ([]api.In
 }
 
 func fetchJiraUsers(c *gin.Context, base, email, apiToken string) ([]api.InputOption, string) {
+	// Cap the picker at the first 100 active users (Jira's per-page max). A
+	// dropdown is not a good UI past that many entries anyway; operators on very
+	// large sites can still type an accountId manually (the manual-entry
+	// fallback), and the assignee/reporter fields accept a raw accountId.
 	body, errMsg := doJiraGet(c, base, email, apiToken, "/users/search?maxResults=100")
 	if errMsg != "" {
 		return nil, errMsg
