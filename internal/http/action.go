@@ -37,6 +37,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"slack":          {Key: "slack", Name: "Slack", Icon: "slack", Description: "Slack workspace messaging, channels, and integrations"},
 	"web":            {Key: "web", Name: "Web", Icon: "globe", Description: "Web browsing, search, and HTTP request operations"},
 	"linear":         {Key: "linear", Name: "Linear", Icon: "linear", Description: "Manage issues, projects, and teams in Linear"},
+	"jira":           {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "jira", SubName: "Jira", SubIcon: "jira", SubDescription: "Create and manage issues, comments, attachments, worklogs, and users in Jira"},
 	"stripe":         {Key: "stripe", Name: "Stripe", Icon: "stripe", Description: "Accept payments and manage customers, subscriptions and invoices in Stripe"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
@@ -227,6 +228,50 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"cms/wordpress/category_create#parent":  wordpressCategoriesOption,
 	"cms/wordpress/category_update#parent":  wordpressCategoriesOption,
 	"cms/wordpress/category_get_all#parent": wordpressCategoriesOption,
+	// Jira live dropdowns. Issue create/update pull project/issue-type/priority/
+	// user pickers from the site; the status picker resolves the selected issue's
+	// available transitions. The user pickers also back the user get/delete
+	// account_id inputs.
+	"jira/issue_create#project":    jiraProjectsOption,
+	"jira/issue_create#issue_type": jiraIssueTypesOption,
+	"jira/issue_create#priority":   jiraPrioritiesOption,
+	"jira/issue_create#assignee":   jiraUsersOption,
+	"jira/issue_create#reporter":   jiraUsersOption,
+	"jira/issue_update#priority":   jiraPrioritiesOption,
+	"jira/issue_update#assignee":   jiraUsersOption,
+	"jira/issue_update#reporter":   jiraUsersOption,
+	"jira/issue_update#status":     jiraStatusesOption,
+	"jira/user_get#account_id":     jiraUsersOption,
+	"jira/user_delete#account_id":  jiraUsersOption,
+}
+
+// Jira live-dropdown markers. Every Jira action forwards the same connection
+// inputs (site url + email plain, api_token a secret resolved from the
+// environment — the plaintext never transits the browser). "environment" is
+// listed explicitly so a ${secrets.X} API token resolves server-side (the editor
+// also auto-appends it, but this guarantees it). The issue-type and status
+// pickers additionally forward the dependency field they resolve against (the
+// selected project / issue). The static (empty) options remain the fallback for
+// manual entry when the fetch fails.
+var jiraProjectsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/jira-projects",
+	Params:   []string{"url", "email", "api_token", "environment"},
+}
+var jiraIssueTypesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/jira-issue-types",
+	Params:   []string{"url", "email", "api_token", "project", "environment"},
+}
+var jiraPrioritiesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/jira-priorities",
+	Params:   []string{"url", "email", "api_token", "environment"},
+}
+var jiraUsersOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/jira-users",
+	Params:   []string{"url", "email", "api_token", "environment"},
+}
+var jiraStatusesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/jira-statuses",
+	Params:   []string{"url", "email", "api_token", "issue_key", "environment"},
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins

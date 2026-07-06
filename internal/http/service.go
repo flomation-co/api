@@ -451,6 +451,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/wordpress-tags", s.jwtMiddleware, s.getWordPressTags)
 	actions.GET("/options/wordpress-authors", s.jwtMiddleware, s.getWordPressAuthors)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
+	actions.GET("/options/jira-projects", s.jwtMiddleware, s.getJiraProjects)
+	actions.GET("/options/jira-issue-types", s.jwtMiddleware, s.getJiraIssueTypes)
+	actions.GET("/options/jira-priorities", s.jwtMiddleware, s.getJiraPriorities)
+	actions.GET("/options/jira-users", s.jwtMiddleware, s.getJiraUsers)
+	actions.GET("/options/jira-statuses", s.jwtMiddleware, s.getJiraStatuses)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
