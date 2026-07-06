@@ -244,6 +244,10 @@ const maxJiraOptionPages = 20
 // option-proxy message. base already excludes the /rest/api/2 suffix; path is
 // the REST path beginning with "/".
 func doJiraGet(c *gin.Context, base, email, apiToken, path string) ([]byte, string) {
+	// Pinned to API v2 deliberately, matching the executor (see the jira_common
+	// package doc): v2 is fully supported on Cloud and keeps rich-text fields as
+	// plain strings. These option proxies only read id/name/key metadata, so the
+	// v2-vs-v3 distinction doesn't affect them — kept in sync with the executor.
 	reqURL := base + "/rest/api/2" + path
 
 	req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, reqURL, nil)
@@ -342,6 +346,9 @@ func fetchJiraIssueTypes(c *gin.Context, base, email, apiToken, project string) 
 		}
 		options = append(options, api.InputOption{Name: it.Name, Value: it.ID})
 	}
+	// Issue types have no meaningful API order, so sort alphabetically for a
+	// predictable picker. (Contrast getJiraStatuses, which keeps Jira's natural
+	// transition order because that order IS meaningful to the operator.)
 	sortJiraOptions(options)
 	return options, ""
 }
