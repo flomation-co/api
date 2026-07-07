@@ -7,6 +7,7 @@ import (
 	"io"
 	gohttp "net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -270,21 +271,14 @@ func mondayStr(v interface{}) string {
 	case string:
 		return t
 	case float64:
-		return jsonNumberToString(t)
+		// Monday ids are strings, but be defensive about numeric ids: render an
+		// integer without a decimal point, else a plain float. (Avoid a
+		// TrimRight-based trim, which mangles values like "10.0" → "1".)
+		if t == float64(int64(t)) {
+			return strconv.FormatInt(int64(t), 10)
+		}
+		return strconv.FormatFloat(t, 'f', -1, 64)
 	default:
 		return ""
 	}
-}
-
-func jsonNumberToString(f float64) string {
-	// Monday ids are strings, but be defensive about numeric ids.
-	if f == float64(int64(f)) {
-		return strings.TrimRight(strings.TrimRight(formatFloat(f), "0"), ".")
-	}
-	return formatFloat(f)
-}
-
-func formatFloat(f float64) string {
-	b, _ := json.Marshal(f)
-	return string(b)
 }
