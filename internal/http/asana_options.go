@@ -80,9 +80,12 @@ func (s *Service) getAsanaUsers(c *gin.Context) {
 	}
 	q := url.Values{}
 	q.Set("opt_fields", "name")
-	q.Set("limit", "100")
+	// Asana rejects `limit` on GET /users unless a workspace is given
+	// ("Need to specify a workspace to paginate!"), so only paginate when we can
+	// scope it; unscoped, GET /users returns all accessible users unpaginated.
 	if ws := strings.TrimSpace(c.Query("workspace")); ws != "" && !strings.HasPrefix(ws, "${") {
 		q.Set("workspace", ws)
+		q.Set("limit", "100")
 	}
 	s.serveAsanaNamed(c, token, "/users", q)
 }
