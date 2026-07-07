@@ -38,6 +38,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"web":            {Key: "web", Name: "Web", Icon: "globe", Description: "Web browsing, search, and HTTP request operations"},
 	"linear":         {Key: "linear", Name: "Linear", Icon: "linear", Description: "Manage issues, projects, and teams in Linear"},
 	"jira":           {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "jira", SubName: "Jira", SubIcon: "jira", SubDescription: "Create and manage issues, comments, attachments, worklogs, and users in Jira"},
+	"trello":         {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "trello", SubName: "Trello", SubIcon: "trello", SubDescription: "Create and manage boards, lists, cards, checklists, labels, and members in Trello"},
 	"stripe":         {Key: "stripe", Name: "Stripe", Icon: "stripe", Description: "Accept payments and manage customers, subscriptions and invoices in Stripe"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
@@ -243,6 +244,47 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"jira/issue_update#status":     jiraStatusesOption,
 	"jira/user_get#account_id":     jiraUsersOption,
 	"jira/user_delete#account_id":  jiraUsersOption,
+	// Trello live dropdowns. The Boards picker has no dependency; the Lists,
+	// Labels and Members pickers each depend on a chosen board (forwarded as
+	// board_id). Both credentials are secrets resolved from the environment.
+	"trello/board_get#id":                    trelloBoardsOption,
+	"trello/board_update#id":                 trelloBoardsOption,
+	"trello/board_delete#id":                 trelloBoardsOption,
+	"trello/board_member_get_all#board_id":   trelloBoardsOption,
+	"trello/board_member_add#board_id":       trelloBoardsOption,
+	"trello/board_member_add#member_id":      trelloMembersOption,
+	"trello/board_member_invite#board_id":    trelloBoardsOption,
+	"trello/board_member_remove#board_id":    trelloBoardsOption,
+	"trello/board_member_remove#member_id":   trelloMembersOption,
+	"trello/card_create#board_id":            trelloBoardsOption,
+	"trello/card_create#list_id":             trelloListsOption,
+	"trello/card_update#board_id":            trelloBoardsOption,
+	"trello/card_update#list_id":             trelloListsOption,
+	"trello/list_create#board_id":            trelloBoardsOption,
+	"trello/list_get_all#board_id":           trelloBoardsOption,
+	"trello/list_get#board_id":               trelloBoardsOption,
+	"trello/list_get#id":                     trelloListsOption,
+	"trello/list_update#board_id":            trelloBoardsOption,
+	"trello/list_update#id":                  trelloListsOption,
+	"trello/list_archive#board_id":           trelloBoardsOption,
+	"trello/list_archive#id":                 trelloListsOption,
+	"trello/list_get_cards#board_id":         trelloBoardsOption,
+	"trello/list_get_cards#id":               trelloListsOption,
+	"trello/label_create#board_id":           trelloBoardsOption,
+	"trello/label_get_all#board_id":          trelloBoardsOption,
+	"trello/label_get#board_id":              trelloBoardsOption,
+	"trello/label_get#id":                    trelloLabelsOption,
+	"trello/label_update#board_id":           trelloBoardsOption,
+	"trello/label_update#id":                 trelloLabelsOption,
+	"trello/label_delete#board_id":           trelloBoardsOption,
+	"trello/label_delete#id":                 trelloLabelsOption,
+	"trello/label_add_to_card#board_id":      trelloBoardsOption,
+	"trello/label_add_to_card#label_id":      trelloLabelsOption,
+	"trello/label_remove_from_card#board_id": trelloBoardsOption,
+	"trello/label_remove_from_card#label_id": trelloLabelsOption,
+	// The webhook trigger watches one model; the Boards picker covers the common
+	// case (watch a whole board). Operators can still paste a list/card id.
+	"trigger/trello_webhook#model_id": trelloBoardsOption,
 }
 
 // Jira live-dropdown markers. Every Jira action forwards the same connection
@@ -272,6 +314,30 @@ var jiraUsersOption = api.InputDynamicOptions{
 var jiraStatusesOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/jira-statuses",
 	Params:   []string{"url", "email", "api_token", "issue_key", "environment"},
+}
+
+// Trello live-dropdown markers. Every Trello action forwards the same
+// credentials (api_key + api_token, BOTH secrets resolved from the environment —
+// the plaintext never transits the browser). "environment" is listed explicitly
+// so the ${secrets.X} references resolve server-side (the editor also
+// auto-appends it, but this guarantees it). The Lists/Labels/Members pickers
+// additionally forward the selected board (board_id) they resolve against. The
+// static (empty) options remain the fallback for manual entry on fetch failure.
+var trelloBoardsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/trello-boards",
+	Params:   []string{"api_key", "api_token", "environment"},
+}
+var trelloListsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/trello-lists",
+	Params:   []string{"api_key", "api_token", "board_id", "environment"},
+}
+var trelloLabelsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/trello-labels",
+	Params:   []string{"api_key", "api_token", "board_id", "environment"},
+}
+var trelloMembersOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/trello-members",
+	Params:   []string{"api_key", "api_token", "board_id", "environment"},
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins

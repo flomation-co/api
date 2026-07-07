@@ -456,6 +456,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/jira-priorities", s.jwtMiddleware, s.getJiraPriorities)
 	actions.GET("/options/jira-users", s.jwtMiddleware, s.getJiraUsers)
 	actions.GET("/options/jira-statuses", s.jwtMiddleware, s.getJiraStatuses)
+	actions.GET("/options/trello-boards", s.jwtMiddleware, s.getTrelloBoards)
+	actions.GET("/options/trello-lists", s.jwtMiddleware, s.getTrelloLists)
+	actions.GET("/options/trello-labels", s.jwtMiddleware, s.getTrelloLabels)
+	actions.GET("/options/trello-members", s.jwtMiddleware, s.getTrelloMembers)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
