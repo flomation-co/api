@@ -466,6 +466,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/asana-sections", s.jwtMiddleware, s.getAsanaSections)
 	actions.GET("/options/asana-tags", s.jwtMiddleware, s.getAsanaTags)
 	actions.GET("/options/asana-teams", s.jwtMiddleware, s.getAsanaTeams)
+	actions.GET("/options/monday-boards", s.jwtMiddleware, s.getMondayBoards)
+	actions.GET("/options/monday-workspaces", s.jwtMiddleware, s.getMondayWorkspaces)
+	actions.GET("/options/monday-groups", s.jwtMiddleware, s.getMondayGroups)
+	actions.GET("/options/monday-columns", s.jwtMiddleware, s.getMondayColumns)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
