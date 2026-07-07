@@ -40,6 +40,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"jira":           {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "jira", SubName: "Jira", SubIcon: "jira", SubDescription: "Create and manage issues, comments, attachments, worklogs, and users in Jira"},
 	"trello":         {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "trello", SubName: "Trello", SubIcon: "trello", SubDescription: "Create and manage boards, lists, cards, checklists, labels, and members in Trello"},
 	"asana":          {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "asana", SubName: "Asana", SubIcon: "asana", SubDescription: "Create and manage tasks, subtasks, projects, sections, tags, and users in Asana"},
+	"monday":         {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "monday", SubName: "Monday.com", SubIcon: "monday", SubDescription: "Create and manage boards, groups, columns, items, and updates in Monday.com"},
 	"stripe":         {Key: "stripe", Name: "Stripe", Icon: "stripe", Description: "Accept payments and manage customers, subscriptions and invoices in Stripe"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
@@ -320,6 +321,32 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"asana/workspace_get_all#workspace": asanaWorkspacesOption,
 	"trigger/asana_webhook#workspace":   asanaWorkspacesOption,
 	"trigger/asana_webhook#resource":    asanaProjectsOption,
+	// Monday.com live dropdowns. Boards & Workspaces have no dependency; Groups
+	// and Columns depend on a chosen board (forwarded as board_id). The API token
+	// is a secret resolved from the environment.
+	"monday/board_get#board_id":                          mondayBoardsOption,
+	"monday/board_archive#board_id":                      mondayBoardsOption,
+	"monday/board_create#workspace_id":                   mondayWorkspacesOption,
+	"monday/board_column_create#board_id":                mondayBoardsOption,
+	"monday/board_column_get_all#board_id":               mondayBoardsOption,
+	"monday/board_group_create#board_id":                 mondayBoardsOption,
+	"monday/board_group_delete#board_id":                 mondayBoardsOption,
+	"monday/board_group_delete#group_id":                 mondayGroupsOption,
+	"monday/board_group_get_all#board_id":                mondayBoardsOption,
+	"monday/board_group_update#board_id":                 mondayBoardsOption,
+	"monday/board_group_update#group_id":                 mondayGroupsOption,
+	"monday/item_create#board_id":                        mondayBoardsOption,
+	"monday/item_create#group_id":                        mondayGroupsOption,
+	"monday/item_get_all#board_id":                       mondayBoardsOption,
+	"monday/item_get_all#group_id":                       mondayGroupsOption,
+	"monday/item_get_by_column_value#board_id":           mondayBoardsOption,
+	"monday/item_get_by_column_value#column_id":          mondayColumnsOption,
+	"monday/item_change_column_value#board_id":           mondayBoardsOption,
+	"monday/item_change_column_value#column_id":          mondayColumnsOption,
+	"monday/item_change_multiple_column_values#board_id": mondayBoardsOption,
+	"monday/item_move#board_id":                          mondayBoardsOption,
+	"monday/item_move#group_id":                          mondayGroupsOption,
+	"trigger/monday_webhook#board_id":                    mondayBoardsOption,
 }
 
 // Jira live-dropdown markers. Every Jira action forwards the same connection
@@ -405,6 +432,27 @@ var asanaTagsOption = api.InputDynamicOptions{
 var asanaTeamsOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/asana-teams",
 	Params:   []string{"access_token", "workspace", "environment"},
+}
+
+// Monday.com live-dropdown markers. Every Monday action forwards the same
+// credential (api_token, a secret resolved from the environment). The Groups and
+// Columns pickers additionally forward the selected board (board_id) they resolve
+// against.
+var mondayBoardsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/monday-boards",
+	Params:   []string{"api_token", "environment"},
+}
+var mondayGroupsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/monday-groups",
+	Params:   []string{"api_token", "board_id", "environment"},
+}
+var mondayColumnsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/monday-columns",
+	Params:   []string{"api_token", "board_id", "environment"},
+}
+var mondayWorkspacesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/monday-workspaces",
+	Params:   []string{"api_token", "environment"},
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins
