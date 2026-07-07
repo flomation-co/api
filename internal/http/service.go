@@ -460,6 +460,12 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/trello-lists", s.jwtMiddleware, s.getTrelloLists)
 	actions.GET("/options/trello-labels", s.jwtMiddleware, s.getTrelloLabels)
 	actions.GET("/options/trello-members", s.jwtMiddleware, s.getTrelloMembers)
+	actions.GET("/options/asana-workspaces", s.jwtMiddleware, s.getAsanaWorkspaces)
+	actions.GET("/options/asana-projects", s.jwtMiddleware, s.getAsanaProjects)
+	actions.GET("/options/asana-users", s.jwtMiddleware, s.getAsanaUsers)
+	actions.GET("/options/asana-sections", s.jwtMiddleware, s.getAsanaSections)
+	actions.GET("/options/asana-tags", s.jwtMiddleware, s.getAsanaTags)
+	actions.GET("/options/asana-teams", s.jwtMiddleware, s.getAsanaTeams)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
