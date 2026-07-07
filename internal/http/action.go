@@ -39,6 +39,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"linear":         {Key: "linear", Name: "Linear", Icon: "linear", Description: "Manage issues, projects, and teams in Linear"},
 	"jira":           {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "jira", SubName: "Jira", SubIcon: "jira", SubDescription: "Create and manage issues, comments, attachments, worklogs, and users in Jira"},
 	"trello":         {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "trello", SubName: "Trello", SubIcon: "trello", SubDescription: "Create and manage boards, lists, cards, checklists, labels, and members in Trello"},
+	"asana":          {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "asana", SubName: "Asana", SubIcon: "asana", SubDescription: "Create and manage tasks, subtasks, projects, sections, tags, and users in Asana"},
 	"stripe":         {Key: "stripe", Name: "Stripe", Icon: "stripe", Description: "Accept payments and manage customers, subscriptions and invoices in Stripe"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
@@ -285,6 +286,40 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	// The webhook trigger watches one model; the Boards picker covers the common
 	// case (watch a whole board). Operators can still paste a list/card id.
 	"trigger/trello_webhook#model_id": trelloBoardsOption,
+	// Asana live dropdowns. Workspaces has no dependency; Projects, Users, Tags
+	// and Teams depend on a chosen workspace; Sections depends on a chosen
+	// project. The access token is a secret resolved from the environment.
+	"asana/task_create#workspace":       asanaWorkspacesOption,
+	"asana/task_create#assignee":        asanaUsersOption,
+	"asana/task_create#projects":        asanaProjectsOption,
+	"asana/task_update#assignee":        asanaUsersOption,
+	"asana/task_get_all#workspace":      asanaWorkspacesOption,
+	"asana/task_get_all#project":        asanaProjectsOption,
+	"asana/task_get_all#assignee":       asanaUsersOption,
+	"asana/task_get_all#section":        asanaSectionsOption,
+	"asana/task_search#workspace":       asanaWorkspacesOption,
+	"asana/task_move#project_id":        asanaProjectsOption,
+	"asana/task_move#section":           asanaSectionsOption,
+	"asana/task_add_project#project":    asanaProjectsOption,
+	"asana/task_remove_project#project": asanaProjectsOption,
+	"asana/task_add_tag#workspace":      asanaWorkspacesOption,
+	"asana/task_add_tag#tag":            asanaTagsOption,
+	"asana/task_remove_tag#workspace":   asanaWorkspacesOption,
+	"asana/task_remove_tag#tag":         asanaTagsOption,
+	"asana/user_get_all#workspace":      asanaWorkspacesOption,
+	"asana/project_create#workspace":    asanaWorkspacesOption,
+	"asana/project_create#team":         asanaTeamsOption,
+	"asana/project_get_all#workspace":   asanaWorkspacesOption,
+	"asana/project_get_all#team":        asanaTeamsOption,
+	"asana/project_update#owner":        asanaUsersOption,
+	"asana/section_create#project_id":   asanaProjectsOption,
+	"asana/section_get_all#project_id":  asanaProjectsOption,
+	"asana/tag_create#workspace":        asanaWorkspacesOption,
+	"asana/tag_get_all#workspace":       asanaWorkspacesOption,
+	"asana/subtask_create#assignee":     asanaUsersOption,
+	"asana/workspace_get_all#workspace": asanaWorkspacesOption,
+	"trigger/asana_webhook#workspace":   asanaWorkspacesOption,
+	"trigger/asana_webhook#resource":    asanaProjectsOption,
 }
 
 // Jira live-dropdown markers. Every Jira action forwards the same connection
@@ -338,6 +373,38 @@ var trelloLabelsOption = api.InputDynamicOptions{
 var trelloMembersOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/trello-members",
 	Params:   []string{"api_key", "api_token", "board_id", "environment"},
+}
+
+// Asana live-dropdown markers. Every Asana action forwards the same credential
+// (access_token, a secret resolved from the environment — the plaintext never
+// transits the browser). "environment" is listed explicitly so the ${secrets.X}
+// reference resolves server-side. Dependent pickers additionally forward their
+// scope (workspace for projects/users/tags/teams; project_id/project for
+// sections). The users picker forwards workspace optionally (GET /users works
+// without it), so it can back assignee/owner fields on actions with no workspace.
+var asanaWorkspacesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/asana-workspaces",
+	Params:   []string{"access_token", "environment"},
+}
+var asanaProjectsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/asana-projects",
+	Params:   []string{"access_token", "workspace", "environment"},
+}
+var asanaUsersOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/asana-users",
+	Params:   []string{"access_token", "workspace", "environment"},
+}
+var asanaSectionsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/asana-sections",
+	Params:   []string{"access_token", "project_id", "project", "environment"},
+}
+var asanaTagsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/asana-tags",
+	Params:   []string{"access_token", "workspace", "environment"},
+}
+var asanaTeamsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/asana-teams",
+	Params:   []string{"access_token", "workspace", "environment"},
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins
