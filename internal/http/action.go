@@ -111,6 +111,7 @@ var subCategoryMetadata = map[string]struct {
 	"scheduling/calcom":       {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
 	"scheduling/acuity":       {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
 	"helpdesk/zendesk":        {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
+	"helpdesk/intercom":       {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
 	"devops/jenkins":          {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
 	"ukgov/companieshouse":    {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
 	"ukgov/dvla":              {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
@@ -347,6 +348,54 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"monday/item_move#board_id":                          mondayBoardsOption,
 	"monday/item_move#group_id":                          mondayGroupsOption,
 	"trigger/monday_webhook#board_id":                    mondayBoardsOption,
+	// Intercom live dropdowns. Teammates (admins), teams, tags, ticket types,
+	// ticket states, segments, companies, and Help Center collections are all
+	// workspace-scoped lists with no dependency inputs, so every picker resolves
+	// from the same eight proxies. The access token is a secret resolved from the
+	// environment.
+	"helpdesk/intercom/contact_create#owner_id":                       intercomAdminsOption,
+	"helpdesk/intercom/contact_update#owner_id":                       intercomAdminsOption,
+	"helpdesk/intercom/contact_tag_add#tag_id":                        intercomTagsOption,
+	"helpdesk/intercom/contact_tag_remove#tag_id":                     intercomTagsOption,
+	"helpdesk/intercom/company_get_all#tag_id":                        intercomTagsOption,
+	"helpdesk/intercom/company_get_all#segment_id":                    intercomSegmentsOption,
+	"helpdesk/intercom/company_contact_attach#company_id":             intercomCompaniesOption,
+	"helpdesk/intercom/company_contact_detach#company_id":             intercomCompaniesOption,
+	"helpdesk/intercom/company_tag_add#company_id":                    intercomCompaniesOption,
+	"helpdesk/intercom/company_tag_remove#company_id":                 intercomCompaniesOption,
+	"helpdesk/intercom/conversation_reply#admin_id":                   intercomAdminsOption,
+	"helpdesk/intercom/conversation_close#admin_id":                   intercomAdminsOption,
+	"helpdesk/intercom/conversation_snooze#admin_id":                  intercomAdminsOption,
+	"helpdesk/intercom/conversation_open#admin_id":                    intercomAdminsOption,
+	"helpdesk/intercom/conversation_assign#admin_id":                  intercomAdminsOption,
+	"helpdesk/intercom/conversation_assign#assignee_admin_id":         intercomAdminsOption,
+	"helpdesk/intercom/conversation_assign#assignee_team_id":          intercomTeamsOption,
+	"helpdesk/intercom/conversation_convert_to_ticket#ticket_type_id": intercomTicketTypesOption,
+	"helpdesk/intercom/conversation_tag_add#tag_id":                   intercomTagsOption,
+	"helpdesk/intercom/conversation_tag_add#admin_id":                 intercomAdminsOption,
+	"helpdesk/intercom/conversation_tag_remove#tag_id":                intercomTagsOption,
+	"helpdesk/intercom/conversation_tag_remove#admin_id":              intercomAdminsOption,
+	"helpdesk/intercom/ticket_create#ticket_type_id":                  intercomTicketTypesOption,
+	"helpdesk/intercom/ticket_create#admin_assignee_id":               intercomAdminsOption,
+	"helpdesk/intercom/ticket_create#team_assignee_id":                intercomTeamsOption,
+	"helpdesk/intercom/ticket_update#ticket_state_id":                 intercomTicketStatesOption,
+	"helpdesk/intercom/ticket_update#admin_id":                        intercomAdminsOption,
+	"helpdesk/intercom/ticket_reply#admin_id":                         intercomAdminsOption,
+	"helpdesk/intercom/ticket_tag_add#tag_id":                         intercomTagsOption,
+	"helpdesk/intercom/ticket_tag_add#admin_id":                       intercomAdminsOption,
+	"helpdesk/intercom/ticket_tag_remove#tag_id":                      intercomTagsOption,
+	"helpdesk/intercom/ticket_tag_remove#admin_id":                    intercomAdminsOption,
+	"helpdesk/intercom/tag_delete#tag_id":                             intercomTagsOption,
+	"helpdesk/intercom/note_create#admin_id":                          intercomAdminsOption,
+	"helpdesk/intercom/segment_get#segment_id":                        intercomSegmentsOption,
+	"helpdesk/intercom/admin_get#admin_id":                            intercomAdminsOption,
+	"helpdesk/intercom/admin_away_set#admin_id":                       intercomAdminsOption,
+	"helpdesk/intercom/team_get#team_id":                              intercomTeamsOption,
+	"helpdesk/intercom/message_send#from_admin_id":                    intercomAdminsOption,
+	"helpdesk/intercom/article_create#author_id":                      intercomAdminsOption,
+	"helpdesk/intercom/article_create#parent_id":                      intercomCollectionsOption,
+	"helpdesk/intercom/article_update#author_id":                      intercomAdminsOption,
+	"helpdesk/intercom/article_update#parent_id":                      intercomCollectionsOption,
 }
 
 // Jira live-dropdown markers. Every Jira action forwards the same connection
@@ -453,6 +502,45 @@ var mondayColumnsOption = api.InputDynamicOptions{
 var mondayWorkspacesOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/monday-workspaces",
 	Params:   []string{"api_token", "environment"},
+}
+
+// Intercom live-dropdown markers. Every Intercom action forwards the same
+// connection inputs (api_token, a secret resolved from the environment — the
+// plaintext never transits the browser — plus the plain Region picker that
+// selects the fixed regional host). "environment" is listed explicitly so the
+// ${secrets.X} reference resolves server-side. None of the pickers depend on
+// another input — every Intercom list is workspace-scoped.
+var intercomAdminsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-admins",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomTeamsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-teams",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomTagsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-tags",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomTicketTypesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-ticket-types",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomTicketStatesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-ticket-states",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomSegmentsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-segments",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomCompaniesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-companies",
+	Params:   []string{"api_token", "region", "environment"},
+}
+var intercomCollectionsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/intercom-collections",
+	Params:   []string{"api_token", "region", "environment"},
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins
