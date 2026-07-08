@@ -300,11 +300,19 @@ func fetchIntercomRows(c *gin.Context, auth intercomAuth, method, path string, q
 		raw = env["data"]
 	}
 	if !intercomIsArray(raw) {
-		for key, v := range env {
-			if key != "pages" && intercomIsArray(v) {
-				raw = v
-				break
+		// Last-resort fallback for an unexpected envelope: take the first
+		// non-pages array, scanning keys in sorted order so the pick is
+		// deterministic even if a response ever carried two arrays. Every
+		// proxy passes an explicit arrayKey, so this is defence, not routing.
+		keys := make([]string, 0, len(env))
+		for key := range env {
+			if key != "pages" && intercomIsArray(env[key]) {
+				keys = append(keys, key)
 			}
+		}
+		sort.Strings(keys)
+		if len(keys) > 0 {
+			raw = env[keys[0]]
 		}
 	}
 	if !intercomIsArray(raw) {
