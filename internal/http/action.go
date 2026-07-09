@@ -47,7 +47,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"string":         {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
 	"social":         {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
 	"google":         {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
-	"mailchimp":      {Key: "mailchimp", Name: "Mailchimp", Icon: "mailchimp", Description: "Manage audiences, members, tags, and campaigns in Mailchimp"},
+	"mailchimp":      {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email", SubKey: "mailchimp", SubName: "Mailchimp", SubIcon: "mailchimp", SubDescription: "Manage audiences, members, tags, and campaigns in Mailchimp"},
 	"makefile":       {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
 	"twilio":         {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
 	"microsoft":      {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
@@ -76,6 +76,11 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// UK Government uses 3-segment action IDs (ukgov/companieshouse/get_company),
 	// so the sub-group (the agency) is resolved from subCategoryMetadata below.
 	"ukgov": {Key: "ukgov", Name: "UK Government", Icon: "landmark", Description: "UK government agency data — Companies House, DVLA, Police, Food Standards and more"},
+	// Marketing uses 3-segment action IDs (marketing/sendgrid/mail_send), so the
+	// sub-group (SendGrid) is resolved from subCategoryMetadata below. Mailchimp's
+	// 2-segment remap entry above duplicates this entry's Key/Name/Icon/Description
+	// verbatim — keep them byte-identical or the group header drifts.
+	"marketing": {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -125,6 +130,7 @@ var subCategoryMetadata = map[string]struct {
 	"ukgov/charitycommission": {Name: "Charity Commission", Icon: "hand", Description: "The register of charities for England & Wales"},
 	"ukgov/bankholidays":      {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
 	"ukgov/landregistry":      {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
+	"marketing/sendgrid":      {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
@@ -396,6 +402,28 @@ var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"helpdesk/intercom/article_create#parent_id":                      intercomCollectionsOption,
 	"helpdesk/intercom/article_update#author_id":                      intercomAdminsOption,
 	"helpdesk/intercom/article_update#parent_id":                      intercomCollectionsOption,
+	// SendGrid live dropdowns. Contact lists, dynamic templates, unsubscribe
+	// (ASM) groups, and segments are all account-scoped lists with no dependency
+	// inputs, so every picker resolves from the same four proxies. The API key is
+	// a secret resolved from the environment.
+	"marketing/sendgrid/list_get#list_id":                      sendgridListsOption,
+	"marketing/sendgrid/list_update#list_id":                   sendgridListsOption,
+	"marketing/sendgrid/list_delete#list_id":                   sendgridListsOption,
+	"marketing/sendgrid/list_remove_contacts#list_id":          sendgridListsOption,
+	"marketing/sendgrid/mail_send#template_id":                 sendgridTemplatesOption,
+	"marketing/sendgrid/template_get#template_id":              sendgridTemplatesOption,
+	"marketing/sendgrid/template_update#template_id":           sendgridTemplatesOption,
+	"marketing/sendgrid/template_delete#template_id":           sendgridTemplatesOption,
+	"marketing/sendgrid/template_version_create#template_id":   sendgridTemplatesOption,
+	"marketing/sendgrid/template_version_activate#template_id": sendgridTemplatesOption,
+	"marketing/sendgrid/mail_send#asm_group_id":                sendgridAsmGroupsOption,
+	"marketing/sendgrid/asm_group_get#group_id":                sendgridAsmGroupsOption,
+	"marketing/sendgrid/asm_group_update#group_id":             sendgridAsmGroupsOption,
+	"marketing/sendgrid/asm_group_delete#group_id":             sendgridAsmGroupsOption,
+	"marketing/sendgrid/asm_suppression_add#group_id":          sendgridAsmGroupsOption,
+	"marketing/sendgrid/asm_suppression_list#group_id":         sendgridAsmGroupsOption,
+	"marketing/sendgrid/asm_suppression_delete#group_id":       sendgridAsmGroupsOption,
+	"marketing/sendgrid/segment_get#segment_id":                sendgridSegmentsOption,
 }
 
 // Jira live-dropdown markers. Every Jira action forwards the same connection
@@ -541,6 +569,29 @@ var intercomCompaniesOption = api.InputDynamicOptions{
 var intercomCollectionsOption = api.InputDynamicOptions{
 	Endpoint: "/api/v1/action/options/intercom-collections",
 	Params:   []string{"api_token", "region", "environment"},
+}
+
+// SendGrid live-dropdown markers. Every SendGrid action forwards the same
+// connection inputs (api_key, a secret resolved from the environment — the
+// plaintext never transits the browser — plus the plain Region picker that
+// selects the fixed Global/EU host). "environment" is listed explicitly so the
+// ${secrets.X} reference resolves server-side. None of the pickers depend on
+// another input — every SendGrid list is account-scoped.
+var sendgridListsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/sendgrid-lists",
+	Params:   []string{"api_key", "region", "environment"},
+}
+var sendgridTemplatesOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/sendgrid-templates",
+	Params:   []string{"api_key", "region", "environment"},
+}
+var sendgridAsmGroupsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/sendgrid-asm-groups",
+	Params:   []string{"api_key", "region", "environment"},
+}
+var sendgridSegmentsOption = api.InputDynamicOptions{
+	Endpoint: "/api/v1/action/options/sendgrid-segments",
+	Params:   []string{"api_key", "region", "environment"},
 }
 
 // jenkinsJobsOption is the shared dynamic-options marker for every Jenkins

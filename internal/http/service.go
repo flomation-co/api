@@ -478,6 +478,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/intercom-segments", s.jwtMiddleware, s.getIntercomSegments)
 	actions.GET("/options/intercom-companies", s.jwtMiddleware, s.getIntercomCompanies)
 	actions.GET("/options/intercom-collections", s.jwtMiddleware, s.getIntercomCollections)
+	actions.GET("/options/sendgrid-lists", s.jwtMiddleware, s.getSendGridLists)
+	actions.GET("/options/sendgrid-templates", s.jwtMiddleware, s.getSendGridTemplates)
+	actions.GET("/options/sendgrid-asm-groups", s.jwtMiddleware, s.getSendGridAsmGroups)
+	actions.GET("/options/sendgrid-segments", s.jwtMiddleware, s.getSendGridSegments)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
