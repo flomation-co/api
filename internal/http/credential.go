@@ -442,6 +442,17 @@ func (s *Service) getDefaultClientCredentials(providerSlug string) (*string, *st
 	return &prov.ClientID, &prov.ClientSecret
 }
 
+// providerIsSandbox reports whether the platform-configured app for a provider
+// points at a sandbox/test environment (see OAuthProviderConfig.Sandbox). Used
+// at OAuth connect time to stamp the environment onto the credential so the
+// executor can pick the right API host without a user-facing toggle.
+func (s *Service) providerIsSandbox(providerSlug string) bool {
+	if s.config.OAuth == nil {
+		return false
+	}
+	return s.config.OAuth[providerSlug].Sandbox
+}
+
 type oauthTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`

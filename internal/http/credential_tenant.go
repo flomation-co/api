@@ -43,7 +43,14 @@ func (s *Service) captureProviderTenant(c *gin.Context, credID, providerSlug str
 			log.WithField("credential_id", credID).Warn("QuickBooks callback missing realmId — company not captured")
 			return
 		}
-		kv = map[string]interface{}{"realm_id": realmID}
+		// Whether this credential lives in Intuit's sandbox is a property of the
+		// configured app keys (Development keys are sandbox-only), so it's read
+		// from the provider config and stored on the credential. The executor
+		// reads it to pick the API host — flow authors never toggle it.
+		kv = map[string]interface{}{
+			"realm_id": realmID,
+			"sandbox":  s.providerIsSandbox("quickbooks"),
+		}
 
 	case "xero":
 		conns, err := fetchXeroConnections(accessToken)
