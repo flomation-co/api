@@ -4364,8 +4364,14 @@ func (s *Service) GetExecutions(offset int64, limit int64, search string, userID
 // child agent_session executions expand underneath. The EXISTS
 // subquery populates has_children so the editor can render the
 // expander glyph without a follow-up count query.
-func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string, userID string, organisationID *string, isOrg bool) ([]*api.Execution, int64, error) {
-	baseSelect := `SELECT e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
+// buildRootExecutionsQueries constructs the SELECT and COUNT SQL (and
+// their positional-argument slices) for the root-only executions list.
+// It is a pure function so the org-scoping predicates can be verified in
+// isolation — see buildRootExecutionsQueries tests. The count query
+// shares the same filter args (owner/org + optional search); the select
+// query appends OFFSET/LIMIT.
+func buildRootExecutionsQueries(offset, limit int64, search, userID string, organisationID *string, isOrg bool) (selectSQL, countSQL string, selectArgs, countArgs []interface{}) {
+	selectSQL = `SELECT e.id, e.flo_id, f.name, e.owner_id, e.organisation_id,
 		e.created_at, e.updated_at, e.completed_at, e.triggered_by,
 		e.execution_status, e.completion_status,
 		e.result->'duration' AS duration, e.result->'billingDuration' AS billing_duration,
@@ -4383,7 +4389,7 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 	LEFT JOIN trigger_type tt ON tt.id = t.type
 	WHERE e.parent_execution_id IS NULL`
 
-	baseCount := `SELECT COUNT(1) FROM execution e
+	countSQL = `SELECT COUNT(1) FROM execution e
 	INNER JOIN flo f ON f.id = e.flo_id AND f.archived_at IS NULL AND f.system_flow = FALSE
 	WHERE e.parent_execution_id IS NULL`
 
@@ -4391,34 +4397,47 @@ func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string
 	argIdx := 1
 
 	if isOrg && organisationID != nil {
-		baseSelect += fmt.Sprintf(" AND e.organisation_id = $%d", argIdx)
-		baseCount += fmt.Sprintf(" AND e.organisation_id = $%d", argIdx)
+		selectSQL += fmt.Sprintf(" AND e.organisation_id = $%d", argIdx)
+		countSQL += fmt.Sprintf(" AND e.organisation_id = $%d", argIdx)
 		args = append(args, *organisationID)
 		argIdx++
 	} else {
-		baseSelect += fmt.Sprintf(" AND e.owner_id = $%d", argIdx)
-		baseCount += fmt.Sprintf(" AND e.owner_id = $%d", argIdx)
+		// Personal context: only the user's own organisation-less
+		// executions. Without the organisation_id IS NULL guard, an
+		// execution of an org-owned flow the user authored (owner_id =
+		// user, organisation_id = <org>) would leak into the personal
+		// view. Mirrors the org-less scoping in stmtGetExecutions and
+		// the flows query (stmtGetMyFlos).
+		selectSQL += fmt.Sprintf(" AND e.owner_id = $%d AND e.organisation_id IS NULL", argIdx)
+		countSQL += fmt.Sprintf(" AND e.owner_id = $%d AND e.organisation_id IS NULL", argIdx)
 		args = append(args, userID)
 		argIdx++
 	}
 
 	if search != "" {
-		baseSelect += fmt.Sprintf(" AND (CAST(e.id AS TEXT) LIKE LOWER($%d) OR LOWER(f.name) LIKE LOWER($%d))", argIdx, argIdx)
-		baseCount += fmt.Sprintf(" AND (CAST(e.id AS TEXT) LIKE LOWER($%d) OR LOWER(f.name) LIKE LOWER($%d))", argIdx, argIdx)
+		selectSQL += fmt.Sprintf(" AND (CAST(e.id AS TEXT) LIKE LOWER($%d) OR LOWER(f.name) LIKE LOWER($%d))", argIdx, argIdx)
+		countSQL += fmt.Sprintf(" AND (CAST(e.id AS TEXT) LIKE LOWER($%d) OR LOWER(f.name) LIKE LOWER($%d))", argIdx, argIdx)
 		args = append(args, "%"+search+"%")
 		argIdx++
 	}
 
-	baseSelect += fmt.Sprintf(" ORDER BY e.created_at DESC OFFSET $%d LIMIT $%d", argIdx, argIdx+1)
-	selectArgs := append(args, offset, limit)
+	countArgs = args
+	selectSQL += fmt.Sprintf(" ORDER BY e.created_at DESC OFFSET $%d LIMIT $%d", argIdx, argIdx+1)
+	selectArgs = append(append([]interface{}{}, args...), offset, limit)
+
+	return selectSQL, countSQL, selectArgs, countArgs
+}
+
+func (s *Service) getExecutionsRootOnly(offset int64, limit int64, search string, userID string, organisationID *string, isOrg bool) ([]*api.Execution, int64, error) {
+	selectSQL, countSQL, selectArgs, countArgs := buildRootExecutionsQueries(offset, limit, search, userID, organisationID, isOrg)
 
 	var results []*api.Execution
-	if err := s.conn.Select(&results, baseSelect, selectArgs...); err != nil {
+	if err := s.conn.Select(&results, selectSQL, selectArgs...); err != nil {
 		return nil, 0, err
 	}
 
 	var count int64
-	if err := s.conn.Get(&count, baseCount, args...); err != nil {
+	if err := s.conn.Get(&count, countSQL, countArgs...); err != nil {
 		return nil, 0, err
 	}
 
