@@ -124,6 +124,7 @@ var subCategoryMetadata = map[string]struct {
 	"forms/typeform":          {Name: "Typeform", Icon: "clipboard-list", Description: "Create Typeform forms, read responses and manage webhooks"},
 	"forms/jotform":           {Name: "JotForm", Icon: "clipboard-list", Description: "Create JotForm forms, read submissions and manage webhooks"},
 	"forms/surveymonkey":      {Name: "SurveyMonkey", Icon: "clipboard-list", Description: "Create SurveyMonkey surveys, read responses, manage collectors and webhooks"},
+	"forms/googleforms":       {Name: "Google Forms", Icon: "clipboard-list", Description: "Create Google Forms, add questions and read responses (uses your Google connection)"},
 	"ukgov/companieshouse":    {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
 	"ukgov/dvla":              {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
 	"ukgov/foodstandards":     {Name: "Food Standards Agency", Icon: "star", Description: "UK food hygiene ratings (FHRS)"},
