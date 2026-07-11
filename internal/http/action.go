@@ -122,6 +122,7 @@ var subCategoryMetadata = map[string]struct {
 	"helpdesk/intercom":       {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
 	"devops/jenkins":          {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
 	"forms/typeform":          {Name: "Typeform", Icon: "clipboard-list", Description: "Create Typeform forms, read responses and manage webhooks"},
+	"forms/jotform":           {Name: "JotForm", Icon: "clipboard-list", Description: "Create JotForm forms, read submissions and manage webhooks"},
 	"ukgov/companieshouse":    {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
 	"ukgov/dvla":              {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
 	"ukgov/foodstandards":     {Name: "Food Standards Agency", Icon: "star", Description: "UK food hygiene ratings (FHRS)"},
