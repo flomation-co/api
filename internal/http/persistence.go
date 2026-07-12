@@ -374,4 +374,14 @@ type Persistence interface {
 
 	// User activity tracking.
 	TouchUserActivity(userID string)
+
+	// Embed apps — developer SDK control plane.
+	CreateEmbedApp(app *api.EmbedApp, origins []string) (*api.EmbedApp, error)
+	ListEmbedApps(ownerID string, orgID *string) ([]api.EmbedApp, error)
+	GetEmbedApp(id, ownerID string, orgID *string) (*api.EmbedApp, error)
+	DeleteEmbedApp(id, ownerID string, orgID *string) (bool, error)
+	AddEmbedOrigin(appID, origin string) error
+	RemoveEmbedOrigin(appID, origin string) error
+	SetEmbedResource(appID, resourceType, resourceID string, enabled bool) error
+	ResolveEmbedKey(publishableKey, origin, resourceType, resourceID string) (*api.EmbedResolution, error)
 }

@@ -21,6 +21,8 @@ const (
 	AgentEdit          Permission = "agent.edit"
 	AgentDelete        Permission = "agent.delete"
 	AgentStartStop     Permission = "agent.start_stop"
+	EmbedManage        Permission = "embed.manage"
+	EmbedView          Permission = "embed.view"
 )
 
 // ValidPermissions is the canonical list of all supported permissions.
@@ -42,6 +44,8 @@ var ValidPermissions = []Permission{
 	AgentEdit,
 	AgentDelete,
 	AgentStartStop,
+	EmbedManage,
+	EmbedView,
 }
 
 // DefaultMemberPermissions are granted when an org has no groups configured.
@@ -53,6 +57,7 @@ var DefaultMemberPermissions = []string{
 	string(OrganisationView),
 	string(EnvironmentView),
 	string(AgentView),
+	string(EmbedView),
 }
 
 // AllPermissions returns all permission strings (used for admin users).
