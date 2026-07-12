@@ -1,0 +1,12 @@
+-- Seed the trigger_type row for the MQTT trigger. Without it,
+-- createFloRevision resolves the type via
+-- (SELECT id FROM trigger_type WHERE name = :type_name) -> NULL and the trigger
+-- silently fails to register: the flow saves 201, no trigger row is written, no
+-- subscription is opened, and nothing is logged. Each new integration seeds its
+-- own row.
+--
+-- Pairs with launch migration 41, which adds 'mqtt' to launch's TriggerType
+-- enum. Both are required.
+--
+-- NUMBERING: merge AFTER 119.
+INSERT INTO trigger_type (name) VALUES ('mqtt') ON CONFLICT DO NOTHING;
