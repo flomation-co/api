@@ -336,9 +336,11 @@ func (s *Service) createFloRevision(c *gin.Context) {
 				ID     string `json:"id"`
 				Label  string `json:"label"`
 				Config struct {
-					Type   int64                    `json:"type"`
-					Plugin string                   `json:"plugin"`
-					Inputs []map[string]interface{} `json:"inputs"`
+					Type          int64                    `json:"type"`
+					Plugin        string                   `json:"plugin"`
+					Inputs        []map[string]interface{} `json:"inputs"`
+					TriggerInputs []map[string]interface{} `json:"trigger_inputs"`
+					RunToken      string                   `json:"run_token"`
 				} `json:"config"`
 			} `json:"data"`
 		} `json:"nodes"`
@@ -397,37 +399,47 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			continue
 		}
 
-		// Check if this is a non-manual trigger node
+		// Check if this is a trigger node (manual triggers are now
+		// registered too — Launch validates their inputs and enforces
+		// the optional run token).
 		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
-		isManual := label == "trigger/manual"
-		if !isTrigger || isManual {
+		if !isTrigger {
 			continue
 		}
+		isManual := label == "trigger/manual"
 
 		// Map the trigger type name
 		typeName := strings.TrimPrefix(label, "trigger/")
 		typeName = strings.ReplaceAll(typeName, "_", "-")
 
-		// Build trigger data from node inputs (unresolved — Launch resolves at poll time)
-		triggerData := make(map[string]interface{})
-		for _, input := range node.Data.Config.Inputs {
-			name, _ := input["name"].(string)
-			value := input["value"]
-			if name != "" && value != nil {
-				triggerData[name] = value
+		var triggerData map[string]interface{}
+		if isManual {
+			// A manual trigger registers its input schema (and optional
+			// run token, which may be a ${secrets.X} reference resolved by
+			// Launch at trigger time) rather than resolved node inputs.
+			triggerData = manualTriggerRegistrationData(node.ID, node.Data.Config.TriggerInputs, node.Data.Config.RunToken)
+		} else {
+			// Build trigger data from node inputs (unresolved — Launch resolves at poll time)
+			triggerData = make(map[string]interface{})
+			for _, input := range node.Data.Config.Inputs {
+				name, _ := input["name"].(string)
+				value := input["value"]
+				if name != "" && value != nil {
+					triggerData[name] = value
+				}
 			}
-		}
 
-		// Store the flow node ID so the executor can be started from the correct entry node
-		triggerData["__node_id"] = node.ID
+			// Store the flow node ID so the executor can be started from the correct entry node
+			triggerData["__node_id"] = node.ID
 
-		// For form triggers, extract and parse form_definition as the root trigger data
-		if typeName == "form" {
-			if fd, ok := triggerData["form_definition"]; ok {
-				if fdStr, ok := fd.(string); ok && fdStr != "" {
-					var formDef map[string]interface{}
-					if err := json.Unmarshal([]byte(fdStr), &formDef); err == nil {
-						triggerData = formDef
+			// For form triggers, extract and parse form_definition as the root trigger data
+			if typeName == "form" {
+				if fd, ok := triggerData["form_definition"]; ok {
+					if fdStr, ok := fd.(string); ok && fdStr != "" {
+						var formDef map[string]interface{}
+						if err := json.Unmarshal([]byte(fdStr), &formDef); err == nil {
+							triggerData = formDef
+						}
 					}
 				}
 			}
@@ -514,8 +526,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			continue
 		}
 		isTrigger := node.Data.Config.Type == 1 || strings.HasPrefix(label, "trigger/")
-		isManual := label == "trigger/manual"
-		if isTrigger && !isManual {
+		if isTrigger {
 			tn := strings.TrimPrefix(label, "trigger/")
 			tn = strings.ReplaceAll(tn, "_", "-")
 			revisionTriggerTypes[tn] = true
@@ -523,36 +534,75 @@ func (s *Service) createFloRevision(c *gin.Context) {
 	}
 
 	for _, et := range existingTriggers {
-		if et.TypeName == "manual" {
+		if revisionTriggerTypes[et.TypeName] {
 			continue
 		}
-		if !revisionTriggerTypes[et.TypeName] {
-			// Trigger was removed from the flow — disable in Launch and delete from API
-			if err := s.launch.DisableTrigger(et.ID, authToken); err != nil {
-				log.WithFields(log.Fields{
-					"error":      err,
-					"trigger_id": et.ID,
-				}).Warn("unable to disable removed trigger in launch service")
-			}
 
-			if err := s.persistence.DeleteTrigger(et.ID); err != nil {
-				log.WithFields(log.Fields{
-					"error":      err,
-					"trigger_id": et.ID,
-				}).Warn("unable to delete removed trigger")
-			}
+		// Trigger was removed from the flow — de-register from Launch.
+		if err := s.launch.DisableTrigger(et.ID, authToken); err != nil {
+			log.WithFields(log.Fields{
+				"error":      err,
+				"trigger_id": et.ID,
+			}).Warn("unable to disable removed trigger in launch service")
+		}
 
+		if et.TypeName == "manual" {
+			// The manual trigger is the flow's default execution path
+			// (the editor's "Execute" resolves to it). Retain the record
+			// so manual runs keep working — only its Launch input-schema
+			// registration is removed.
 			log.WithFields(log.Fields{
 				"trigger_id": et.ID,
-				"type":       et.TypeName,
 				"flo_id":     FloID,
-			}).Info("removed trigger no longer in flow revision")
+			}).Info("de-registered manual trigger inputs — no manual node in revision")
+			continue
 		}
+
+		if err := s.persistence.DeleteTrigger(et.ID); err != nil {
+			log.WithFields(log.Fields{
+				"error":      err,
+				"trigger_id": et.ID,
+			}).Warn("unable to delete removed trigger")
+		}
+
+		log.WithFields(log.Fields{
+			"trigger_id": et.ID,
+			"type":       et.TypeName,
+			"flo_id":     FloID,
+		}).Info("removed trigger no longer in flow revision")
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"revision_id": id,
 	})
+}
+
+// manualTriggerSchema returns the manual trigger's declared input schema
+// for a flow when the given trigger target is that flow's manual trigger.
+// The editor executes the manual trigger via the sentinel id "default"
+// (which the persistence layer resolves to the flow's manual trigger);
+// an explicit trigger id is treated as manual only when its record has
+// type "manual". The schema itself is read from the current flow revision
+// — the manual node's config is the source of truth. A false result
+// means "not a manual target / no schema available", so validation is
+// skipped and the trigger behaves exactly as before.
+func (s *Service) manualTriggerSchema(floID, triggerID string) ([]TriggerInput, bool) {
+	isManual := triggerID == "default"
+	if !isManual {
+		if t, err := s.persistence.GetTriggerByID(triggerID); err == nil && t != nil && t.TypeName == "manual" {
+			isManual = true
+		}
+	}
+	if !isManual {
+		return nil, false
+	}
+
+	rev, err := s.persistence.GetLatestRevisionByFloID(floID)
+	if err != nil || rev == nil || rev.Data == nil {
+		return nil, false
+	}
+
+	return extractManualTriggerInputs(rev.Data)
 }
 
 func (s *Service) triggerFlo(c *gin.Context) {
@@ -575,6 +625,29 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to bind payload")
+	}
+
+	// Server-side validation of manual trigger inputs. When this request
+	// targets the flow's manual trigger and that trigger declares typed
+	// inputs, the payload must satisfy them before any execution is
+	// created. Non-manual triggers are unaffected.
+	if schema, ok := s.manualTriggerSchema(floID, triggerID); ok && len(schema) > 0 {
+		inputs, _ := data.(map[string]interface{})
+		if inputs == nil {
+			inputs = map[string]interface{}{}
+		}
+		if offending := ValidateTriggerInputs(schema, inputs); len(offending) > 0 {
+			log.WithFields(log.Fields{
+				"flo_id":     floID,
+				"trigger_id": triggerID,
+				"fields":     offending,
+			}).Info("manual trigger rejected — missing or invalid inputs")
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "missing or invalid inputs",
+				"fields": offending,
+			})
+			return
+		}
 	}
 
 	// Optional ?triggerer=<user_id> attribution. Launch passes this on
