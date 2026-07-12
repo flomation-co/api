@@ -598,6 +598,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
 
+	// Embed apps — publishable-key control plane for the developer SDK.
+	v1.GET("embed/app", s.jwtMiddleware, s.listEmbedApps)
+	v1.POST("embed/app", s.jwtMiddleware, s.createEmbedApp)
+	v1.GET("embed/app/:id", s.jwtMiddleware, s.getEmbedApp)
+	v1.DELETE("embed/app/:id", s.jwtMiddleware, s.deleteEmbedApp)
+	v1.POST("embed/app/:id/origin", s.jwtMiddleware, s.addEmbedOrigin)
+	v1.DELETE("embed/app/:id/origin", s.jwtMiddleware, s.removeEmbedOrigin)
+	v1.POST("embed/app/:id/resource", s.jwtMiddleware, s.setEmbedResource)
+
 	// Credentials
 	v1.GET("credential/providers", s.jwtMiddleware, s.getCredentialProviders)
 	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
@@ -702,6 +711,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.POST("/trigger/:id/dispatch", s.dispatchTrigger)
 	internal.GET("/execution/:id", s.getExecutionByID)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
+
+	// Embed edge gate: Launch resolves a publishable key (+ origin + resource)
+	// here so it never touches the embed tables directly.
+	internal.POST("/embed/resolve", s.resolveEmbedKey)
 
 	// Human-in-the-Loop: the executor registers an Await request; Launch
 	// reports the human's response. Both bypass JWT (service-to-service).
