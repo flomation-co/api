@@ -412,6 +412,15 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		typeName := strings.TrimPrefix(label, "trigger/")
 		typeName = strings.ReplaceAll(typeName, "_", "-")
 
+		// The manual trigger is the flow's auto-created "Default Trigger";
+		// registering it must NOT rename it to the node label, or the flows
+		// list run button (which matches name == "Default Trigger") loses its
+		// icon and any name-based lookups break.
+		triggerName := label
+		if isManual {
+			triggerName = "Default Trigger"
+		}
+
 		var triggerData map[string]interface{}
 		if isManual {
 			// A manual trigger registers its input schema (and optional
@@ -460,7 +469,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			// Update existing trigger data
 			trigger := api.Trigger{
 				ID:       *existingID,
-				Name:     label,
+				Name:     triggerName,
 				TypeName: typeName,
 				FloID:    &FloID,
 				Data:     triggerData,
@@ -477,7 +486,7 @@ func (s *Service) createFloRevision(c *gin.Context) {
 		} else {
 			// Create new trigger
 			trigger := api.Trigger{
-				Name:     label,
+				Name:     triggerName,
 				TypeName: typeName,
 				FloID:    &FloID,
 				Data:     triggerData,
