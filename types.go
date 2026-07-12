@@ -1134,3 +1134,54 @@ type BlobMetadata struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
 }
+
+// Embed-app resource types. A resource is embeddable only when explicitly
+// published for an embed app (see EmbedResource).
+const (
+	EmbedResourceForm  = "form"
+	EmbedResourceFlow  = "flow"
+	EmbedResourceAgent = "agent"
+)
+
+// EmbedApp is a publishable-key credential for the developer SDK, scoped to an
+// organisation (or a personal owner when OrganisationID is nil). The publishable
+// key is safe to ship in client JS; security comes from the allowed-origins list,
+// per-resource opt-in, and server-side re-validation of every write.
+type EmbedApp struct {
+	ID             string    `json:"id" db:"id"`
+	OrganisationID *string   `json:"organisation_id" db:"organisation_id"`
+	OwnerID        string    `json:"owner_id" db:"owner_id"`
+	Name           string    `json:"name" db:"name"`
+	PublishableKey string    `json:"publishable_key" db:"publishable_key"`
+	// SecretKeyHash is the sha256 hex of an optional server-side secret key. It is
+	// never returned to clients (the plaintext key is shown once at creation only).
+	SecretKeyHash *string   `json:"-" db:"secret_key_hash"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+
+	// AllowedOrigins and Resources are populated by the persistence layer when an
+	// app is loaded with its relations (not stored on the embed_app row itself).
+	AllowedOrigins []string        `json:"allowed_origins,omitempty" db:"-"`
+	Resources      []EmbedResource `json:"resources,omitempty" db:"-"`
+}
+
+// EmbedResource is a per-app opt-in linking an embed app to one embeddable
+// form / flow / agent. Nothing is embeddable until such a row exists.
+type EmbedResource struct {
+	EmbedAppID   string    `json:"embed_app_id" db:"embed_app_id"`
+	ResourceType string    `json:"resource_type" db:"resource_type"`
+	ResourceID   string    `json:"resource_id" db:"resource_id"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+}
+
+// EmbedResolution is the answer to the Launch edge's "can this publishable key,
+// from this origin, act on this resource?" question. Returned by the internal
+// resolve endpoint so Launch never touches the embed tables directly.
+type EmbedResolution struct {
+	EmbedAppID     string  `json:"embed_app_id"`
+	OrganisationID *string `json:"organisation_id"`
+	OwnerID        string  `json:"owner_id"`
+	// OriginAllowed reports whether the presented Origin is in the app's allowlist.
+	OriginAllowed bool `json:"origin_allowed"`
+	// ResourceAllowed reports whether the requested (type,id) is opted-in for this app.
+	ResourceAllowed bool `json:"resource_allowed"`
+}
