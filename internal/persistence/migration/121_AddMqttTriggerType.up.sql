@@ -1,0 +1,19 @@
+-- Seed the trigger_type row for the MQTT trigger. Without it,
+-- createFloRevision resolves the type via
+-- (SELECT id FROM trigger_type WHERE name = :type_name) -> NULL and the trigger
+-- silently fails to register: the flow saves 201, no trigger row is written, no
+-- subscription is opened, and nothing is logged. Each new integration seeds its
+-- own row.
+--
+-- Pairs with launch migration 41, which adds 'mqtt' to launch's TriggerType
+-- enum. Both are required.
+--
+-- NUMBERING: renumbered from 120 to 121. This was originally 120, but
+-- 120_AddEmbedApps merged to main first and took 120 too — two migrations at the
+-- same version, which golang-migrate refuses to load, so the api service failed
+-- to boot in sandbox (502). Git did not flag it because the filenames differ, and
+-- the Go tests don't run migrations against a real database. The original 120 was
+-- never successfully applied anywhere (the duplicate errors before any migration
+-- runs), so renumbering is clean. Always re-check migration numbering AFTER
+-- rebasing a feature branch on main, not just when the file is first created.
+INSERT INTO trigger_type (name) VALUES ('mqtt') ON CONFLICT DO NOTHING;
