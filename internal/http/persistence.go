@@ -386,4 +386,9 @@ type Persistence interface {
 	RemoveEmbedOrigin(appID, origin string) error
 	SetEmbedResource(appID, resourceType, resourceID string, enabled bool) error
 	ResolveEmbedKey(publishableKey, origin, resourceType, resourceID string) (*api.EmbedResolution, error)
+
+	// Web threads — generic web-invoke conversation history.
+	CreateWebThread(flowID string, userID *string) (string, error)
+	GetWebThreadHistory(threadID string, limit int) ([]persistence.WebThreadTurn, error)
+	AppendWebThreadTurn(threadID, role, content string) error
 }

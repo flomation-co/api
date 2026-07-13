@@ -742,6 +742,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
 
+	// Web threads — generic web-invoke conversation history (Web Trigger).
+	internal.POST("/web-thread", s.createWebThreadInternal)
+	internal.GET("/web-thread/:id/history", s.getWebThreadHistoryInternal)
+	internal.POST("/web-thread/:id/turn", s.appendWebThreadTurnInternal)
+
 	// AI tool-loop relay recording: when the executor's flow engine
 	// detects a tool call to a messaging action (send-slack, send-
 	// telegram, etc.), it posts here so the outbound is recorded

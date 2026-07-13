@@ -1023,3 +1023,10 @@ func (m *mockPersistence) SetEmbedResource(appID, rt, rid string, en bool) error
 func (m *mockPersistence) ResolveEmbedKey(pk, origin, rt, rid string) (*api.EmbedResolution, error) {
 	return nil, nil
 }
+func (m *mockPersistence) CreateWebThread(flowID string, userID *string) (string, error) {
+	return "", nil
+}
+func (m *mockPersistence) GetWebThreadHistory(threadID string, limit int) ([]persistence.WebThreadTurn, error) {
+	return nil, nil
+}
+func (m *mockPersistence) AppendWebThreadTurn(threadID, role, content string) error { return nil }
