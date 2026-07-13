@@ -31,6 +31,17 @@ variables:
 inject-metadata:
   extends: .inject-metadata-template
 
+migration-check:
+  stage: prepare
+  needs: []
+  # Loads the embedded migration set exactly as the service does on boot
+  # (iofs.New), before any DB. Fails the pipeline on a duplicate version or a
+  # malformed filename — the boot-breaker that a duplicate 120 caused in prod
+  # on 13/07/2026. Runs on EVERY pipeline (no only:) so it blocks the MR, and
+  # in prepare (the first stage) so it runs before any build or deploy.
+  script:
+    - go test ./internal/persistence/ -run TestMigrationsSourceLoads -v
+
 lint:
   stage: prepare
   variables:
