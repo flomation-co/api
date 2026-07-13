@@ -13,6 +13,7 @@ import (
 // request-part → field mapping.
 type webTriggerConfig struct {
 	Found        bool              `json:"found"`
+	Auth         string            `json:"auth"` // "none" (public) | "publishable"
 	KeepHistory  bool              `json:"keep_history"`
 	MessageField string            `json:"message_field"`
 	Methods      []string          `json:"methods"`
@@ -66,7 +67,10 @@ func (s *Service) getWebTriggerConfigInternal(c *gin.Context) {
 			continue
 		}
 		inputs := n.Data.Config.Inputs
-		cfg := webTriggerConfig{Found: true, MessageField: "message", Fields: map[string]string{}}
+		cfg := webTriggerConfig{Found: true, Auth: "none", MessageField: "message", Fields: map[string]string{}}
+		if a, _ := webTriggerInputValue(inputs, "auth").(string); a != "" {
+			cfg.Auth = a
+		}
 		cfg.KeepHistory = webTriggerTruthy(webTriggerInputValue(inputs, "keep_history"))
 		if mf, _ := webTriggerInputValue(inputs, "message_field").(string); strings.TrimSpace(mf) != "" {
 			cfg.MessageField = mf

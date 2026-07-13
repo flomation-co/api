@@ -41,6 +41,7 @@ func TestWebTriggerConfig_ReadsNodeConfig(t *testing.T) {
 						{"name": "methods", "value": "GET,POST"},
 						{"name": "keep_history", "value": true},
 						{"name": "message_field", "value": "prompt"},
+						{"name": "auth", "value": "publishable"},
 						{"name": "fields", "value": `{"id":"path"}`},
 					},
 				},
@@ -55,6 +56,7 @@ func TestWebTriggerConfig_ReadsNodeConfig(t *testing.T) {
 	Expect(w.Code).To(Equal(http.StatusOK))
 	body := w.Body.String()
 	Expect(body).To(ContainSubstring(`"found":true`))
+	Expect(body).To(ContainSubstring(`"auth":"publishable"`))
 	Expect(body).To(ContainSubstring(`"keep_history":true`))
 	Expect(body).To(ContainSubstring(`"message_field":"prompt"`))
 	Expect(body).To(ContainSubstring(`"GET"`))
