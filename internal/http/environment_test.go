@@ -456,6 +456,10 @@ func (m *mockPersistence) GetDecryptedClientCredentials(string, string) (*string
 func (m *mockPersistence) GetCredentialByName(string, string, string) (*string, error) {
 	return nil, nil
 }
+func (m *mockPersistence) GetCredentialWithMetaByName(string, string, string) (*string, *json.RawMessage, error) {
+	return nil, nil, nil
+}
+func (m *mockPersistence) UpdateCredentialMetadata(string, *json.RawMessage) error { return nil }
 func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persistence.CredentialRefreshRow, error) {
 	return nil, nil
 }

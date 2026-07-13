@@ -42,6 +42,8 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"asana":          {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "asana", SubName: "Asana", SubIcon: "asana", SubDescription: "Create and manage tasks, subtasks, projects, sections, tags, and users in Asana"},
 	"monday":         {Key: "project-management", Name: "Project Management", Icon: "list-check", Description: "Plan and track work — issues, tasks, boards, and projects", SubKey: "monday", SubName: "Monday.com", SubIcon: "monday", SubDescription: "Create and manage boards, groups, columns, items, and updates in Monday.com"},
 	"stripe":         {Key: "stripe", Name: "Stripe", Icon: "stripe", Description: "Accept payments and manage customers, subscriptions and invoices in Stripe"},
+	"quickbooks":     {Key: "quickbooks", Name: "QuickBooks Online", Icon: "quickbooks", Description: "Manage customers, invoices, bills, payments and the ledger in QuickBooks Online"},
+	"xero":           {Key: "xero", Name: "Xero", Icon: "xero", Description: "Manage contacts, invoices, bills, payments and the ledger in Xero"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
 	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
 	"string":         {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},

@@ -149,6 +149,45 @@ func (s *Service) StoreCredentialTokens(id, environmentKey, accessToken, refresh
 	return err
 }
 
+// GetCredentialWithMetaByName resolves an active credential's decrypted access
+// token AND its (plaintext JSONB) metadata by name. The metadata carries the
+// per-account identifier captured after OAuth — QuickBooks realm_id / Xero
+// tenant_id — which the executor reads via ${credentials.<name>.<key>}. Returns
+// (nil, nil, nil) when no active credential matches.
+func (s *Service) GetCredentialWithMetaByName(environmentID, name, environmentKey string) (*string, *json.RawMessage, error) {
+	var row struct {
+		AccessToken *string          `db:"access_token"`
+		Metadata    *json.RawMessage `db:"metadata"`
+	}
+	if err := s.conn.Get(&row, `
+		SELECT PGP_SYM_DECRYPT(access_token, $3) AS access_token, metadata
+		FROM environment_credential
+		WHERE environment_id = $1 AND name = $2 AND status = 'active'
+		AND access_token IS NOT NULL`, environmentID, name, environmentKey); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	return row.AccessToken, row.Metadata, nil
+}
+
+// UpdateCredentialMetadata overwrites a credential's metadata JSONB column.
+// Used by the OAuth callback to persist the per-account identifier discovered
+// only after authorisation (QuickBooks realmId returned on the callback; Xero
+// tenantId fetched from /connections) — a post-auth value, unlike a url_var
+// which the user supplies up front. Passing nil clears the column.
+func (s *Service) UpdateCredentialMetadata(id string, metadata *json.RawMessage) error {
+	var m interface{}
+	if metadata != nil {
+		m = []byte(*metadata)
+	}
+	_, err := s.conn.Exec(
+		`UPDATE environment_credential SET metadata = $2, updated_at = NOW() WHERE id = $1`,
+		id, m)
+	return err
+}
+
 // GetCredentialsNeedingRefresh returns credentials expiring within the given window.
 // Tokens are decrypted using the environment's secret_key (itself decrypted with the global encryption key).
 func (s *Service) GetCredentialsNeedingRefresh(within time.Duration) ([]CredentialRefreshRow, error) {
