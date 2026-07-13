@@ -719,6 +719,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.POST("/agent/:id/state/:key", s.setAgentStateInternal)
 	internal.POST("/flo/:FloID/execute", s.executeFlo)
 	internal.POST("/flo/:FloID/trigger/:TriggerID/execute", s.triggerFlo)
+	internal.GET("/flo/:FloID/web-trigger", s.getWebTriggerConfigInternal)
 	internal.POST("/trigger/:id/dispatch", s.dispatchTrigger)
 	internal.GET("/execution/:id", s.getExecutionByID)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
