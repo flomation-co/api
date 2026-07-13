@@ -13,6 +13,7 @@ import (
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/rbac"
+	"github.com/flomation-co/sentinel-client"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -697,6 +698,34 @@ func (s *Service) triggerFlo(c *gin.Context) {
 	})
 }
 
+// resolveUserFromToken validates a Sentinel bearer token and returns its user
+// id. A package var so tests can stub it without a live identity service.
+var resolveUserFromToken = func(identityService, token string) (string, error) {
+	uid, err := sentinel.GetUser(identityService, token)
+	if err != nil || uid == nil {
+		return "", err
+	}
+	return *uid, nil
+}
+
+// forwardedUserID resolves an optional end-user identity from a forwarded
+// Authorization bearer — the embed Web Trigger forwards the browser's Sentinel
+// JWT so a logged-in visitor's ${user.X} resolves. Returns "" when the token is
+// absent or invalid: a public invoke stays anonymous rather than being rejected.
+// Client-claimed identity is never trusted — only a validated token counts.
+func (s *Service) forwardedUserID(c *gin.Context) string {
+	parts := strings.Split(c.GetHeader("Authorization"), " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return ""
+	}
+	uid, err := resolveUserFromToken(s.config.Security.IdentityService, parts[1])
+	if err != nil {
+		log.WithError(err).Warn("web invoke: forwarded token did not resolve; continuing anonymous")
+		return ""
+	}
+	return uid
+}
+
 func (s *Service) executeFlo(c *gin.Context) {
 	floID := c.Param("FloID")
 
@@ -717,6 +746,18 @@ func (s *Service) executeFlo(c *gin.Context) {
 
 	var data map[string]interface{}
 	_ = c.ShouldBindJSON(&data)
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+
+	// Bind the execution to a forwarded end-user (embed Web Trigger) so ${user.X}
+	// resolves — only when the body didn't already carry a user_id (the agent
+	// inbound path sets its own). A pre-set user_id survives author enrichment.
+	if _, hasUser := data["user_id"]; !hasUser {
+		if uid := s.forwardedUserID(c); uid != "" {
+			data["user_id"] = uid
+		}
+	}
 
 	// Check agent RBAC permissions when the execution is agent-dispatched
 	if agentID, ok := data["agent_id"].(string); ok && agentID != "" {
