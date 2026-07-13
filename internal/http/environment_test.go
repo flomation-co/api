@@ -36,6 +36,14 @@ type mockPersistence struct {
 	blobs         map[string]mockBlob
 	blobQuotaUsed map[string]int64
 	blobPutErr    error
+
+	// Manual-trigger validation stubs (trigger_inputs feature). When
+	// latestRevision is set, GetLatestRevisionByFloID returns it; every
+	// TriggerExecution call increments triggerExecCalls so tests can
+	// assert an execution was (not) created.
+	latestRevision   *api.Revision
+	triggerExecCalls int
+	triggersByID     map[string]*api.Trigger
 }
 
 type mockBlob struct {
@@ -376,7 +384,7 @@ func (m *mockPersistence) GetExecutions(int64, int64, string, string, *string, .
 	panic("not implemented")
 }
 func (m *mockPersistence) GetLatestRevisionByFloID(string) (*api.Revision, error) {
-	panic("not implemented")
+	return m.latestRevision, nil
 }
 func (m *mockPersistence) GetMyFlos(string, int64, int64, string, ...string) ([]*api.Flo, int64, error) {
 	panic("not implemented")
@@ -408,7 +416,9 @@ func (m *mockPersistence) GetRunnerByIdentifier(string) (*api.Runner, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) GetRunners() ([]*api.Runner, error)          { panic("not implemented") }
-func (m *mockPersistence) GetTriggerByID(string) (*api.Trigger, error) { panic("not implemented") }
+func (m *mockPersistence) GetTriggerByID(id string) (*api.Trigger, error) {
+	return m.triggersByID[id], nil
+}
 func (m *mockPersistence) GetTriggerInvocationById(string) (*api.TriggerInvocation, error) {
 	panic("not implemented")
 }
@@ -451,7 +461,9 @@ func (m *mockPersistence) GetCredentialsNeedingRefresh(time.Duration) ([]persist
 }
 
 func (m *mockPersistence) TriggerExecution(string, string, interface{}, string, *persistence.ParentLink) (*string, error) {
-	panic("not implemented")
+	m.triggerExecCalls++
+	id := "exec-1"
+	return &id, nil
 }
 func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }
 func (m *mockPersistence) GetAgentByOrchestratorFloID(string) (*api.Agent, error) {
