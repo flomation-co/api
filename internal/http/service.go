@@ -482,6 +482,17 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/sendgrid-templates", s.jwtMiddleware, s.getSendGridTemplates)
 	actions.GET("/options/sendgrid-asm-groups", s.jwtMiddleware, s.getSendGridAsmGroups)
 	actions.GET("/options/sendgrid-segments", s.jwtMiddleware, s.getSendGridSegments)
+	// Kubernetes pickers are served by one generic handler parameterised by kind
+	// (see k8sOptionResources); containers and Helm releases need bespoke reads.
+	for _, slug := range []string{
+		"namespaces", "nodes", "pods", "services", "configmaps", "secrets", "pvcs",
+		"serviceaccounts", "deployments", "statefulsets", "daemonsets", "jobs",
+		"cronjobs", "ingresses", "hpas",
+	} {
+		actions.GET("/options/kubernetes-"+slug, s.jwtMiddleware, s.kubernetesOptions(slug))
+	}
+	actions.GET("/options/kubernetes-containers", s.jwtMiddleware, s.getKubernetesContainers)
+	actions.GET("/options/helm-releases", s.jwtMiddleware, s.getHelmReleases)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
@@ -598,6 +609,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	v1.POST("feedback", s.jwtMiddleware, s.submitFeedback)
 
+	// Embed apps — publishable-key control plane for the developer SDK.
+	v1.GET("embed/app", s.jwtMiddleware, s.listEmbedApps)
+	v1.POST("embed/app", s.jwtMiddleware, s.createEmbedApp)
+	v1.GET("embed/app/:id", s.jwtMiddleware, s.getEmbedApp)
+	v1.DELETE("embed/app/:id", s.jwtMiddleware, s.deleteEmbedApp)
+	v1.POST("embed/app/:id/origin", s.jwtMiddleware, s.addEmbedOrigin)
+	v1.DELETE("embed/app/:id/origin", s.jwtMiddleware, s.removeEmbedOrigin)
+	v1.POST("embed/app/:id/resource", s.jwtMiddleware, s.setEmbedResource)
+
 	// Credentials
 	v1.GET("credential/providers", s.jwtMiddleware, s.getCredentialProviders)
 	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
@@ -702,6 +722,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.POST("/trigger/:id/dispatch", s.dispatchTrigger)
 	internal.GET("/execution/:id", s.getExecutionByID)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
+
+	// Embed edge gate: Launch resolves a publishable key (+ origin + resource)
+	// here so it never touches the embed tables directly.
+	internal.POST("/embed/resolve", s.resolveEmbedKey)
 
 	// Human-in-the-Loop: the executor registers an Await request; Launch
 	// reports the human's response. Both bypass JWT (service-to-service).

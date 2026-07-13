@@ -54,9 +54,18 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"webflow":        {Key: "webflow", Name: "Webflow", Icon: "webflow", Description: "Manage Webflow sites, CMS collections, pages, and forms"},
 	"journey":        {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
 	"plan":           {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
-	"opentofu":       {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and manage infrastructure as code", SubKey: "opentofu", SubName: "OpenTofu", SubIcon: "cubes", SubDescription: "Infrastructure as Code — run OpenTofu plan, apply, and destroy"},
-	"databricks":     {Key: "data-warehouse", Name: "Data Warehouse", Icon: "cubes-stacked", Description: "Query and orchestrate data warehouses and lakehouses", SubKey: "databricks", SubName: "Databricks", SubIcon: "database", SubDescription: "Run SQL, jobs, and models against a Databricks lakehouse"},
-	"hubspot":        {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets", SubKey: "hubspot", SubName: "HubSpot", SubIcon: "hubspot", SubDescription: "Manage contacts, companies, deals, and tickets in the HubSpot CRM"},
+	// OpenTofu predates the infrastructure/ directory and still uses two-segment
+	// action IDs (opentofu/apply), so its sub-group is carried inline here rather
+	// than resolved from subCategoryMetadata: getCategoryForAction only populates
+	// Sub* for IDs of three segments or more.
+	//
+	// Its Key/Name/Icon/Description MUST stay byte-identical to the
+	// "infrastructure" entry below. Both emit Key "infrastructure" and so feed the
+	// same group header; any drift and the header changes depending on which
+	// action the editor happened to read first. Same trap as Mailchimp/Marketing.
+	"opentofu":   {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and operate your infrastructure — Kubernetes clusters, Helm releases, and infrastructure as code", SubKey: "opentofu", SubName: "OpenTofu", SubIcon: "cubes", SubDescription: "Infrastructure as Code — run OpenTofu plan, apply, and destroy"},
+	"databricks": {Key: "data-warehouse", Name: "Data Warehouse", Icon: "cubes-stacked", Description: "Query and orchestrate data warehouses and lakehouses", SubKey: "databricks", SubName: "Databricks", SubIcon: "database", SubDescription: "Run SQL, jobs, and models against a Databricks lakehouse"},
+	"hubspot":    {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets", SubKey: "hubspot", SubName: "HubSpot", SubIcon: "hubspot", SubDescription: "Manage contacts, companies, deals, and tickets in the HubSpot CRM"},
 	// E-Commerce uses 3-segment action IDs (ecommerce/shopify/order_create),
 	// so the sub-group (Shopify) is resolved from subCategoryMetadata below —
 	// no inline Sub* fields here (getCategoryForAction would overwrite them).
@@ -86,6 +95,12 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// 2-segment remap entry above duplicates this entry's Key/Name/Icon/Description
 	// verbatim — keep them byte-identical or the group header drifts.
 	"marketing": {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email"},
+	// Infrastructure uses 3-segment action IDs (infrastructure/kubernetes/pod_list,
+	// infrastructure/helm/release_install), so the sub-group is resolved from
+	// subCategoryMetadata below and no Sub* fields belong here — getCategoryForAction
+	// would overwrite them anyway. The "opentofu" 2-segment remap above duplicates
+	// this entry's Key/Name/Icon/Description verbatim; keep them byte-identical.
+	"infrastructure": {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and operate your infrastructure — Kubernetes clusters, Helm releases, and infrastructure as code"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -94,49 +109,51 @@ var subCategoryMetadata = map[string]struct {
 	Icon        string
 	Description string
 }{
-	"aws/s3":                  {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
-	"aws/ec2":                 {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
-	"social/linkedin":         {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
-	"social/facebook":         {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
-	"google/drive":            {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
-	"google/sheets":           {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
-	"google/docs":             {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
-	"google/slides":           {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
-	"microsoft/outlook":       {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
-	"microsoft/teams":         {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
-	"microsoft/calendar":      {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
-	"microsoft/excel":         {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
-	"microsoft/onedrive":      {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
-	"microsoft/sharepoint":    {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
-	"microsoft/word":          {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
-	"microsoft/powerpoint":    {Name: "PowerPoint", Icon: "display", Description: "Microsoft PowerPoint Online presentation operations"},
-	"google/gmail":            {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
-	"google/calendar":         {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
-	"messaging/telegram":      {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
-	"messaging/discord":       {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
-	"ecommerce/shopify":       {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
-	"ecommerce/woocommerce":   {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
-	"cms/wordpress":           {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
-	"scheduling/calendly":     {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
-	"scheduling/calcom":       {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
-	"scheduling/acuity":       {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
-	"helpdesk/zendesk":        {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
-	"helpdesk/intercom":       {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
-	"devops/jenkins":          {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
-	"messagebrokers/mqtt":     {Name: "MQTT", Icon: "tower-broadcast", Description: "Publish messages to an MQTT broker, read retained values, and wait for messages on a topic"},
-	"ukgov/companieshouse":    {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
-	"ukgov/dvla":              {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
-	"ukgov/foodstandards":     {Name: "Food Standards Agency", Icon: "star", Description: "UK food hygiene ratings (FHRS)"},
-	"ukgov/police":            {Name: "Police UK", Icon: "shield-halved", Description: "UK street-level crime, stop-and-search and police force data"},
-	"ukgov/environmentagency": {Name: "Environment Agency", Icon: "leaf", Description: "UK flood warnings, flood areas and river/rainfall monitoring"},
-	"ukgov/postcodes":         {Name: "Postcodes", Icon: "map", Description: "UK postcode lookup, validation and geocoding"},
-	"ukgov/parliament":        {Name: "UK Parliament", Icon: "landmark", Description: "UK Parliament — members, bills, Commons votes and written questions"},
-	"ukgov/ons":               {Name: "ONS", Icon: "chart-line", Description: "UK economic statistics from the Office for National Statistics"},
-	"ukgov/dvsa":              {Name: "DVSA", Icon: "wrench", Description: "UK MOT test history"},
-	"ukgov/charitycommission": {Name: "Charity Commission", Icon: "hand", Description: "The register of charities for England & Wales"},
-	"ukgov/bankholidays":      {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
-	"ukgov/landregistry":      {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
-	"marketing/sendgrid":      {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
+	"aws/s3":                    {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
+	"aws/ec2":                   {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+	"social/linkedin":           {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
+	"social/facebook":           {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
+	"google/drive":              {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
+	"google/sheets":             {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
+	"google/docs":               {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
+	"google/slides":             {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
+	"microsoft/outlook":         {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
+	"microsoft/teams":           {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
+	"microsoft/calendar":        {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
+	"microsoft/excel":           {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
+	"microsoft/onedrive":        {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
+	"microsoft/sharepoint":      {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
+	"microsoft/word":            {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
+	"microsoft/powerpoint":      {Name: "PowerPoint", Icon: "display", Description: "Microsoft PowerPoint Online presentation operations"},
+	"google/gmail":              {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
+	"google/calendar":           {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
+	"messaging/telegram":        {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
+	"messaging/discord":         {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
+	"ecommerce/shopify":         {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	"ecommerce/woocommerce":     {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
+	"cms/wordpress":             {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
+	"scheduling/calendly":       {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
+	"scheduling/calcom":         {Name: "Cal.com", Icon: "calcom", Description: "Manage Cal.com bookings, event types, schedules, availability slots, teams, and webhooks"},
+	"scheduling/acuity":         {Name: "Acuity", Icon: "acuity", Description: "Manage Acuity Scheduling appointments, availability, clients, appointment types and calendars"},
+	"helpdesk/zendesk":          {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
+	"helpdesk/intercom":         {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
+	"devops/jenkins":            {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
+	"messagebrokers/mqtt":       {Name: "MQTT", Icon: "tower-broadcast", Description: "Publish messages to an MQTT broker, read retained values, and wait for messages on a topic"},
+	"ukgov/companieshouse":      {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
+	"ukgov/dvla":                {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
+	"ukgov/foodstandards":       {Name: "Food Standards Agency", Icon: "star", Description: "UK food hygiene ratings (FHRS)"},
+	"ukgov/police":              {Name: "Police UK", Icon: "shield-halved", Description: "UK street-level crime, stop-and-search and police force data"},
+	"ukgov/environmentagency":   {Name: "Environment Agency", Icon: "leaf", Description: "UK flood warnings, flood areas and river/rainfall monitoring"},
+	"ukgov/postcodes":           {Name: "Postcodes", Icon: "map", Description: "UK postcode lookup, validation and geocoding"},
+	"ukgov/parliament":          {Name: "UK Parliament", Icon: "landmark", Description: "UK Parliament — members, bills, Commons votes and written questions"},
+	"ukgov/ons":                 {Name: "ONS", Icon: "chart-line", Description: "UK economic statistics from the Office for National Statistics"},
+	"ukgov/dvsa":                {Name: "DVSA", Icon: "wrench", Description: "UK MOT test history"},
+	"ukgov/charitycommission":   {Name: "Charity Commission", Icon: "hand", Description: "The register of charities for England & Wales"},
+	"ukgov/bankholidays":        {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
+	"ukgov/landregistry":        {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
+	"marketing/sendgrid":        {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
+	"infrastructure/kubernetes": {Name: "Kubernetes", Icon: "kubernetes", Description: "Operate a Kubernetes cluster — restart and scale deployments, read pod logs, run jobs, manage config, and drain nodes"},
+	"infrastructure/helm":       {Name: "Helm", Icon: "helm", Description: "Install, upgrade, roll back and inspect Helm releases on a Kubernetes cluster"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {

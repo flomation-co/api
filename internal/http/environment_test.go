@@ -986,3 +986,24 @@ func (m *mockPersistence) DeleteUserIdentity(userID string, organisationID *stri
 func (m *mockPersistence) UpsertAnonymousUser(organisationID, channelType, externalID, displayName string) (string, error) {
 	return "", nil
 }
+
+// Embed-app stubs — the embed handlers get their own focused coverage; these
+// satisfy the Persistence interface for the rest of the http test suite.
+func (m *mockPersistence) CreateEmbedApp(app *api.EmbedApp, origins []string) (*api.EmbedApp, error) {
+	return app, nil
+}
+func (m *mockPersistence) ListEmbedApps(ownerID string, orgID *string) ([]api.EmbedApp, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetEmbedApp(id, ownerID string, orgID *string) (*api.EmbedApp, error) {
+	return nil, nil
+}
+func (m *mockPersistence) DeleteEmbedApp(id, ownerID string, orgID *string) (bool, error) {
+	return false, nil
+}
+func (m *mockPersistence) AddEmbedOrigin(appID, origin string) error             { return nil }
+func (m *mockPersistence) RemoveEmbedOrigin(appID, origin string) error          { return nil }
+func (m *mockPersistence) SetEmbedResource(appID, rt, rid string, en bool) error { return nil }
+func (m *mockPersistence) ResolveEmbedKey(pk, origin, rt, rid string) (*api.EmbedResolution, error) {
+	return nil, nil
+}
