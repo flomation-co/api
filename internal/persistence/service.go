@@ -1033,6 +1033,7 @@ func NewService(config *config.Config) (*Service, error) {
 			t.organisation_id,
 			t.type,
 			tt.name AS type_name,
+			ft.flo_id,
 			t.data
 		FROM
 			trigger t
