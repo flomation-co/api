@@ -179,8 +179,10 @@ func init() {
 const (
 	// pgOptionListLimit bounds every dropdown. A database with more schemas,
 	// vector tables or columns than this is not usefully browsed from a select
-	// box; the operator types the name (the editor always allows free text).
-	pgOptionListLimit = 500
+	// box; the operator types the name (the editor always allows free text). It
+	// is a string because it is concatenated into the catalog query constants
+	// below (it is never a user value, so there is no injection surface).
+	pgOptionListLimit = "500"
 
 	// pgConnectTimeoutSeconds bounds the TCP dial + startup handshake. Without it
 	// a black-holed host hangs until the OS TCP timeout (~2 minutes) with the
@@ -525,7 +527,7 @@ const pgvectorSchemasQuery = `
 	   AND left(n.nspname, 3) <> 'pg_'
 	   AND has_schema_privilege(n.oid, 'USAGE')
 	 ORDER BY 1
-	 LIMIT 500`
+	 LIMIT ` + pgOptionListLimit
 
 // getPGVectorSchemas serves the database's schemas for the Schema input.
 func (s *Service) getPGVectorSchemas(c *gin.Context) {
@@ -574,7 +576,7 @@ const pgvectorTablesQuery = `
 	   AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
 	   AND ($1 = '' OR c.table_schema = $1)
 	 ORDER BY 1, 2
-	 LIMIT 500`
+	 LIMIT ` + pgOptionListLimit
 
 // getPGVectorTables serves the vector-bearing tables for the Table input.
 func (s *Service) getPGVectorTables(c *gin.Context) {
@@ -669,7 +671,7 @@ const pgvectorColumnsQuery = `
 	   AND has_column_privilege(c.oid, a.attnum, 'SELECT')
 	   AND (cardinality($3::text[]) = 0 OR t.typname = ANY($3::text[]))
 	 ORDER BY a.attnum
-	 LIMIT 500`
+	 LIMIT ` + pgOptionListLimit
 
 // pgVectorDimsPattern pulls the dimension out of format_type's "vector(1024)".
 var pgVectorDimsPattern = regexp.MustCompile(`^vector\((\d+)\)$`)
