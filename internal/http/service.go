@@ -482,6 +482,17 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/sendgrid-templates", s.jwtMiddleware, s.getSendGridTemplates)
 	actions.GET("/options/sendgrid-asm-groups", s.jwtMiddleware, s.getSendGridAsmGroups)
 	actions.GET("/options/sendgrid-segments", s.jwtMiddleware, s.getSendGridSegments)
+	// Kubernetes pickers are served by one generic handler parameterised by kind
+	// (see k8sOptionResources); containers and Helm releases need bespoke reads.
+	for _, slug := range []string{
+		"namespaces", "nodes", "pods", "services", "configmaps", "secrets", "pvcs",
+		"serviceaccounts", "deployments", "statefulsets", "daemonsets", "jobs",
+		"cronjobs", "ingresses", "hpas",
+	} {
+		actions.GET("/options/kubernetes-"+slug, s.jwtMiddleware, s.kubernetesOptions(slug))
+	}
+	actions.GET("/options/kubernetes-containers", s.jwtMiddleware, s.getKubernetesContainers)
+	actions.GET("/options/helm-releases", s.jwtMiddleware, s.getHelmReleases)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
