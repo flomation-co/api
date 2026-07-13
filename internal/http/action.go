@@ -79,6 +79,11 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// Helpdesk uses 3-segment action IDs (helpdesk/zendesk/ticket_create), so
 	// the sub-group (Zendesk) is resolved from subCategoryMetadata below.
 	"helpdesk": {Key: "helpdesk", Name: "Helpdesk", Icon: "headset", Description: "Customer support and ticketing platforms"},
+	// Message Brokers uses 3-segment action IDs (messagebrokers/mqtt/publish), so
+	// the sub-group (MQTT) is resolved from subCategoryMetadata below. The
+	// executor directory is "messagebrokers" (one word) because it has to be a
+	// valid Go package name; the display name is set here.
+	"messagebrokers": {Key: "messagebrokers", Name: "Message Brokers", Icon: "arrow-right-arrow-left", Description: "Publish and subscribe to message brokers — move events between systems in real time"},
 	// DevOps uses 3-segment action IDs (devops/jenkins/job_trigger), so the
 	// sub-group (Jenkins) is resolved from subCategoryMetadata below.
 	"devops": {Key: "devops", Name: "DevOps", Icon: "gears", Description: "Automate your build, test, and deploy workflows — trigger jobs, watch builds, and manage your CI/CD servers"},
@@ -133,6 +138,7 @@ var subCategoryMetadata = map[string]struct {
 	"helpdesk/zendesk":          {Name: "Zendesk", Icon: "zendesk", Description: "Manage tickets, users, and organizations in Zendesk Support"},
 	"helpdesk/intercom":         {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
 	"devops/jenkins":            {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
+	"messagebrokers/mqtt":       {Name: "MQTT", Icon: "tower-broadcast", Description: "Publish messages to an MQTT broker, read retained values, and wait for messages on a topic"},
 	"ukgov/companieshouse":      {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
 	"ukgov/dvla":                {Name: "DVLA", Icon: "truck-ramp-box", Description: "UK vehicle data — tax, MOT status and vehicle details"},
 	"ukgov/foodstandards":       {Name: "Food Standards Agency", Icon: "star", Description: "UK food hygiene ratings (FHRS)"},
