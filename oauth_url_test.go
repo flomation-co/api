@@ -52,6 +52,68 @@ func TestMetadataRoundTrip(t *testing.T) {
 	}
 }
 
+func TestProviderUsesBasicAuth(t *testing.T) {
+	// Intuit and Xero require HTTP Basic auth on the token endpoint; every
+	// other provider sends its client credentials in the body.
+	for _, slug := range []string{"quickbooks", "xero"} {
+		if !ProviderUsesBasicAuth(slug) {
+			t.Errorf("expected %s to use Basic auth", slug)
+		}
+	}
+	for _, slug := range []string{"google", "github", "shopify", "twitter", ""} {
+		if ProviderUsesBasicAuth(slug) {
+			t.Errorf("expected %s NOT to use Basic auth", slug)
+		}
+	}
+}
+
+func TestMergeMetadata(t *testing.T) {
+	// nil existing → just the new keys.
+	out, err := MergeMetadata(nil, map[string]interface{}{"realm_id": "123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(*out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["realm_id"] != "123" {
+		t.Errorf("realm_id not stored: %v", m)
+	}
+
+	// Existing url_vars must be preserved when a tenant is captured post-auth.
+	existingRaw := json.RawMessage(`{"url_vars":{"shop":"my-store"}}`)
+	out, err = MergeMetadata(&existingRaw, map[string]interface{}{"tenant_id": "t-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = nil
+	if err := json.Unmarshal(*out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["tenant_id"] != "t-1" {
+		t.Errorf("tenant_id not stored: %v", m)
+	}
+	uv, ok := m["url_vars"].(map[string]interface{})
+	if !ok || uv["shop"] != "my-store" {
+		t.Errorf("existing url_vars not preserved: %v", m)
+	}
+
+	// A malformed existing blob starts clean rather than failing capture.
+	bad := json.RawMessage(`not json`)
+	out, err = MergeMetadata(&bad, map[string]interface{}{"realm_id": "9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = nil
+	if err := json.Unmarshal(*out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["realm_id"] != "9" {
+		t.Errorf("realm_id not stored after malformed existing: %v", m)
+	}
+}
+
 func TestProviderURLVariables(t *testing.T) {
 	raw := json.RawMessage(`[{"key":"shop","label":"Shop Subdomain","placeholder":"my-store"}]`)
 	p := CredentialProvider{URLVariablesRaw: &raw}

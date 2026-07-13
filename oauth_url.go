@@ -7,6 +7,24 @@ import (
 	"strings"
 )
 
+// basicAuthTokenProviders lists providers whose OAuth token endpoint expects
+// the client credentials via HTTP Basic auth (Authorization: Basic
+// base64(client_id:client_secret)) rather than in the form body. Intuit
+// (QuickBooks) REQUIRES this and rejects body credentials; Xero accepts it and
+// documents it as the preferred method. Both the authorization-code exchange
+// and the refresh-token grant must use the same auth style, so this lives in
+// the shared api package for the http handler and the refresh poller to share.
+var basicAuthTokenProviders = map[string]bool{
+	"quickbooks": true,
+	"xero":       true,
+}
+
+// ProviderUsesBasicAuth reports whether the provider's token endpoint expects
+// client credentials via HTTP Basic auth instead of in the request body.
+func ProviderUsesBasicAuth(slug string) bool {
+	return basicAuthTokenProviders[slug]
+}
+
 // URLVariable describes a per-credential value substituted into a provider's
 // OAuth URLs. Providers whose OAuth endpoints are per-tenant declare these —
 // e.g. Shopify's shop subdomain in https://{shop}.myshopify.com/admin/oauth/
@@ -90,6 +108,31 @@ func URLVarsFromMetadata(metadata *json.RawMessage) map[string]string {
 		return nil
 	}
 	return m.URLVars
+}
+
+// MergeMetadata merges the given key/values into a credential's existing
+// metadata JSON, preserving any keys already present (e.g. url_vars). Returns a
+// fresh json.RawMessage. Used by the OAuth callback to record the per-account
+// identifier discovered after authorisation (realm_id / tenant_id / …) without
+// clobbering pre-auth values.
+func MergeMetadata(existing *json.RawMessage, kv map[string]interface{}) (*json.RawMessage, error) {
+	merged := map[string]interface{}{}
+	if existing != nil && len(*existing) > 0 {
+		if err := json.Unmarshal(*existing, &merged); err != nil {
+			// A malformed/unknown-shape metadata blob shouldn't block capture;
+			// start clean rather than fail the whole authorisation.
+			merged = map[string]interface{}{}
+		}
+	}
+	for k, v := range kv {
+		merged[k] = v
+	}
+	b, err := json.Marshal(merged)
+	if err != nil {
+		return nil, err
+	}
+	raw := json.RawMessage(b)
+	return &raw, nil
 }
 
 // MetadataWithURLVars builds the metadata JSON that stores URL variable values,

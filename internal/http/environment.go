@@ -170,7 +170,11 @@ func (s *Service) getExecutionEnvironmentCredential(c *gin.Context) {
 
 	name := c.Param("name")
 
-	token, err := s.persistence.GetCredentialByName(env.ID, name, env.SecretKey)
+	// Return the token AND the credential metadata. The metadata carries the
+	// per-account identifier captured at OAuth time (QuickBooks realm_id / Xero
+	// tenant_id); the executor reads it via ${credentials.<name>.<key>}. Older
+	// callers ignore the extra field, so this stays backwards compatible.
+	token, metadata, err := s.persistence.GetCredentialWithMetaByName(env.ID, name, env.SecretKey)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -185,7 +189,11 @@ func (s *Service) getExecutionEnvironmentCredential(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"name": name, "value": *token})
+	resp := gin.H{"name": name, "value": *token}
+	if metadata != nil {
+		resp["metadata"] = metadata
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (s *Service) getEnvironments(c *gin.Context) {

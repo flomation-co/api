@@ -84,9 +84,16 @@ type EmailOctopusConfig struct {
 }
 
 // OAuthProviderConfig holds client credentials for a default OAuth provider.
+//
+// Sandbox marks a provider whose credentials point at a test/sandbox
+// environment rather than production — currently QuickBooks Online, whose
+// Development keys only work against the sandbox host. It is captured onto each
+// credential's metadata at connect time and read by the executor to choose the
+// API host, so flow authors never see (or have to set) an environment toggle.
 type OAuthProviderConfig struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
+	Sandbox      bool   `json:"sandbox,omitempty"`
 }
 
 type Config struct {

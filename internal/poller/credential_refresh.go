@@ -101,8 +101,15 @@ func (rp *CredentialRefreshPoller) refreshToken(row persistence.CredentialRefres
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {*row.RefreshToken},
-		"client_id":     {clientID},
-		"client_secret": {clientSecret},
+	}
+
+	// Intuit (and Xero) require the client credentials via HTTP Basic auth on
+	// the refresh grant, exactly as on the code exchange; every other provider
+	// takes them in the body. Must mirror exchangeOAuthCode or refresh 401s.
+	basicAuth := api.ProviderUsesBasicAuth(row.ProviderSlug)
+	if !basicAuth {
+		data.Set("client_id", clientID)
+		data.Set("client_secret", clientSecret)
 	}
 
 	// Substitute per-tenant URL variables (e.g. the shop subdomain) into the
@@ -119,6 +126,9 @@ func (rp *CredentialRefreshPoller) refreshToken(row persistence.CredentialRefres
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
+	if basicAuth {
+		req.SetBasicAuth(clientID, clientSecret)
+	}
 
 	resp, err := rp.client.Do(req)
 	if err != nil {
