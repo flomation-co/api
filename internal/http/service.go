@@ -39,11 +39,15 @@ type Service struct {
 	allowedOrigins    []string
 	streamTokens      *StreamTokenStore
 	executionNotifier *ExecutionNotifier
-	agentSessionHub   *AgentSessionHub
-	planEventHub      *PlanEventHub
-	promptAssembler   *agent.SystemPromptAssembler
-	embeddingProvider embedding.Provider
-	inboundHandler    *agent.InboundHandler
+	// completionNotifier wakes /internal/execution/:id/wait long-polls the instant
+	// an execution finishes. Separate from executionNotifier so completions don't
+	// also wake idle runners (whose long-polls listen on the global "" key).
+	completionNotifier *ExecutionNotifier
+	agentSessionHub    *AgentSessionHub
+	planEventHub       *PlanEventHub
+	promptAssembler    *agent.SystemPromptAssembler
+	embeddingProvider  embedding.Provider
+	inboundHandler     *agent.InboundHandler
 }
 
 func (s *Service) corsMiddleware(c *gin.Context) {
@@ -291,18 +295,19 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 	}
 
 	s := &Service{
-		config:            config,
-		engine:            gin.New(),
-		persistence:       persistence,
-		identity:          identity.NewConnector(config),
-		launch:            launchconnector.NewConnector(config),
-		migrator:          m,
-		logHub:            NewLogHub(),
-		allowedOrigins:    allowedOrigins,
-		streamTokens:      NewStreamTokenStore(),
-		executionNotifier: NewExecutionNotifier(),
-		agentSessionHub:   NewAgentSessionHub(),
-		planEventHub:      NewPlanEventHub(),
+		config:             config,
+		engine:             gin.New(),
+		persistence:        persistence,
+		identity:           identity.NewConnector(config),
+		launch:             launchconnector.NewConnector(config),
+		migrator:           m,
+		logHub:             NewLogHub(),
+		allowedOrigins:     allowedOrigins,
+		streamTokens:       NewStreamTokenStore(),
+		executionNotifier:  NewExecutionNotifier(),
+		completionNotifier: NewExecutionNotifier(),
+		agentSessionHub:    NewAgentSessionHub(),
+		planEventHub:       NewPlanEventHub(),
 	}
 
 	// Agent Planning M2 — wire the persistence layer's post-commit
@@ -739,6 +744,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	internal.GET("/flo/:FloID/web-trigger", s.getWebTriggerConfigInternal)
 	internal.POST("/trigger/:id/dispatch", s.dispatchTrigger)
 	internal.GET("/execution/:id", s.getExecutionByID)
+	internal.GET("/execution/:id/wait", s.getExecutionWaitInternal)
 	internal.GET("/agent/:id/session/:sessionId/stream", s.streamAgentSession)
 
 	// Embed edge gate: Launch resolves a publishable key (+ origin + resource)

@@ -261,6 +261,8 @@ func (s *Service) updateExecution(c *gin.Context) {
 
 	// Notify SSE subscribers that execution is complete
 	s.logHub.Complete(id)
+	// Wake any /internal/execution/:id/wait long-poll (Launch/Gateway) instantly.
+	s.completionNotifier.Notify(id)
 	go func() {
 		time.Sleep(5 * time.Second)
 		s.logHub.Cleanup(id)
@@ -323,6 +325,53 @@ func (s *Service) getExecutionByID(c *gin.Context) {
 
 	// Data and Result are json.RawMessage — they serialise as raw JSON directly
 	c.JSON(http.StatusOK, exec)
+}
+
+// executionWaitTimeout bounds the /wait long-poll. Kept below the internal API
+// client's timeout so the caller (Launch/Gateway) never times out mid-wait; on
+// expiry the still-running execution is returned and the caller re-waits.
+var executionWaitTimeout = 10 * time.Second
+
+// getExecutionWaitInternal is the completion-push counterpart of getExecutionByID:
+// instead of the caller polling, it hangs until the execution reaches a terminal
+// execution_status ("executed") or the timeout, then returns the execution.
+// Internal (mTLS) only. GET /api/v1/internal/execution/:id/wait
+func (s *Service) getExecutionWaitInternal(c *gin.Context) {
+	id := c.Param("id")
+
+	// Register the waiter BEFORE reading the status, so a completion landing
+	// between the read and the select can't be missed (lost-wakeup guard).
+	waitCh := s.completionNotifier.Wait(id)
+
+	exec, err := s.persistence.GetExecutionByID(id)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if exec == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if exec.ExecutionStatus == "executed" {
+		c.JSON(http.StatusOK, exec)
+		return
+	}
+
+	select {
+	case <-waitCh:
+		// Completed — return the final state.
+		if final, ferr := s.persistence.GetExecutionByID(id); ferr == nil && final != nil {
+			c.JSON(http.StatusOK, final)
+			return
+		}
+		c.JSON(http.StatusOK, exec)
+	case <-time.After(executionWaitTimeout):
+		// Still running — return the current (non-terminal) state; the caller
+		// re-waits if it still has budget.
+		c.JSON(http.StatusOK, exec)
+	case <-c.Request.Context().Done():
+		return
+	}
 }
 
 func (s *Service) getExecutions(c *gin.Context) {
