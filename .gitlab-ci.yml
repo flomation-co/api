@@ -40,7 +40,12 @@ migration-check:
   # on 13/07/2026. Runs on EVERY pipeline (no only:) so it blocks the MR, and
   # in prepare (the first stage) so it runs before any build or deploy.
   script:
+    # 1. the embedded set loads (duplicate/malformed within THIS branch)
     - go test ./internal/persistence/ -run TestMigrationsSourceLoads -v
+    # 2. no version number collides with the target branch it will merge into —
+    #    the cross-branch case the in-isolation test above cannot see (see the
+    #    script header; this is what took main down on 14/07/2026).
+    - sh ci/check-migration-collision.sh
 
 lint:
   stage: prepare
