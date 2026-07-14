@@ -39,6 +39,7 @@ func TestWebTriggerConfig_ReadsNodeConfig(t *testing.T) {
 				"config": map[string]interface{}{
 					"inputs": []map[string]interface{}{
 						{"name": "methods", "value": "GET,POST"},
+						{"name": "auth_mode", "value": "public"},
 						{"name": "keep_history", "value": true},
 						{"name": "message_field", "value": "prompt"},
 						{"name": "fields", "value": `{"id":"path"}`},
@@ -60,6 +61,64 @@ func TestWebTriggerConfig_ReadsNodeConfig(t *testing.T) {
 	Expect(body).To(ContainSubstring(`"GET"`))
 	Expect(body).To(ContainSubstring(`"POST"`))
 	Expect(body).To(ContainSubstring(`"id":"path"`))
+	Expect(body).To(ContainSubstring(`"auth_mode":"public"`))
+}
+
+// An absent or unrecognised auth_mode projects as the secure "publishable"
+// default, so a legacy Web Trigger never silently becomes publicly open.
+func TestWebTriggerConfig_DefaultsToPublishable(t *testing.T) {
+	RegisterTestingT(t)
+
+	revData := map[string]interface{}{
+		"nodes": []map[string]interface{}{
+			{"data": map[string]interface{}{
+				"label": "trigger/web",
+				"config": map[string]interface{}{
+					"inputs": []map[string]interface{}{
+						{"name": "methods", "value": "POST"},
+						// no auth_mode input at all
+					},
+				},
+			}},
+		},
+	}
+	mock := &webTrigCfgMock{rev: &api.Revision{Data: revData}}
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+
+	w := webTrigCfgRequest(svc)
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(w.Body.String()).To(ContainSubstring(`"auth_mode":"publishable"`))
+}
+
+// Regression: a jsonb `data` column scanned into Revision.Data (interface{})
+// arrives as raw JSON bytes, NOT a decoded map. The handler must parse those
+// bytes directly — marshalling them would base64-encode the payload and drop
+// every node, silently yielding {found:false} (which degraded a public Web
+// Trigger to the key-gated path and returned 401). Mirrors the real driver type.
+func TestWebTriggerConfig_ParsesRawJSONBData(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Plain []byte — the type lib/pq yields for a jsonb column scanned into an
+	// interface{}. NOT json.RawMessage: that implements json.Marshaler and would
+	// round-trip cleanly, hiding the very bug this guards against.
+	raw := []byte(`{
+		"nodes": [
+			{"data": {"label": "trigger/web", "config": {"inputs": [
+				{"name": "methods", "value": "POST"},
+				{"name": "auth_mode", "value": "public"}
+			]}}}
+		]
+	}`)
+	mock := &webTrigCfgMock{rev: &api.Revision{Data: raw}}
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+
+	w := webTrigCfgRequest(svc)
+	Expect(w.Code).To(Equal(http.StatusOK))
+	body := w.Body.String()
+	Expect(body).To(ContainSubstring(`"found":true`))
+	Expect(body).To(ContainSubstring(`"auth_mode":"public"`))
 }
 
 func TestWebTriggerConfig_NotFoundWhenNoWebTrigger(t *testing.T) {

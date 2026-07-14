@@ -17,6 +17,39 @@ type webTriggerConfig struct {
 	MessageField string            `json:"message_field"`
 	Methods      []string          `json:"methods"`
 	Fields       map[string]string `json:"fields"`
+	// AuthMode is how the edge gates the invoke endpoint: "publishable" (require
+	// an embed-app key, the secure default) or "public" (open, no key). An unset
+	// or unrecognised value projects as "publishable" so a missing config never
+	// silently opens an endpoint.
+	AuthMode string `json:"auth_mode"`
+}
+
+// Web Trigger auth modes (mirror of the executor action's auth_mode options and
+// Launch's webAuth* constants).
+const (
+	webAuthPublishable = "publishable"
+	webAuthPublic      = "public"
+)
+
+// revDataBytes normalises a revision's Data (typed interface{}) to raw JSON
+// bytes. A jsonb column scanned into interface{} is []byte (some drivers/paths
+// yield json.RawMessage or string); a decoded map arrives from in-memory callers
+// and tests. Only the map case needs re-marshalling — the byte/string cases are
+// already JSON and must NOT be marshalled (that would base64-encode them).
+func revDataBytes(data interface{}) []byte {
+	switch d := data.(type) {
+	case nil:
+		return []byte("null")
+	case []byte:
+		return d
+	case json.RawMessage:
+		return d
+	case string:
+		return []byte(d)
+	default:
+		b, _ := json.Marshal(d)
+		return b
+	}
 }
 
 func webTriggerInputValue(inputs []map[string]interface{}, name string) interface{} {
@@ -58,7 +91,11 @@ func (s *Service) getWebTriggerConfigInternal(c *gin.Context) {
 			} `json:"data"`
 		} `json:"nodes"`
 	}
-	raw, _ := json.Marshal(rev.Data)
+	// rev.Data is interface{} — a jsonb column scanned into it arrives as raw
+	// []byte (or json.RawMessage/string), NOT a decoded map. Marshalling []byte
+	// would base64-encode it and the node list would vanish, so normalise to raw
+	// JSON bytes first. A decoded map (e.g. from tests) still needs a marshal.
+	raw := revDataBytes(rev.Data)
 	_ = json.Unmarshal(raw, &revData)
 
 	for _, n := range revData.Nodes {
@@ -66,7 +103,10 @@ func (s *Service) getWebTriggerConfigInternal(c *gin.Context) {
 			continue
 		}
 		inputs := n.Data.Config.Inputs
-		cfg := webTriggerConfig{Found: true, MessageField: "message", Fields: map[string]string{}}
+		cfg := webTriggerConfig{Found: true, MessageField: "message", Fields: map[string]string{}, AuthMode: webAuthPublishable}
+		if am, _ := webTriggerInputValue(inputs, "auth_mode").(string); strings.TrimSpace(am) == webAuthPublic {
+			cfg.AuthMode = webAuthPublic
+		}
 		cfg.KeepHistory = webTriggerTruthy(webTriggerInputValue(inputs, "keep_history"))
 		if mf, _ := webTriggerInputValue(inputs, "message_field").(string); strings.TrimSpace(mf) != "" {
 			cfg.MessageField = mf
