@@ -83,6 +83,33 @@ func TestApplyGatewayAuth(t *testing.T) {
 	Expect(verr).To(ContainSubstring("unsupported auth type"))
 }
 
+// gatewayTriggerMock lets a test control the flow's triggers.
+type gatewayTriggerMock struct {
+	mockPersistence
+	triggers []*api.Trigger
+}
+
+func (m *gatewayTriggerMock) GetTriggersByFloID(string) ([]*api.Trigger, error) {
+	return m.triggers, nil
+}
+
+func TestResolveWebTriggerID(t *testing.T) {
+	RegisterTestingT(t)
+	mock := &gatewayTriggerMock{triggers: []*api.Trigger{
+		{ID: "manual-1", TypeName: "manual"},
+		{ID: "web-1", TypeName: "web"},
+	}}
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	Expect(svc.resolveWebTriggerID("flow-1")).To(Equal("web-1"))
+
+	// No web trigger ⇒ empty (the handler then rejects the endpoint).
+	noWeb := &gatewayTriggerMock{triggers: []*api.Trigger{{ID: "manual-1", TypeName: "manual"}}}
+	svc = setupTestService(&noWeb.mockPersistence)
+	svc.persistence = noWeb
+	Expect(svc.resolveWebTriggerID("flow-1")).To(BeEmpty())
+}
+
 // gatewayVerifyMock lets a test control the org-permission lookup.
 type gatewayVerifyMock struct {
 	mockPersistence

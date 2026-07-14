@@ -240,6 +240,22 @@ func gatewayMethodValid(m string) bool {
 	return false
 }
 
+// resolveWebTriggerID returns the flow's "web" trigger record id, so the editor
+// only has to pick a flow — the endpoint's trigger_id is derived here. Empty when
+// the flow has no Web Trigger (the caller rejects the endpoint).
+func (s *Service) resolveWebTriggerID(flowID string) string {
+	triggers, err := s.persistence.GetTriggersByFloID(flowID)
+	if err != nil {
+		return ""
+	}
+	for _, t := range triggers {
+		if t != nil && t.TypeName == "web" {
+			return t.ID
+		}
+	}
+	return ""
+}
+
 func (s *Service) createGatewayEndpoint(c *gin.Context) {
 	a := s.loadOwnedGatewayAPI(c, rbac.GatewayManage)
 	if a == nil {
@@ -258,8 +274,17 @@ func (s *Service) createGatewayEndpoint(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "path_pattern must start with /"})
 		return
 	}
-	if body.FlowID == "" || body.TriggerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "flow_id and trigger_id are required"})
+	if body.FlowID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "flow_id is required"})
+		return
+	}
+	// The editor only sends flow_id; derive the flow's Web Trigger here.
+	triggerID := body.TriggerID
+	if triggerID == "" {
+		triggerID = s.resolveWebTriggerID(body.FlowID)
+	}
+	if triggerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the selected flow has no Web Trigger"})
 		return
 	}
 	enabled := true
@@ -271,7 +296,7 @@ func (s *Service) createGatewayEndpoint(c *gin.Context) {
 		Method:       body.Method,
 		PathPattern:  body.PathPattern,
 		FlowID:       body.FlowID,
-		TriggerID:    body.TriggerID,
+		TriggerID:    triggerID,
 		Enabled:      enabled,
 	}
 	created, err := s.persistence.CreateGatewayEndpoint(ep)
@@ -293,8 +318,16 @@ func (s *Service) updateGatewayEndpoint(c *gin.Context) {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	if !gatewayMethodValid(body.Method) || !strings.HasPrefix(body.PathPattern, "/") || body.FlowID == "" || body.TriggerID == "" {
+	if !gatewayMethodValid(body.Method) || !strings.HasPrefix(body.PathPattern, "/") || body.FlowID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid endpoint"})
+		return
+	}
+	triggerID := body.TriggerID
+	if triggerID == "" {
+		triggerID = s.resolveWebTriggerID(body.FlowID)
+	}
+	if triggerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the selected flow has no Web Trigger"})
 		return
 	}
 	enabled := true
@@ -307,7 +340,7 @@ func (s *Service) updateGatewayEndpoint(c *gin.Context) {
 		Method:       body.Method,
 		PathPattern:  body.PathPattern,
 		FlowID:       body.FlowID,
-		TriggerID:    body.TriggerID,
+		TriggerID:    triggerID,
 		Enabled:      enabled,
 	}
 	ok, err := s.persistence.UpdateGatewayEndpoint(ep)
