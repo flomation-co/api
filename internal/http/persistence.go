@@ -387,6 +387,17 @@ type Persistence interface {
 	SetEmbedResource(appID, resourceType, resourceID string, enabled bool) error
 	ResolveEmbedKey(publishableKey, origin, resourceType, resourceID string) (*api.EmbedResolution, error)
 
+	// Flomation Gateway — developer-defined HTTP APIs that route to flows.
+	CreateGatewayAPI(a *api.GatewayAPI) (*api.GatewayAPI, error)
+	ListGatewayAPIs(ownerID string, orgID *string) ([]api.GatewayAPI, error)
+	GetGatewayAPI(id, ownerID string, orgID *string) (*api.GatewayAPI, error)
+	UpdateGatewayAPI(a *api.GatewayAPI, ownerID string, orgID *string, secretHash, secretSalt *string) (bool, error)
+	DeleteGatewayAPI(id, ownerID string, orgID *string) (bool, error)
+	CreateGatewayEndpoint(e *api.GatewayEndpoint) (*api.GatewayEndpoint, error)
+	UpdateGatewayEndpoint(e *api.GatewayEndpoint) (bool, error)
+	DeleteGatewayEndpoint(id, gatewayAPIID string) (bool, error)
+	ResolveGatewayAPI(apiID string) (*api.GatewayResolution, error)
+
 	// Web threads — generic web-invoke conversation history.
 	CreateWebThread(flowID string, userID *string) (string, error)
 	GetWebThreadHistory(threadID string, limit int) ([]persistence.WebThreadTurn, error)

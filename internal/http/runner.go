@@ -555,8 +555,12 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		return
 	}
 
-	// Enrich execution with author email
-	if author, err := s.persistence.GetUserByID(execution.OwnerID); err == nil && author != nil {
+	// Enrich execution with author email. Keep the fetched user around so the
+	// ${user.X} enrichment below can reuse it when the executing user IS the
+	// author (the common manual/scheduled case) — saving a second identical
+	// GetUserByID on the hot work-fetch path.
+	author, _ := s.persistence.GetUserByID(execution.OwnerID)
+	if author != nil {
 		execution.AuthorEmail = author.EmailAddress
 		// Default triggerer to author (overridden below if trigger invocation has a different owner)
 		execution.TriggererEmail = author.EmailAddress
@@ -573,7 +577,7 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 	// Always runs AFTER the identity enrichment so it picks up whichever
 	// user_id won (sender for inbound agent messages, author for manual /
 	// scheduled runs). Adds ${user.X} substitution data.
-	enrichDataWithUserVariables(s.persistence, execution)
+	enrichDataWithUserVariables(s.persistence, execution, author)
 
 	// Enrich with trigger type, triggerer email, and entry node ID from trigger invocation chain
 	if execution.TriggeredBy != nil {
@@ -729,7 +733,10 @@ func enrichDataWithAuthorIdentities(p Persistence, execution *api.Execution, flo
 // Reads data["user_id"] — whichever path wrote it (inbound agent sender
 // or manual/scheduled author). No-ops cleanly when user_id is absent
 // (e.g. anonymous webhook trigger).
-func enrichDataWithUserVariables(p Persistence, execution *api.Execution) {
+// known may carry an already-fetched user (the execution author) so this can
+// skip a redundant GetUserByID when the executing user IS the author; pass nil
+// to always fetch.
+func enrichDataWithUserVariables(p Persistence, execution *api.Execution, known *api.User) {
 	if execution == nil {
 		return
 	}
@@ -744,9 +751,13 @@ func enrichDataWithUserVariables(p Persistence, execution *api.Execution) {
 		return
 	}
 
-	user, err := p.GetUserByID(userID)
-	if err != nil || user == nil {
-		return
+	user := known
+	if user == nil || user.ID != userID {
+		fetched, err := p.GetUserByID(userID)
+		if err != nil || fetched == nil {
+			return
+		}
+		user = fetched
 	}
 
 	vars := map[string]string{

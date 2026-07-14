@@ -415,7 +415,7 @@ func (m *mockPersistence) GetRunnerByID(string) (*api.Runner, error)  { panic("n
 func (m *mockPersistence) GetRunnerByIdentifier(string) (*api.Runner, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetRunners() ([]*api.Runner, error)          { panic("not implemented") }
+func (m *mockPersistence) GetRunners() ([]*api.Runner, error) { panic("not implemented") }
 func (m *mockPersistence) GetTriggerByID(id string) (*api.Trigger, error) {
 	return m.triggersByID[id], nil
 }
@@ -962,7 +962,7 @@ func (m *mockPersistence) SetExecutionResumeAt(id string, resumeAt time.Time) er
 func (m *mockPersistence) SetExecutionResumeTrigger(id, triggerType string, matchConfig []byte) error {
 	return nil
 }
-func (m *mockPersistence) GetExecutionCheckpoint(id string) (json.RawMessage, error) { return nil, nil }
+func (m *mockPersistence) GetExecutionCheckpoint(id string) (json.RawMessage, error)    { return nil, nil }
 func (m *mockPersistence) SetExecutionResumeData(id string, data json.RawMessage) error { return nil }
 func (m *mockPersistence) GetHITLRequestByExecutionNode(executionID, nodeID string) (*api.HITLRequest, error) {
 	return nil, nil
@@ -1021,6 +1021,30 @@ func (m *mockPersistence) AddEmbedOrigin(appID, origin string) error            
 func (m *mockPersistence) RemoveEmbedOrigin(appID, origin string) error          { return nil }
 func (m *mockPersistence) SetEmbedResource(appID, rt, rid string, en bool) error { return nil }
 func (m *mockPersistence) ResolveEmbedKey(pk, origin, rt, rid string) (*api.EmbedResolution, error) {
+	return nil, nil
+}
+
+func (m *mockPersistence) CreateGatewayAPI(a *api.GatewayAPI) (*api.GatewayAPI, error) { return a, nil }
+func (m *mockPersistence) ListGatewayAPIs(ownerID string, orgID *string) ([]api.GatewayAPI, error) {
+	return nil, nil
+}
+func (m *mockPersistence) GetGatewayAPI(id, ownerID string, orgID *string) (*api.GatewayAPI, error) {
+	return nil, nil
+}
+func (m *mockPersistence) UpdateGatewayAPI(a *api.GatewayAPI, ownerID string, orgID *string, h, s *string) (bool, error) {
+	return true, nil
+}
+func (m *mockPersistence) DeleteGatewayAPI(id, ownerID string, orgID *string) (bool, error) {
+	return true, nil
+}
+func (m *mockPersistence) CreateGatewayEndpoint(e *api.GatewayEndpoint) (*api.GatewayEndpoint, error) {
+	return e, nil
+}
+func (m *mockPersistence) UpdateGatewayEndpoint(e *api.GatewayEndpoint) (bool, error) {
+	return true, nil
+}
+func (m *mockPersistence) DeleteGatewayEndpoint(id, apiID string) (bool, error) { return true, nil }
+func (m *mockPersistence) ResolveGatewayAPI(apiID string) (*api.GatewayResolution, error) {
 	return nil, nil
 }
 func (m *mockPersistence) CreateWebThread(flowID string, userID *string) (string, error) {

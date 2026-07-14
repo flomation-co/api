@@ -634,6 +634,16 @@ func (s *Service) registerRoutes(config *config.Config) {
 	v1.DELETE("embed/app/:id/origin", s.jwtMiddleware, s.removeEmbedOrigin)
 	v1.POST("embed/app/:id/resource", s.jwtMiddleware, s.setEmbedResource)
 
+	// Flomation Gateway — developer-defined HTTP APIs that route to flows.
+	v1.GET("gateway", s.jwtMiddleware, s.listGatewayAPIs)
+	v1.POST("gateway", s.jwtMiddleware, s.createGatewayAPI)
+	v1.GET("gateway/:id", s.jwtMiddleware, s.getGatewayAPI)
+	v1.PATCH("gateway/:id", s.jwtMiddleware, s.updateGatewayAPI)
+	v1.DELETE("gateway/:id", s.jwtMiddleware, s.deleteGatewayAPI)
+	v1.POST("gateway/:id/endpoint", s.jwtMiddleware, s.createGatewayEndpoint)
+	v1.PATCH("gateway/:id/endpoint/:eid", s.jwtMiddleware, s.updateGatewayEndpoint)
+	v1.DELETE("gateway/:id/endpoint/:eid", s.jwtMiddleware, s.deleteGatewayEndpoint)
+
 	// Credentials
 	v1.GET("credential/providers", s.jwtMiddleware, s.getCredentialProviders)
 	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
@@ -743,6 +753,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// Embed edge gate: Launch resolves a publishable key (+ origin + resource)
 	// here so it never touches the embed tables directly.
 	internal.POST("/embed/resolve", s.resolveEmbedKey)
+	internal.GET("/gateway/:apiId/resolve", s.resolveGatewayAPIInternal)
+	internal.POST("/gateway/:apiId/verify-session", s.verifyGatewaySessionInternal)
 
 	// Human-in-the-Loop: the executor registers an Await request; Launch
 	// reports the human's response. Both bypass JWT (service-to-service).
