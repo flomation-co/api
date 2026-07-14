@@ -154,6 +154,31 @@ func TestWebTriggerConfig_ResolvesWebTriggerID(t *testing.T) {
 	Expect(w.Body.String()).To(ContainSubstring(`"trigger_id":"web-1"`))
 }
 
+// Back-compat: a flow saved against the interim `auth` input (none/publishable)
+// still resolves — "none" projects as auth_mode "public".
+func TestWebTriggerConfig_LegacyAuthNoneMapsToPublic(t *testing.T) {
+	RegisterTestingT(t)
+
+	revData := map[string]interface{}{
+		"nodes": []map[string]interface{}{
+			{"data": map[string]interface{}{
+				"label": "trigger/web",
+				"config": map[string]interface{}{"inputs": []map[string]interface{}{
+					{"name": "methods", "value": "POST"},
+					{"name": "auth", "value": "none"}, // legacy field, no auth_mode
+				}},
+			}},
+		},
+	}
+	mock := &webTrigCfgMock{rev: &api.Revision{Data: revData}}
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+
+	w := webTrigCfgRequest(svc)
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(w.Body.String()).To(ContainSubstring(`"auth_mode":"public"`))
+}
+
 func TestWebTriggerConfig_NotFoundWhenNoWebTrigger(t *testing.T) {
 	RegisterTestingT(t)
 	revData := map[string]interface{}{"nodes": []map[string]interface{}{

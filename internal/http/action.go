@@ -106,6 +106,13 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// Forms uses 3-segment action IDs (forms/typeform/form_create), so the
 	// sub-group (the provider) is resolved from subCategoryMetadata below.
 	"forms": {Key: "forms", Name: "Forms", Icon: "clipboard-list", Description: "Create forms, collect responses and trigger flows from external form providers"},
+	// Vector Database uses 3-segment action IDs
+	// (vectordatabase/pgvector/document_search), so the sub-group (pgvector) is
+	// resolved from subCategoryMetadata below — no inline Sub* fields here, or
+	// getCategoryForAction would overwrite them. The executor directory is
+	// "vectordatabase" (one word) because it has to be a valid Go package name;
+	// the display name is set here.
+	"vectordatabase": {Key: "vectordatabase", Name: "Vector Database", Icon: "circle-nodes", Description: "Store and search embeddings — semantic search, similarity lookups, and retrieval-augmented generation"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -163,6 +170,7 @@ var subCategoryMetadata = map[string]struct {
 	"marketing/sendgrid":        {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
 	"infrastructure/kubernetes": {Name: "Kubernetes", Icon: "kubernetes", Description: "Operate a Kubernetes cluster — restart and scale deployments, read pod logs, run jobs, manage config, and drain nodes"},
 	"infrastructure/helm":       {Name: "Helm", Icon: "helm", Description: "Install, upgrade, roll back and inspect Helm releases on a Kubernetes cluster"},
+	"vectordatabase/pgvector":   {Name: "pgvector", Icon: "database", Description: "Store and query embeddings in a PostgreSQL database with the pgvector extension"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
@@ -198,6 +206,12 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 // categoryMetadata above. The input's static Options from the manifest
 // remain the editor's fallback when the fetch fails, so entries here must
 // point at endpoints returning the same {"options": [{name, value}]} shape.
+//
+// Not every marker is spelled out below. Where a provider's dropdowns follow
+// one regular rule across dozens of actions, they are registered into this map
+// from an init() in that provider's own options file rather than listed here as
+// a wall of near-identical literals — see kubernetes_options.go (~120 markers)
+// and pgvector_options.go (~50). Grep the endpoint name to find them.
 var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
 	// Zendesk live dropdowns: the Groups and Organizations pickers each resolve

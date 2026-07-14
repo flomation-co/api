@@ -109,7 +109,12 @@ func (s *Service) getWebTriggerConfigInternal(c *gin.Context) {
 		}
 		inputs := n.Data.Config.Inputs
 		cfg := webTriggerConfig{Found: true, MessageField: "message", Fields: map[string]string{}, AuthMode: webAuthPublishable}
+		// Reconciled with the concurrently-merged `auth` (none/publishable) work:
+		// auth_mode is the canonical field. Accept a legacy `auth` value ("none" →
+		// public) so any flow saved against the interim `auth` input still resolves.
 		if am, _ := webTriggerInputValue(inputs, "auth_mode").(string); strings.TrimSpace(am) == webAuthPublic {
+			cfg.AuthMode = webAuthPublic
+		} else if a, _ := webTriggerInputValue(inputs, "auth").(string); a == "none" {
 			cfg.AuthMode = webAuthPublic
 		}
 		cfg.KeepHistory = webTriggerTruthy(webTriggerInputValue(inputs, "keep_history"))

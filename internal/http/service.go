@@ -493,6 +493,13 @@ func (s *Service) registerRoutes(config *config.Config) {
 	}
 	actions.GET("/options/kubernetes-containers", s.jwtMiddleware, s.getKubernetesContainers)
 	actions.GET("/options/helm-releases", s.jwtMiddleware, s.getHelmReleases)
+	// pgvector pickers open a raw Postgres connection to a caller-named host —
+	// the only option proxy that is not HTTP, and the only one that could be
+	// aimed at the api's own control-plane database. See pgvector_options.go for
+	// the host validation and dial guard that stop that.
+	actions.GET("/options/pgvector-schemas", s.jwtMiddleware, s.getPGVectorSchemas)
+	actions.GET("/options/pgvector-tables", s.jwtMiddleware, s.getPGVectorTables)
+	actions.GET("/options/pgvector-columns", s.jwtMiddleware, s.getPGVectorColumns)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
