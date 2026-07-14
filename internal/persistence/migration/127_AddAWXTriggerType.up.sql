@@ -10,7 +10,7 @@
 -- enum. BOTH are required; the name must match the executor's trigger ID exactly
 -- ('awx-webhook').
 --
--- NUMBERING: 126, not 125. main was at 124_AddWebTriggerType when this was
+-- NUMBERING: 127. 125=AddFlomationGateway, 126=RepairFormTriggerTypes (both merged first). main was at 124_AddWebTriggerType when this was
 -- written, but the typeform/jotform/surveymonkey trigger_type repair takes 125 and
 -- merges first. golang-migrate SILENTLY SKIPS an out-of-order version, and a
 -- DUPLICATE version makes the api fail to BOOT (502) -- exactly what happened when
