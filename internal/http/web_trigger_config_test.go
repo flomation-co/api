@@ -12,11 +12,16 @@ import (
 
 type webTrigCfgMock struct {
 	mockPersistence
-	rev *api.Revision
+	rev      *api.Revision
+	triggers []*api.Trigger
 }
 
 func (m *webTrigCfgMock) GetLatestRevisionByFloID(id string) (*api.Revision, error) {
 	return m.rev, nil
+}
+
+func (m *webTrigCfgMock) GetTriggersByFloID(string) ([]*api.Trigger, error) {
+	return m.triggers, nil
 }
 
 func webTrigCfgRequest(svc *Service) *httptest.ResponseRecorder {
@@ -119,6 +124,34 @@ func TestWebTriggerConfig_ParsesRawJSONBData(t *testing.T) {
 	body := w.Body.String()
 	Expect(body).To(ContainSubstring(`"found":true`))
 	Expect(body).To(ContainSubstring(`"auth_mode":"public"`))
+}
+
+// The config projects the flow's "web" trigger id so Launch can invoke that
+// trigger directly (starting from the Web Trigger node).
+func TestWebTriggerConfig_ResolvesWebTriggerID(t *testing.T) {
+	RegisterTestingT(t)
+
+	revData := map[string]interface{}{
+		"nodes": []map[string]interface{}{
+			{"data": map[string]interface{}{
+				"label":  "trigger/web",
+				"config": map[string]interface{}{"inputs": []map[string]interface{}{{"name": "methods", "value": "POST"}}},
+			}},
+		},
+	}
+	mock := &webTrigCfgMock{
+		rev: &api.Revision{Data: revData},
+		triggers: []*api.Trigger{
+			{ID: "manual-1", TypeName: "manual"},
+			{ID: "web-1", TypeName: "web"},
+		},
+	}
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+
+	w := webTrigCfgRequest(svc)
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(w.Body.String()).To(ContainSubstring(`"trigger_id":"web-1"`))
 }
 
 func TestWebTriggerConfig_NotFoundWhenNoWebTrigger(t *testing.T) {

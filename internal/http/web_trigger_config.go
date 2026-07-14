@@ -22,6 +22,11 @@ type webTriggerConfig struct {
 	// or unrecognised value projects as "publishable" so a missing config never
 	// silently opens an endpoint.
 	AuthMode string `json:"auth_mode"`
+	// TriggerID is the flow's "web" trigger record id. Launch invokes THIS trigger
+	// (not the generic execute path) so the execution starts from the Web Trigger
+	// node — otherwise the generic path picks the flow's manual trigger and the
+	// wrong (or a stale) entry node, failing with "no start node specified".
+	TriggerID string `json:"trigger_id"`
 }
 
 // Web Trigger auth modes (mirror of the executor action's auth_mode options and
@@ -122,6 +127,16 @@ func (s *Service) getWebTriggerConfigInternal(c *gin.Context) {
 			var fm map[string]string
 			if json.Unmarshal([]byte(f), &fm) == nil {
 				cfg.Fields = fm
+			}
+		}
+		// Resolve the flow's "web" trigger record so Launch can invoke it directly
+		// (entry = the Web Trigger node) rather than the generic execute path.
+		if triggers, terr := s.persistence.GetTriggersByFloID(c.Param("FloID")); terr == nil {
+			for _, t := range triggers {
+				if t != nil && t.TypeName == "web" {
+					cfg.TriggerID = t.ID
+					break
+				}
 			}
 		}
 		c.JSON(http.StatusOK, cfg)
