@@ -35,7 +35,7 @@ func TestEnrichDataWithUserVariables_AddsProfileToExecutionData(t *testing.T) {
 		Data:    json.RawMessage(`{"user_id":"user-1"}`),
 	}
 
-	enrichDataWithUserVariables(mock, exec)
+	enrichDataWithUserVariables(mock, exec, nil)
 
 	var data map[string]interface{}
 	Expect(json.Unmarshal(exec.Data, &data)).To(Succeed())
@@ -51,6 +51,54 @@ func TestEnrichDataWithUserVariables_AddsProfileToExecutionData(t *testing.T) {
 	Expect(vars["country"]).To(Equal(""))
 }
 
+// When the executing user IS the author, the pre-fetched user is reused and no
+// GetUserByID is issued — proven here by leaving the mock's user map EMPTY, so
+// enrichment can only succeed via the passed-in known user.
+func TestEnrichDataWithUserVariables_ReusesKnownAuthorWithoutFetch(t *testing.T) {
+	RegisterTestingT(t)
+
+	mock := newMockPersistence() // no users registered — a fetch would return nil
+	firstName := "Andy"
+	known := &api.User{ID: "user-1", Name: "andy@example.com", FirstName: &firstName}
+
+	exec := &api.Execution{
+		ID:      "exec-1",
+		OwnerID: "user-1",
+		Data:    json.RawMessage(`{"user_id":"user-1"}`),
+	}
+
+	enrichDataWithUserVariables(mock, exec, known)
+
+	var data map[string]interface{}
+	Expect(json.Unmarshal(exec.Data, &data)).To(Succeed())
+	vars, ok := data["user_variables"].(map[string]interface{})
+	Expect(ok).To(BeTrue(), "should enrich from the known user without a DB fetch")
+	Expect(vars["first_name"]).To(Equal("Andy"))
+}
+
+// When the executing user differs from the known author, it falls back to a fetch.
+func TestEnrichDataWithUserVariables_FetchesWhenKnownMismatches(t *testing.T) {
+	RegisterTestingT(t)
+
+	mock := newMockPersistence()
+	sender := "Sender"
+	mock.users["user-2"] = &api.User{ID: "user-2", Name: "s@example.com", FirstName: &sender}
+	known := &api.User{ID: "user-1", Name: "author@example.com"} // author, NOT the executing user
+
+	exec := &api.Execution{
+		ID:      "exec-1",
+		OwnerID: "user-1",
+		Data:    json.RawMessage(`{"user_id":"user-2"}`), // executing user is user-2
+	}
+
+	enrichDataWithUserVariables(mock, exec, known)
+
+	var data map[string]interface{}
+	Expect(json.Unmarshal(exec.Data, &data)).To(Succeed())
+	vars, _ := data["user_variables"].(map[string]interface{})
+	Expect(vars["first_name"]).To(Equal("Sender")) // fetched user-2, not the known author
+}
+
 func TestEnrichDataWithUserVariables_NoOpWhenUserIDMissing(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -60,7 +108,7 @@ func TestEnrichDataWithUserVariables_NoOpWhenUserIDMissing(t *testing.T) {
 		Data: json.RawMessage(`{"other_field":"x"}`),
 	}
 
-	enrichDataWithUserVariables(mock, exec)
+	enrichDataWithUserVariables(mock, exec, nil)
 
 	var data map[string]interface{}
 	Expect(json.Unmarshal(exec.Data, &data)).To(Succeed())
@@ -77,7 +125,7 @@ func TestEnrichDataWithUserVariables_NoOpWhenUserUnknown(t *testing.T) {
 		Data: json.RawMessage(`{"user_id":"nope"}`),
 	}
 
-	enrichDataWithUserVariables(mock, exec)
+	enrichDataWithUserVariables(mock, exec, nil)
 
 	var data map[string]interface{}
 	Expect(json.Unmarshal(exec.Data, &data)).To(Succeed())
