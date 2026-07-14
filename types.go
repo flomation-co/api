@@ -203,20 +203,20 @@ type Execution struct {
 // Await node suspends its execution and resolved when a human responds (or the
 // request times out). See migration 100.
 type HITLRequest struct {
-	ID              string           `json:"id" db:"id"`
-	ExecutionID     string           `json:"execution_id" db:"execution_id"`
-	FloID           string           `json:"flo_id" db:"flo_id"`
-	NodeID          string           `json:"node_id" db:"node_id"`
-	Message         string           `json:"message" db:"message"`
-	Options         json.RawMessage  `json:"options" db:"options"`   // []HITLOption
-	Channels        json.RawMessage  `json:"channels" db:"channels"` // []HITLChannel
-	Status          string           `json:"status" db:"status"`     // awaiting|answered|timed_out
-	AnsweredOption  *string          `json:"answered_option,omitempty" db:"answered_option"`
-	AnsweredBy      *string          `json:"answered_by,omitempty" db:"answered_by"`
-	AnsweredChannel *string          `json:"answered_channel,omitempty" db:"answered_channel"`
-	ExpiresAt       *time.Time       `json:"expires_at,omitempty" db:"expires_at"`
-	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
-	AnsweredAt      *time.Time       `json:"answered_at,omitempty" db:"answered_at"`
+	ID              string          `json:"id" db:"id"`
+	ExecutionID     string          `json:"execution_id" db:"execution_id"`
+	FloID           string          `json:"flo_id" db:"flo_id"`
+	NodeID          string          `json:"node_id" db:"node_id"`
+	Message         string          `json:"message" db:"message"`
+	Options         json.RawMessage `json:"options" db:"options"`   // []HITLOption
+	Channels        json.RawMessage `json:"channels" db:"channels"` // []HITLChannel
+	Status          string          `json:"status" db:"status"`     // awaiting|answered|timed_out
+	AnsweredOption  *string         `json:"answered_option,omitempty" db:"answered_option"`
+	AnsweredBy      *string         `json:"answered_by,omitempty" db:"answered_by"`
+	AnsweredChannel *string         `json:"answered_channel,omitempty" db:"answered_channel"`
+	ExpiresAt       *time.Time      `json:"expires_at,omitempty" db:"expires_at"`
+	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
+	AnsweredAt      *time.Time      `json:"answered_at,omitempty" db:"answered_at"`
 }
 
 // HITLOption is a single choice presented to the human. Value drives the Await
@@ -1148,11 +1148,11 @@ const (
 // key is safe to ship in client JS; security comes from the allowed-origins list,
 // per-resource opt-in, and server-side re-validation of every write.
 type EmbedApp struct {
-	ID             string    `json:"id" db:"id"`
-	OrganisationID *string   `json:"organisation_id" db:"organisation_id"`
-	OwnerID        string    `json:"owner_id" db:"owner_id"`
-	Name           string    `json:"name" db:"name"`
-	PublishableKey string    `json:"publishable_key" db:"publishable_key"`
+	ID             string  `json:"id" db:"id"`
+	OrganisationID *string `json:"organisation_id" db:"organisation_id"`
+	OwnerID        string  `json:"owner_id" db:"owner_id"`
+	Name           string  `json:"name" db:"name"`
+	PublishableKey string  `json:"publishable_key" db:"publishable_key"`
 	// SecretKeyHash is the sha256 hex of an optional server-side secret key. It is
 	// never returned to clients (the plaintext key is shown once at creation only).
 	SecretKeyHash *string   `json:"-" db:"secret_key_hash"`
@@ -1184,4 +1184,51 @@ type EmbedResolution struct {
 	OriginAllowed bool `json:"origin_allowed"`
 	// ResourceAllowed reports whether the requested (type,id) is opted-in for this app.
 	ResourceAllowed bool `json:"resource_allowed"`
+}
+
+// GatewayAPI is a developer-defined HTTP API (Flomation Gateway) that routes to
+// flows. Addressed publicly by the short APIID (/gw/<api_id>), scoped to an org
+// (or personal owner). Auth is a pluggable policy; secret material is stored only
+// as a salted hash and never returned to clients.
+type GatewayAPI struct {
+	ID             string          `json:"id" db:"id"`
+	APIID          string          `json:"api_id" db:"api_id"`
+	OrganisationID *string         `json:"organisation_id" db:"organisation_id"`
+	OwnerID        string          `json:"owner_id" db:"owner_id"`
+	Name           string          `json:"name" db:"name"`
+	AuthType       string          `json:"auth_type" db:"auth_type"`
+	AuthConfig     json.RawMessage `json:"auth_config" db:"auth_config"`
+	AuthSecretHash *string         `json:"-" db:"auth_secret_hash"`
+	AuthSecretSalt *string         `json:"-" db:"auth_secret_salt"`
+	CreatedAt      time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at" db:"updated_at"`
+
+	// Endpoints is populated when the API is loaded with its relations.
+	Endpoints []GatewayEndpoint `json:"endpoints,omitempty" db:"-"`
+}
+
+// GatewayEndpoint maps one HTTP method + path pattern to a flow's Web Trigger.
+type GatewayEndpoint struct {
+	ID           string    `json:"id" db:"id"`
+	GatewayAPIID string    `json:"gateway_api_id" db:"gateway_api_id"`
+	Method       string    `json:"method" db:"method"`
+	PathPattern  string    `json:"path_pattern" db:"path_pattern"`
+	FlowID       string    `json:"flow_id" db:"flow_id"`
+	TriggerID    string    `json:"trigger_id" db:"trigger_id"`
+	Enabled      bool      `json:"enabled" db:"enabled"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+}
+
+// GatewayResolution is what the Launch edge needs to serve /gw/<api_id>/*: the
+// API's auth policy (with the salted-hash material for api_key/basic compares)
+// and its endpoints. Launch never touches the gateway tables directly.
+type GatewayResolution struct {
+	APIID          string            `json:"api_id"`
+	OrganisationID *string           `json:"organisation_id"`
+	OwnerID        string            `json:"owner_id"`
+	AuthType       string            `json:"auth_type"`
+	AuthConfig     json.RawMessage   `json:"auth_config"`
+	AuthSecretHash string            `json:"auth_secret_hash,omitempty"`
+	AuthSecretSalt string            `json:"auth_secret_salt,omitempty"`
+	Endpoints      []GatewayEndpoint `json:"endpoints"`
 }
