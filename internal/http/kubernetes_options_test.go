@@ -110,9 +110,14 @@ func TestKubernetesOptionEndpointsHaveResources(t *testing.T) {
 			continue
 		}
 		slug := strings.TrimPrefix(opts.Endpoint, "/api/v1/action/options/")
-		switch slug {
-		case "kubernetes-containers", "helm-releases":
+		switch {
+		case slug == "kubernetes-containers", slug == "helm-releases":
 			continue // bespoke handlers, not table-driven
+		case strings.HasPrefix(slug, "awx-"):
+			// Infrastructure ▸ AAP / AWX is a third sub-group under the same
+			// top-level category. It has its own resource table and its own guard
+			// (TestAWXOptionEndpointsHaveRoutes, awx_options_test.go).
+			continue
 		}
 		g.Expect(slug).To(HavePrefix("kubernetes-"), marker)
 		_, ok := k8sOptionResources[strings.TrimPrefix(slug, "kubernetes-")]

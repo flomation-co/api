@@ -170,7 +170,14 @@ var subCategoryMetadata = map[string]struct {
 	"marketing/sendgrid":        {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
 	"infrastructure/kubernetes": {Name: "Kubernetes", Icon: "kubernetes", Description: "Operate a Kubernetes cluster — restart and scale deployments, read pod logs, run jobs, manage config, and drain nodes"},
 	"infrastructure/helm":       {Name: "Helm", Icon: "helm", Description: "Install, upgrade, roll back and inspect Helm releases on a Kubernetes cluster"},
-	"vectordatabase/pgvector":   {Name: "pgvector", Icon: "database", Description: "Store and query embeddings in a PostgreSQL database with the pgvector extension"},
+	// Mirrors executor/actions/infrastructure/awx/category.go's consts — this map,
+	// not the Go const, is what the editor reads at serve time, so the two must
+	// stay in step. The top-level "infrastructure" entry above is deliberately
+	// untouched: it and the "opentofu" remap must stay byte-identical to each
+	// other, and the AAP/AWX story is told here, in the sub-group, which is where
+	// the operator actually reads it.
+	"infrastructure/awx":      {Name: "AAP / AWX", Icon: "ansible", Description: "Ansible Automation Platform / AWX — launch existing job templates and workflows, watch jobs to completion, and manage inventories, hosts, projects, credentials and schedules. This node talks to the AWX/AAP controller's API; it does not run playbooks itself."},
+	"vectordatabase/pgvector": {Name: "pgvector", Icon: "database", Description: "Store and query embeddings in a PostgreSQL database with the pgvector extension"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {

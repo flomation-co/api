@@ -1,0 +1,20 @@
+-- Seed the trigger_type row for the AWX webhook trigger. Without it,
+-- createFloRevision resolves the type via
+-- (SELECT id FROM trigger_type WHERE name = :type_name) -> NULL, which violates
+-- the NOT NULL constraint on trigger.type, and the trigger fails to register --
+-- SILENTLY from the operator's point of view: the flow saves 201, no trigger row
+-- is written, no notification template is created in AWX, and nothing is logged.
+-- Each new integration seeds its own row.
+--
+-- Pairs with launch migration 45, which adds 'awx-webhook' to launch's TriggerType
+-- enum. BOTH are required; the name must match the executor's trigger ID exactly
+-- ('awx-webhook').
+--
+-- NUMBERING: 126, not 125. main was at 124_AddWebTriggerType when this was
+-- written, but the typeform/jotform/surveymonkey trigger_type repair takes 125 and
+-- merges first. golang-migrate SILENTLY SKIPS an out-of-order version, and a
+-- DUPLICATE version makes the api fail to BOOT (502) -- exactly what happened when
+-- 121_AddMqttTriggerType collided with 120_AddEmbedApps. Git does not flag it (the
+-- filenames differ) and the Go tests do not run migrations against a real
+-- database, so re-check this number AFTER rebasing on main, not just now.
+INSERT INTO trigger_type (name) VALUES ('awx-webhook') ON CONFLICT DO NOTHING;
