@@ -493,6 +493,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 	}
 	actions.GET("/options/kubernetes-containers", s.jwtMiddleware, s.getKubernetesContainers)
 	actions.GET("/options/helm-releases", s.jwtMiddleware, s.getHelmReleases)
+	// AAP / AWX pickers: sixteen are served by one generic handler parameterised by
+	// the AWX collection (see awxOptionResources); the ad-hoc module list is
+	// bespoke, because it reads an admin-editable settings key rather than a
+	// paginated collection. awxOptionRouteSlugs is the shared source of truth, so a
+	// resource can't be added without a route (which would be a silent 404).
+	for _, slug := range awxOptionRouteSlugs {
+		actions.GET("/options/awx-"+slug, s.jwtMiddleware, s.awxOptions(slug))
+	}
+	actions.GET("/options/awx-adhoc-modules", s.jwtMiddleware, s.getAWXAdHocModules)
 	// pgvector pickers open a raw Postgres connection to a caller-named host —
 	// the only option proxy that is not HTTP, and the only one that could be
 	// aimed at the api's own control-plane database. See pgvector_options.go for
