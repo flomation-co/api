@@ -17,4 +17,17 @@
 -- 121_AddMqttTriggerType collided with 120_AddEmbedApps. Git does not flag it (the
 -- filenames differ) and the Go tests do not run migrations against a real
 -- database, so re-check this number AFTER rebasing on main, not just now.
-INSERT INTO trigger_type (name) VALUES ('awx-webhook') ON CONFLICT DO NOTHING;
+-- IDEMPOTENCY -- deliberately NOT "ON CONFLICT DO NOTHING": trigger_type.name has
+-- no UNIQUE constraint (see migration 06), so there is no arbiter index for
+-- ON CONFLICT to match and it silently degrades to a guard that inserts a
+-- DUPLICATE row anyway. A duplicate name then makes the single-row
+-- (SELECT id FROM trigger_type WHERE name = ...) subquery above fail with
+-- "more than one row returned by a subquery used as an expression", breaking
+-- trigger registration platform-wide -- worse than the bug this seeds against.
+-- WHERE NOT EXISTS is genuinely idempotent without relying on a constraint that
+-- is not there.
+INSERT INTO trigger_type (name)
+SELECT 'awx-webhook'
+WHERE NOT EXISTS (
+    SELECT 1 FROM trigger_type t WHERE t.name = 'awx-webhook'
+);
