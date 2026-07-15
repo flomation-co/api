@@ -26,6 +26,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"gitlab":         {Key: "gitlab", Name: "GitLab", Icon: "gitlab", Description: "Manage merge requests, pipelines, and issues in GitLab"},
 	"image":          {Key: "image", Name: "Image", Icon: "image", Description: "Process images with ImageMagick: resize, convert, crop and info"},
 	"video":          {Key: "video", Name: "Video", Icon: "film", Description: "Process audio and video with ffmpeg: extract audio, thumbnails, trimming and info"},
+	"graphics":       {Key: "graphics", Name: "Graphics", Icon: "pen", Description: "Generate animated graphics: titles, lower-thirds and counters as transparent overlays"},
 	"output":         {Key: "output", Name: "Output", Icon: "location-arrow", Description: "Send data to external destinations"},
 	"security":       {Key: "security", Name: "Security", Icon: "shield-halved", Description: "Security scanning and compliance"},
 	"nosql":          {Key: "nosql", Name: "NoSQL", Icon: "layer-group", Description: "NoSQL database operations"},
