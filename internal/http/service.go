@@ -569,6 +569,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// is scope-based: the persistence layer returns 404 for blobs
 	// outside the user's org/owner scope. See blob_public.go.
 	v1.GET("blob/:handle", s.jwtMiddleware, s.getBlobPublic)
+	// Editor upload of flow assets (logo/PSD/image) → a permanent asset blob,
+	// returned as a flo:blob: token the Asset node wires into file inputs.
+	v1.POST("asset", s.jwtMiddleware, s.putAssetPublic)
 
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)

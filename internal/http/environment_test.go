@@ -109,7 +109,7 @@ func (m *mockPersistence) PutBlob(scope persistence.BlobScope, content []byte, m
 		return nil, nil, persistence.ErrBlobScopeInvalid
 	}
 	switch purpose {
-	case persistence.BlobPurposeInbound, persistence.BlobPurposeToolOutput, persistence.BlobPurposeManual:
+	case persistence.BlobPurposeInbound, persistence.BlobPurposeToolOutput, persistence.BlobPurposeManual, persistence.BlobPurposeAsset:
 	default:
 		return nil, nil, persistence.ErrBlobInvalidPurpose
 	}

@@ -20,9 +20,12 @@ package http
 //      cross-user caching.
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"math/rand/v2"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -227,6 +230,85 @@ func TestBlobPublic_MissingUser_401(t *testing.T) {
 	// missing-user case, not a malformed-handle bounce.
 	good := hex.EncodeToString(make([]byte, persistence.BlobHandleByteLen))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/blob/"+good, nil)
+	r.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusUnauthorized))
+}
+
+// setupAssetRouter wires POST /api/v1/asset with the synthetic JWT middleware
+// (injects account_id), mirroring setupBlobPublicRouter.
+func setupAssetRouter(svc *Service, userID string) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		if userID != "" {
+			c.Set("account_id", userID)
+		}
+		c.Next()
+	})
+	r.POST("/api/v1/asset", svc.putAssetPublic)
+	return r
+}
+
+// assetMultipart builds a multipart body with a file part (PNG-signed so the
+// server's MIME sniff agrees with a declared image/png) plus arbitrary fields.
+func assetMultipart(fields map[string]string, content []byte) (*bytes.Buffer, string) {
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
+	}
+	fw, _ := w.CreateFormFile("file", "logo.png")
+	_, _ = fw.Write(content)
+	_ = w.Close()
+	return body, w.FormDataContentType()
+}
+
+// TestAssetUpload_PinsPurposeAndReturnsToken confirms the editor asset endpoint
+// stores the upload as a permanent flo_asset blob — pinned SERVER-SIDE even when
+// the client tries to send a different purpose — and returns a canonical token.
+func TestAssetUpload_PinsPurposeAndReturnsToken(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	svc, mp := newBlobService()
+	seedOrgUser(mp, "user-1", "org-1")
+
+	png := []byte("\x89PNG\r\n\x1a\n................ pretend png ................")
+	// Client cheekily sends purpose=tool_output; the server must ignore it.
+	body, ct := assetMultipart(map[string]string{"mime": "image/png", "purpose": "tool_output"}, png)
+
+	r := setupAssetRouter(svc, "user-1")
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/asset", body)
+	req.Header.Set("Content-Type", ct)
+	r.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusCreated), "body: %s", w.Body.String())
+	var resp map[string]any
+	Expect(json.Unmarshal(w.Body.Bytes(), &resp)).To(Succeed())
+	Expect(resp["blob_token"]).To(HavePrefix("flo:blob:"))
+
+	// Exactly one blob stored, with the pinned asset purpose (not tool_output).
+	Expect(mp.blobs).To(HaveLen(1))
+	for _, b := range mp.blobs {
+		Expect(b.purpose).To(Equal(persistence.BlobPurposeAsset))
+		Expect(b.mime).To(Equal("image/png"))
+	}
+}
+
+// TestAssetUpload_RequiresAuth confirms an unauthenticated request is rejected.
+func TestAssetUpload_RequiresAuth(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	svc, _ := newBlobService()
+
+	png := []byte("\x89PNG\r\n\x1a\n pretend png")
+	body, ct := assetMultipart(map[string]string{"mime": "image/png"}, png)
+
+	r := setupAssetRouter(svc, "") // no user injected
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/asset", body)
+	req.Header.Set("Content-Type", ct)
 	r.ServeHTTP(w, req)
 
 	Expect(w.Code).To(Equal(http.StatusUnauthorized))

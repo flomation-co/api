@@ -89,3 +89,24 @@ func (s *Service) getBlobPublic(c *gin.Context) {
 	c.Header("Cache-Control", "private, max-age=300")
 	c.Data(http.StatusOK, mime, content)
 }
+
+// putAssetPublic handles POST /api/v1/asset — a JWT-authed upload of a user's
+// flow asset (a logo, PSD template, image, …) that the editor's Asset node
+// wires into file-accepting inputs of other nodes.
+//
+// Body: multipart/form-data — file (≤ 25 MB) + mime. Unlike the internal
+// endpoint, the purpose is pinned SERVER-SIDE to BlobPurposeAsset (permanent,
+// no TTL) so a client cannot mint a differently-scoped blob via this route. The
+// scope is the authenticated user's org (if any) or their own id. Returns 201 +
+// the canonical flo:blob: token, which the editor stores in the node config.
+//
+// Lifetime: these blobs never expire. Orphan cleanup (an asset no longer
+// referenced by any live revision) is a separate sweep, not a TTL — see
+// PLAN-flow-assets.md.
+func (s *Service) putAssetPublic(c *gin.Context) {
+	scope, ok := s.scopeForUser(c)
+	if !ok {
+		return
+	}
+	s.storeMultipartBlob(c, scope, persistence.BlobPurposeAsset)
+}
