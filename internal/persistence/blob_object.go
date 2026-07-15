@@ -50,6 +50,11 @@ const (
 	BlobPurposeInbound    = "inbound"
 	BlobPurposeToolOutput = "tool_output"
 	BlobPurposeManual     = "manual"
+	// BlobPurposeAsset is a user-uploaded flow asset (a logo, PSD template, …)
+	// referenced from a flow revision. Unlike the others it has NO expiry — it
+	// must live as long as a flow references it (orphan cleanup is a sweep of
+	// unreferenced handles, not a TTL). See PLAN-flow-assets.md.
+	BlobPurposeAsset = "flo_asset"
 )
 
 // BlobScope is the discriminated-union auth boundary applied to every
@@ -91,10 +96,12 @@ func OwnerScope(ownerID string) BlobScope { return BlobScope{OwnerID: ownerID} }
 
 // TTLs are purpose-driven and server-enforced. Callers do not get
 // to override these. See plans/file_attachments.md M0.
+// A duration of 0 means NO expiry (a permanent blob with expires_at = NULL).
 var blobTTLByPurpose = map[string]time.Duration{
 	BlobPurposeInbound:    30 * 24 * time.Hour,
 	BlobPurposeToolOutput: 1 * time.Hour,
 	BlobPurposeManual:     30 * 24 * time.Hour,
+	BlobPurposeAsset:      0, // permanent — cleaned up by orphan sweep, not TTL
 }
 
 // ErrBlobNotFound is returned for both genuinely-missing handles and
@@ -149,7 +156,12 @@ func (s *Service) PutBlob(scope BlobScope, content []byte, mime, purpose string,
 	sum := sha256.Sum256(content)
 	digest = sum[:]
 
-	expiresAt := time.Now().Add(ttl)
+	// ttl == 0 → a permanent blob (expires_at NULL); the sweep skips NULL rows.
+	var expiresAt *time.Time
+	if ttl > 0 {
+		t := time.Now().Add(ttl)
+		expiresAt = &t
+	}
 
 	tx, err := s.conn.Beginx()
 	if err != nil {

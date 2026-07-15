@@ -126,7 +126,7 @@ func (s *Service) putBlobInternal(c *gin.Context) {
 	if scope.IsZero() {
 		return
 	}
-	s.storeMultipartBlob(c, scope)
+	s.storeMultipartBlob(c, scope, "")
 }
 
 // storeMultipartBlob is the shared body of every mTLS blob-put handler.
@@ -138,7 +138,10 @@ func (s *Service) putBlobInternal(c *gin.Context) {
 // Extracted so that trigger-scoped anonymous uploads (putBlobForTrigger)
 // can share the exact same validation surface without duplicating ~80
 // lines of parse + sniff + quota-error mapping.
-func (s *Service) storeMultipartBlob(c *gin.Context, scope persistence.BlobScope) {
+// forcedPurpose, when non-empty, overrides the multipart "purpose" field — used
+// by the editor asset endpoint to pin purpose server-side so a client can't mint
+// a differently-scoped blob via that route. Pass "" to read purpose from the form.
+func (s *Service) storeMultipartBlob(c *gin.Context, scope persistence.BlobScope, forcedPurpose string) {
 	// 25 MB upper bound on the entire request to short-circuit DoS
 	// attempts before they touch disk. Add headroom for the multipart
 	// boundary + form fields.
@@ -151,7 +154,10 @@ func (s *Service) storeMultipartBlob(c *gin.Context, scope persistence.BlobScope
 	}
 
 	mime := strings.TrimSpace(c.PostForm("mime"))
-	purpose := strings.TrimSpace(c.PostForm("purpose"))
+	purpose := forcedPurpose
+	if purpose == "" {
+		purpose = strings.TrimSpace(c.PostForm("purpose"))
+	}
 	if mime == "" || purpose == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "mime and purpose required"})
 		return
@@ -278,7 +284,7 @@ func (s *Service) putBlobForTrigger(c *gin.Context) {
 		return
 	}
 
-	s.storeMultipartBlob(c, scope)
+	s.storeMultipartBlob(c, scope, "")
 }
 
 // getBlobInternal handles GET /api/v1/internal/blob/:handle.

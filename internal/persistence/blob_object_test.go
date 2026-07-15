@@ -49,7 +49,9 @@ func TestBlobTTLs_PurposeDrivenAndCorrect(t *testing.T) {
 	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeInbound, 30*24*time.Hour))
 	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeToolOutput, 1*time.Hour))
 	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeManual, 30*24*time.Hour))
-	Expect(blobTTLByPurpose).To(HaveLen(3))
+	// Assets are permanent: a 0 duration signals "no expiry" (expires_at NULL).
+	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeAsset, time.Duration(0)))
+	Expect(blobTTLByPurpose).To(HaveLen(4))
 }
 
 // TestBlobDailyQuotaPerOrg_IsOneGigabyte ensures the per-org daily
