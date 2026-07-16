@@ -306,6 +306,26 @@ func azureOptionsBaseURL(raw string) (string, error) {
 	return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
 }
 
+// azureGraphVersionPath is the Graph version this proxy appends, matching the
+// executor's graphAPIPath.
+const azureGraphVersionPath = "/v1.0"
+
+// azureGraphBaseURL normalises a graph_endpoint override exactly as the
+// executor's entra normaliseEndpoint does: scheme+host[+path], no trailing
+// slash, and a trailing /v1.0 stripped. The executor tolerates an endpoint
+// written WITH the version suffix, so the same value must not double up here
+// into {host}/v1.0/v1.0 — that 404s the dropdown while the action itself
+// works.
+func azureGraphBaseURL(raw string) (string, error) {
+	base, err := azureOptionsBaseURL(raw)
+	if err != nil {
+		return "", err
+	}
+	// Trimming the whole base is equivalent to trimming the path the executor
+	// trims: a host can never end in /v1.0, it carries no slash.
+	return strings.TrimSuffix(base, azureGraphVersionPath), nil
+}
+
 // ---------------------------------------------------------------------------
 // Shared parameter resolution
 // ---------------------------------------------------------------------------
@@ -794,7 +814,7 @@ func (s *Service) azureGraphOptionsGet(c *gin.Context, pathAndQuery string) ([]b
 
 	graphBase := "https://graph.microsoft.com"
 	if raw := strings.TrimSpace(c.Query("graph_endpoint")); raw != "" && !strings.HasPrefix(raw, "${") {
-		normalised, err := azureOptionsBaseURL(raw)
+		normalised, err := azureGraphBaseURL(raw)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": "The Graph Endpoint must be a full http(s) URL"})
 			return nil, false
@@ -815,7 +835,7 @@ func (s *Service) azureGraphOptionsGet(c *gin.Context, pathAndQuery string) ([]b
 		return nil, false
 	}
 
-	req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, graphBase+"/v1.0"+pathAndQuery, nil)
+	req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, graphBase+azureGraphVersionPath+pathAndQuery, nil)
 	if err != nil {
 		c.JSON(gohttp.StatusOK, gin.H{"error": "Could not build the Microsoft Graph request"})
 		return nil, false

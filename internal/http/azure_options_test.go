@@ -194,6 +194,38 @@ func TestAzureOptionsBaseURL(t *testing.T) {
 	}
 }
 
+// The Graph base must normalise identically to the executor's entra
+// normaliseEndpoint — otherwise a graph_endpoint the node accepts makes the
+// dropdown 404 while the action succeeds.
+func TestAzureGraphBaseURL_MirrorsTheExecutorNormalisation(t *testing.T) {
+	g := NewWithT(t)
+
+	for _, tc := range []struct{ raw, want string }{
+		{"https://graph.microsoft.us", "https://graph.microsoft.us"},
+		{"graph.microsoft.us", "https://graph.microsoft.us"},
+		{"https://graph.microsoft.us/", "https://graph.microsoft.us"},
+		{"https://graph.microsoft.com/v1.0", "https://graph.microsoft.com"},
+		{"https://graph.microsoft.com/v1.0/", "https://graph.microsoft.com"},
+		{"graph.microsoft.com/v1.0", "https://graph.microsoft.com"},
+		// Only ONE version suffix is stripped, exactly as the executor does.
+		{"https://graph.microsoft.com/v1.0/v1.0", "https://graph.microsoft.com/v1.0"},
+		// A non-version path prefix is kept (a reverse proxy in front of Graph).
+		{"https://proxy.example/graph", "https://proxy.example/graph"},
+		{"https://proxy.example/graph/v1.0/", "https://proxy.example/graph"},
+		// Userinfo stripping still applies.
+		{"https://user:pass@graph.example/v1.0", "https://graph.example"},
+	} {
+		got, err := azureGraphBaseURL(tc.raw)
+		g.Expect(err).To(BeNil(), "graph_endpoint %q must be accepted", tc.raw)
+		g.Expect(got).To(Equal(tc.want), "graph_endpoint %q", tc.raw)
+	}
+
+	for _, raw := range []string{"", "${secrets.GRAPH}", "ftp://host/v1.0"} {
+		_, err := azureGraphBaseURL(raw)
+		g.Expect(err).To(HaveOccurred(), "graph_endpoint %q must be refused", raw)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 3. SSRF guards.
 // ---------------------------------------------------------------------------
@@ -483,6 +515,52 @@ func TestAzureEntraGroupsAndUsersOptions(t *testing.T) {
 	raw, _ := body["options"].([]any)
 	first, _ := raw[0].(map[string]any)
 	g.Expect(first["value"]).To(Equal("u1"), "the option value is the directory object id, not the UPN")
+}
+
+// The executor strips a /v1.0 suffix off graph_endpoint before appending its
+// own, so an operator who pasted the versioned URL has a working node. The
+// proxy must land on the same path rather than {host}/v1.0/v1.0.
+func TestAzureEntraOptions_GraphEndpointWithVersionSuffix(t *testing.T) {
+	g := NewWithT(t)
+
+	var requested []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/test-tenant/oauth2/v2.0/token", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"graph-token"}`))
+	})
+	mux.HandleFunc("/v1.0/groups", func(w http.ResponseWriter, req *http.Request) {
+		requested = append(requested, req.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"value":[{"id":"g1","displayName":"Alpha Team"}]}`))
+	})
+	// Anything else is a normalisation slip; record it so the failure names the
+	// path actually requested.
+	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		requested = append(requested, req.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	oldLogin := azureLoginBase
+	azureLoginBase = srv.URL
+	defer func() { azureLoginBase = oldLogin }()
+
+	r := setupAzureRouter(&Service{})
+	for _, suffix := range []string{"", "/", "/v1.0", "/v1.0/"} {
+		requested = nil
+		body, code := getAzureOptions(r, "entra-groups", map[string]string{
+			"azure_tenant_id":     "test-tenant",
+			"azure_client_id":     "client-1",
+			"azure_client_secret": "sp-secret",
+			"graph_endpoint":      srv.URL + suffix,
+		})
+		g.Expect(code).To(Equal(http.StatusOK))
+		g.Expect(body).ToNot(HaveKey("error"), "graph_endpoint suffix %q: %v (requested %v)", suffix, body["error"], requested)
+		g.Expect(requested).To(Equal([]string{"/v1.0/groups"}), "graph_endpoint suffix %q", suffix)
+		g.Expect(optionNames(body)).To(Equal([]string{"Alpha Team"}))
+	}
 }
 
 func TestAzureOpenAIDeploymentsOptions(t *testing.T) {
