@@ -629,7 +629,7 @@ func TestAzureDynamicOptionsRegistration(t *testing.T) {
 		counts[strings.TrimPrefix(marker.Endpoint, "/api/v1/action/options/")]++
 		_ = key
 	}
-	g.Expect(counts["azure-storage-containers"]).To(Equal(18), "every azure/storage action naming an existing container")
+	g.Expect(counts["azure-storage-containers"]).To(Equal(20), "every azure/storage action naming an existing container")
 	g.Expect(counts["azure-cosmos-databases"]).To(Equal(16), "every azure/cosmosdb action naming an existing database")
 	g.Expect(counts["azure-cosmos-containers"]).To(Equal(12), "every azure/cosmosdb action naming an existing container")
 	g.Expect(counts["azure-entra-users"]).To(Equal(13), "12 user_id inputs + user_set_manager's manager_id")

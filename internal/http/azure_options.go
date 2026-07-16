@@ -98,7 +98,7 @@ var (
 // and blob_find_by_tags (both account-scoped, no container input) and
 // container_create (names a new container).
 var azureStorageContainerActions = []string{
-	"blob_copy", "blob_delete", "blob_download",
+	"blob_copy", "blob_delete", "blob_download", "blob_lease", "container_lease",
 	"blob_generate_sas", "blob_get_all", "blob_get_properties", "blob_get_tags",
 	"blob_set_metadata", "blob_set_properties", "blob_set_tags", "blob_set_tier",
 	"blob_snapshot", "blob_undelete", "blob_upload", "blob_upload_from_url",
