@@ -165,7 +165,10 @@ func TestLiveAzureFilesShares(t *testing.T) {
 }
 
 // TestLiveAzureFilesSharesEntraIsRefusedClearly — Entra cannot authorise a
-// share list at all, so the proxy must say so instead of surfacing a bare 401.
+// share list at all. Verified directly against the service: it answers
+// HTTP 409 FileOAuthManagementApiRestrictedToSrp, "This API does not support
+// bearer tokens", and adding x-ms-file-request-intent: backup does not help.
+// The proxy must therefore say what to do instead of surfacing that 409.
 func TestLiveAzureFilesSharesEntraIsRefusedClearly(t *testing.T) {
 	env := requireEnv(t, "AZURE_REAL_STORAGE_ACCOUNT")
 	s := &Service{}

@@ -1181,9 +1181,20 @@ func (s *Service) getAzureFilesShares(c *gin.Context) {
 		}
 		req.Header.Set("Authorization", auth)
 	case "entra":
-		// Azure Files does support Entra for the data plane, but ONLY with a
-		// share-level identity configuration that most accounts do not have —
-		// and never for this list call. Saying so beats a bare 401.
+		// List Shares cannot be authorised with a bearer token AT ALL, and
+		// Azure is unusually clear about it — verified against
+		// flomationstore.file.core.windows.net on 17/07/2026:
+		//
+		//	HTTP 409 FileOAuthManagementApiRestrictedToSrp
+		//	"This API does not support bearer tokens. For OAuth, use the
+		//	 Storage Resource Provider APIs instead."
+		//
+		// Adding x-ms-file-request-intent: backup (which unlocks Entra for
+		// file/directory data-plane calls) does not change it — still 409. The
+		// Resource Provider route it suggests is an ARM call needing a
+		// subscription id, resource group and an ARM role, none of which this
+		// node collects. So the Account Key really is the only way to fill this
+		// list, and a 409 is not a message to hand an operator.
 		c.JSON(gohttp.StatusOK, gin.H{"error": "Listing shares needs the Account Key — Microsoft Entra can't authorise this call. Set the Account Key, or type the share name (the flow itself still runs)."})
 		return
 	default:
