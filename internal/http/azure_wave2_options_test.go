@@ -157,10 +157,10 @@ func TestWave2ScopedDropdownsCarryTheirParent(t *testing.T) {
 
 func TestParseAzureServiceBusConnString(t *testing.T) {
 	t.Run("real namespace", func(t *testing.T) {
-		got, err := parseAzureServiceBusConnString(
+		got, errMsg := parseAzureServiceBusConnString(
 			"Endpoint=sb://flo.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=abc+/def==")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if errMsg != "" {
+			t.Fatalf("unexpected refusal: %s", errMsg)
 		}
 		if got.Namespace != "flo.servicebus.windows.net" {
 			t.Errorf("namespace = %q", got.Namespace)
@@ -179,10 +179,10 @@ func TestParseAzureServiceBusConnString(t *testing.T) {
 	})
 
 	t.Run("emulator is detected, not merely parsed", func(t *testing.T) {
-		got, err := parseAzureServiceBusConnString(
+		got, errMsg := parseAzureServiceBusConnString(
 			"Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if errMsg != "" {
+			t.Fatalf("unexpected refusal: %s", errMsg)
 		}
 		if !got.IsEmulator {
 			t.Fatal("emulator connection string not flagged — the proxy would try to reach a management API that does not exist and report a confusing network error")
@@ -197,8 +197,8 @@ func TestParseAzureServiceBusConnString(t *testing.T) {
 		{"no key name", "Endpoint=sb://flo.servicebus.windows.net/;SharedAccessKey=y"},
 	} {
 		t.Run("rejects "+c.name, func(t *testing.T) {
-			if _, err := parseAzureServiceBusConnString(c.in); err == nil {
-				t.Error("expected an error")
+			if _, errMsg := parseAzureServiceBusConnString(c.in); errMsg == "" {
+				t.Error("expected a refusal")
 			}
 		})
 	}
@@ -281,15 +281,15 @@ func TestAzureDevOpsBases(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			core, release, err := azureDevOpsBases(c.in)
+			core, release, errMsg := azureDevOpsBases(c.in)
 			if c.wantErr {
-				if err == nil {
-					t.Fatalf("expected an error, got core=%q", core)
+				if errMsg == "" {
+					t.Fatalf("expected a refusal, got core=%q", core)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if errMsg != "" {
+				t.Fatalf("unexpected refusal: %s", errMsg)
 			}
 			if core != c.core {
 				t.Errorf("core = %q, want %q", core, c.core)
@@ -310,8 +310,8 @@ func TestAzureDevOpsBasesDropsSmuggledMaterial(t *testing.T) {
 		"https://dev.azure.com/flomation?api-version=evil",
 		"https://dev.azure.com/flomation#frag",
 	} {
-		core, _, err := azureDevOpsBases(in)
-		if err != nil {
+		core, _, errMsg := azureDevOpsBases(in)
+		if errMsg != "" {
 			continue // refusing outright is also fine
 		}
 		if core != "https://dev.azure.com/flomation" {

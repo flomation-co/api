@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/xml"
-	"errors"
 	gohttp "net/http"
 	"net/url"
 	"regexp"
@@ -133,11 +132,16 @@ type azureServiceBusConnString struct {
 // sb://localhost, which is syntactically fine but has no management API behind
 // it. Detecting it here lets the caller explain that, instead of emitting a
 // connection error the operator would waste time debugging.
-func parseAzureServiceBusConnString(raw string) (azureServiceBusConnString, error) {
+// The second return is an OPERATOR-FACING message, not a Go error, which is
+// why it is a string: these sentences are shown verbatim in the editor, so they
+// are capitalised and complete. Returning them as `error` would mean either
+// lowercase fragments in the UI or a lint suppression, and neither is worth it
+// for a value no caller ever wraps or compares.
+func parseAzureServiceBusConnString(raw string) (azureServiceBusConnString, string) {
 	var out azureServiceBusConnString
 	s := strings.TrimSpace(raw)
 	if s == "" || strings.HasPrefix(s, "${") {
-		return out, errors.New("Set the Connection String to load this list")
+		return out, "Set the Connection String to load this list"
 	}
 	for _, part := range strings.Split(s, ";") {
 		part = strings.TrimSpace(part)
@@ -154,7 +158,7 @@ func parseAzureServiceBusConnString(raw string) (azureServiceBusConnString, erro
 		case "endpoint":
 			u, err := url.Parse(value)
 			if err != nil || u.Host == "" {
-				return out, errors.New("The Connection String's Endpoint is not a valid URL")
+				return out, "The Connection String's Endpoint is not a valid URL"
 			}
 			out.Namespace = strings.ToLower(u.Hostname())
 		case "sharedaccesskeyname":
@@ -166,12 +170,12 @@ func parseAzureServiceBusConnString(raw string) (azureServiceBusConnString, erro
 		}
 	}
 	if out.Namespace == "" {
-		return out, errors.New("The Connection String is missing its Endpoint")
+		return out, "The Connection String is missing its Endpoint"
 	}
 	if out.KeyName == "" || out.Key == "" {
-		return out, errors.New("The Connection String is missing its SharedAccessKeyName or SharedAccessKey")
+		return out, "The Connection String is missing its SharedAccessKeyName or SharedAccessKey"
 	}
-	return out, nil
+	return out, ""
 }
 
 // azureServiceBusSASToken mints a Shared Access Signature over a resource URI.
@@ -234,9 +238,9 @@ func (s *Service) azureServiceBusResolve(c *gin.Context) (host, authHeader strin
 		if !resolved {
 			return "", "", false
 		}
-		conn, err := parseAzureServiceBusConnString(raw)
-		if err != nil {
-			c.JSON(gohttp.StatusOK, gin.H{"error": err.Error()})
+		conn, errMsg := parseAzureServiceBusConnString(raw)
+		if errMsg != "" {
+			c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
 			return "", "", false
 		}
 		if conn.IsEmulator {

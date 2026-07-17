@@ -105,20 +105,22 @@ func init() {
 // because project names in paths are case-sensitive. Query, fragment and any
 // smuggled userinfo are dropped so a crafted value cannot append itself to
 // every request.
-func azureDevOpsBases(raw string) (coreBase, releaseBase string, err error) {
+// The final return is an OPERATOR-FACING message, not a Go error — see the note
+// on parseAzureServiceBusConnString. Empty means success.
+func azureDevOpsBases(raw string) (coreBase, releaseBase, errMsg string) {
 	s := strings.TrimSpace(raw)
 	if s == "" || strings.HasPrefix(s, "${") {
-		return "", "", errAzureDevOpsOrgRequired
+		return "", "", "Set the Organisation URL to load this list"
 	}
 	if !strings.Contains(s, "://") {
 		s = "https://" + s
 	}
-	u, err := url.Parse(s)
-	if err != nil || u.Host == "" {
-		return "", "", errAzureDevOpsOrgInvalid
+	u, parseErr := url.Parse(s)
+	if parseErr != nil || u.Host == "" {
+		return "", "", azureDevOpsOrgInvalidMsg
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return "", "", errAzureDevOpsOrgInvalid
+		return "", "", azureDevOpsOrgInvalidMsg
 	}
 	host := strings.ToLower(u.Hostname())
 	if u.Port() != "" {
@@ -130,29 +132,22 @@ func azureDevOpsBases(raw string) (coreBase, releaseBase string, err error) {
 	case strings.HasSuffix(host, ".visualstudio.com"):
 		org := strings.TrimSuffix(host, ".visualstudio.com")
 		if org == "" {
-			return "", "", errAzureDevOpsOrgInvalid
+			return "", "", azureDevOpsOrgInvalidMsg
 		}
-		return u.Scheme + "://" + host, u.Scheme + "://" + org + ".vsrm.visualstudio.com", nil
+		return u.Scheme + "://" + host, u.Scheme + "://" + org + ".vsrm.visualstudio.com", ""
 	default:
 		// dev.azure.com/{org} — the org is the first path segment.
 		seg := strings.SplitN(path, "/", 2)
 		if len(seg) == 0 || seg[0] == "" {
-			return "", "", errAzureDevOpsOrgInvalid
+			return "", "", azureDevOpsOrgInvalidMsg
 		}
 		core := u.Scheme + "://" + host + "/" + seg[0]
 		release := u.Scheme + "://vsrm." + host + "/" + seg[0]
-		return core, release, nil
+		return core, release, ""
 	}
 }
 
-var (
-	errAzureDevOpsOrgRequired = &azureDevOpsError{"Set the Organisation URL to load this list"}
-	errAzureDevOpsOrgInvalid  = &azureDevOpsError{"The Organisation URL must look like https://dev.azure.com/your-org"}
-)
-
-type azureDevOpsError struct{ msg string }
-
-func (e *azureDevOpsError) Error() string { return e.msg }
+const azureDevOpsOrgInvalidMsg = "The Organisation URL must look like https://dev.azure.com/your-org"
 
 // azureDevOpsAuthHeader builds the Basic header for a PAT: an empty username
 // with the PAT as the password. This is the form Microsoft documents.
@@ -174,7 +169,9 @@ func azureDevOpsAPIVersion(raw string) string {
 		return "7.1"
 	}
 	for _, r := range v {
-		if !(r >= '0' && r <= '9') && r != '.' && r != '-' && !(r >= 'a' && r <= 'z') {
+		isDigit := r >= '0' && r <= '9'
+		isLower := r >= 'a' && r <= 'z'
+		if !isDigit && !isLower && r != '.' && r != '-' {
 			return "7.1"
 		}
 	}
@@ -279,9 +276,9 @@ func limitBody(resp *gohttp.Response) io.Reader {
 
 // azureDevOpsResolve pulls the org bases and PAT that every proxy here needs.
 func (s *Service) azureDevOpsResolve(c *gin.Context) (coreBase, releaseBase, pat, version string, ok bool) {
-	coreBase, releaseBase, err := azureDevOpsBases(c.Query("organisation_url"))
-	if err != nil {
-		c.JSON(gohttp.StatusOK, gin.H{"error": err.Error()})
+	coreBase, releaseBase, errMsg := azureDevOpsBases(c.Query("organisation_url"))
+	if errMsg != "" {
+		c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
 		return "", "", "", "", false
 	}
 	pat, ok = s.resolveAzureSecretParam(c, "personal_access_token", "Personal Access Token")
