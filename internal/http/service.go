@@ -367,6 +367,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
+	v1.GET("config/platform", s.jwtMiddleware, s.getPlatformConfig)
 
 	// Organisations Group
 	orgs := v1.Group("organisation")

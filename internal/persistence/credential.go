@@ -128,6 +128,22 @@ func (s *Service) CreateCredential(cred *api.EnvironmentCredential, environmentK
 	return id, err
 }
 
+// CreateAWSRoleCredential creates a token-less credential that is immediately
+// active. All of its data (role_arn, external_id, region) lives in the plaintext
+// metadata JSONB — there is no OAuth exchange and nothing secret to encrypt, so
+// the credential does not pass through the pending → active token lifecycle.
+func (s *Service) CreateAWSRoleCredential(environmentID, name string, metadata json.RawMessage) (string, error) {
+	var id string
+	err := s.conn.QueryRow(`
+		INSERT INTO environment_credential (
+			environment_id, provider_slug, name, status, metadata
+		) VALUES ($1, 'aws_role', $2, 'active', $3)
+		RETURNING id`,
+		environmentID, name, []byte(metadata),
+	).Scan(&id)
+	return id, err
+}
+
 // StoreCredentialTokens saves the OAuth tokens after a successful authorization.
 // clientID/clientSecret are persisted so the background refresh poller can use them
 // without needing access to application config (supports config-default credentials).
@@ -159,11 +175,14 @@ func (s *Service) GetCredentialWithMetaByName(environmentID, name, environmentKe
 		AccessToken *string          `db:"access_token"`
 		Metadata    *json.RawMessage `db:"metadata"`
 	}
+	// No "access_token IS NOT NULL" guard: token-less credentials (e.g. aws_role,
+	// which carry only metadata — role_arn/external_id/region) must still resolve.
+	// PGP_SYM_DECRYPT(NULL, key) returns NULL, so AccessToken scans as nil and
+	// only the metadata is served.
 	if err := s.conn.Get(&row, `
 		SELECT PGP_SYM_DECRYPT(access_token, $3) AS access_token, metadata
 		FROM environment_credential
-		WHERE environment_id = $1 AND name = $2 AND status = 'active'
-		AND access_token IS NOT NULL`, environmentID, name, environmentKey); err != nil {
+		WHERE environment_id = $1 AND name = $2 AND status = 'active'`, environmentID, name, environmentKey); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil, nil
 		}

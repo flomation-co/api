@@ -108,6 +108,15 @@ type Config struct {
 	Billing          BillingConfig                  `json:"billing"`
 	OAuth            map[string]OAuthProviderConfig `json:"oauth,omitempty"`
 	EmailOctopus     *EmailOctopusConfig            `json:"email_octopus,omitempty"`
+	AWS              *AWSConfig                     `json:"aws,omitempty"`
+}
+
+// AWSConfig holds platform-level AWS settings. TrustPrincipalARN is the IAM
+// principal (a dedicated Flomation IAM user/role) that customers grant
+// sts:AssumeRole on their Organisation Role. It is surfaced to the editor via
+// GET /config/platform and shown in the AWS Role credential's trust-policy help.
+type AWSConfig struct {
+	TrustPrincipalARN string `json:"trust_principal_arn"`
 }
 
 func LoadConfig(path string) (*Config, error) {
