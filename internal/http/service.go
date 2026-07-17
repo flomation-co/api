@@ -514,6 +514,18 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/pgvector-schemas", s.jwtMiddleware, s.getPGVectorSchemas)
 	actions.GET("/options/pgvector-tables", s.jwtMiddleware, s.getPGVectorTables)
 	actions.GET("/options/pgvector-columns", s.jwtMiddleware, s.getPGVectorColumns)
+	// Azure pickers: Storage containers (SharedKey-signed or Entra), Cosmos DB
+	// databases/containers (master-key-signed or Entra), Entra ID groups/users
+	// (app-only Graph), Azure OpenAI deployments and AI Search indexes
+	// (api-key). See azure_options.go for the host validation, signing, and
+	// dial guard.
+	actions.GET("/options/azure-storage-containers", s.jwtMiddleware, s.getAzureStorageContainers)
+	actions.GET("/options/azure-cosmos-databases", s.jwtMiddleware, s.getAzureCosmosDatabases)
+	actions.GET("/options/azure-cosmos-containers", s.jwtMiddleware, s.getAzureCosmosContainers)
+	actions.GET("/options/azure-entra-groups", s.jwtMiddleware, s.getAzureEntraGroups)
+	actions.GET("/options/azure-entra-users", s.jwtMiddleware, s.getAzureEntraUsers)
+	actions.GET("/options/azure-openai-deployments", s.jwtMiddleware, s.getAzureOpenAIDeployments)
+	actions.GET("/options/azure-aisearch-indexes", s.jwtMiddleware, s.getAzureAISearchIndexes)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)

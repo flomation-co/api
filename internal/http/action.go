@@ -116,6 +116,12 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// "vectordatabase" (one word) because it has to be a valid Go package name;
 	// the display name is set here.
 	"vectordatabase": {Key: "vectordatabase", Name: "Vector Database", Icon: "circle-nodes", Description: "Store and search embeddings — semantic search, similarity lookups, and retrieval-augmented generation"},
+	// Azure uses 3-segment action IDs (azure/storage/blob_upload), so the
+	// sub-group (Storage / Cosmos DB / Entra ID) is resolved from
+	// subCategoryMetadata below. The Azure OpenAI chat node (ai/azure_openai)
+	// and Azure AI Search (vectordatabase/azureaisearch) live under their
+	// capability categories, not here.
+	"azure": {Key: "azure", Name: "Azure", Icon: "azure", Description: "Microsoft Azure integrations"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -181,6 +187,15 @@ var subCategoryMetadata = map[string]struct {
 	// the operator actually reads it.
 	"infrastructure/awx":      {Name: "AAP / AWX", Icon: "ansible", Description: "Ansible Automation Platform / AWX — launch existing job templates and workflows, watch jobs to completion, and manage inventories, hosts, projects, credentials and schedules. This node talks to the AWX/AAP controller's API; it does not run playbooks itself."},
 	"vectordatabase/pgvector": {Name: "pgvector", Icon: "database", Description: "Store and query embeddings in a PostgreSQL database with the pgvector extension"},
+	// The Azure sub-groups mirror the executor category.go consts of
+	// executor/actions/azure/{storage,cosmosdb,entra} and
+	// executor/actions/vectordatabase/azureaisearch — this map, not the Go
+	// const, is what the editor reads at serve time, so the descriptions must
+	// stay byte-identical to those files.
+	"azure/storage":                {Name: "Storage", Icon: "box-archive", Description: "Azure Blob Storage — containers, blobs, tiers, tags, and shared access links"},
+	"azure/cosmosdb":               {Name: "Cosmos DB", Icon: "database", Description: "Azure Cosmos DB (NoSQL) — databases, containers, items, queries, and throughput"},
+	"azure/entra":                  {Name: "Entra ID", Icon: "id-badge", Description: "Microsoft Entra ID (Azure AD) — users, groups, membership, licences, and guest invites"},
+	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
