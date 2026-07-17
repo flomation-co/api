@@ -1084,3 +1084,254 @@ func (s *Service) getAzureAISearchIndexes(c *gin.Context) {
 	}
 	writeAzureOptions(c, options)
 }
+
+// ---------------------------------------------------------------------------
+// Azure Files — share list
+// ---------------------------------------------------------------------------
+//
+// Files reuses azureStorageSharedKeyAuth UNCHANGED. That is not a shortcut:
+// Microsoft documents ONE Shared Key scheme for "Blob, Queue and File
+// Services", and the only differences here are the host suffix and the element
+// name in the response. This is also why the executor node stayed on REST
+// rather than taking azfile — the signer already existed and was already
+// correct.
+
+// azureFilesShareActions are the azure/files actions with a `share` input
+// naming an existing share (share_get_all lists them; share_create names a new
+// one).
+var azureFilesShareActions = []string{
+	"directory_create", "directory_delete", "directory_get_all",
+	"directory_get_properties", "file_copy", "file_delete", "file_download",
+	"file_generate_sas", "file_get_properties", "file_lease", "file_list_ranges",
+	"file_set_metadata", "file_upload", "share_delete", "share_get_properties",
+	"share_get_stats", "share_set_metadata", "share_set_properties",
+}
+
+// azureTablesTableActions are the azure/tables actions with a `table` input
+// naming an existing table (table_get_all lists them; table_create names a new
+// one).
+var azureTablesTableActions = []string{
+	"entity_batch", "entity_delete", "entity_get", "entity_insert",
+	"entity_query", "entity_update", "entity_upsert", "table_delete",
+	"table_generate_sas", "table_get_access_policy", "table_set_access_policy",
+}
+
+func init() {
+	register := func(actionID, input, endpoint string, params []string) {
+		dynamicOptionsMetadata[actionID+"#"+input] = api.InputDynamicOptions{
+			Endpoint: "/api/v1/action/options/" + endpoint,
+			Params:   params,
+		}
+	}
+	for _, a := range azureFilesShareActions {
+		register("azure/files/"+a, "share", "azure-files-shares", azureStorageConnParams)
+	}
+	for _, a := range azureTablesTableActions {
+		register("azure/tables/"+a, "table", "azure-tables-tables", azureStorageConnParams)
+	}
+}
+
+// azureStorageServiceBase builds the account's endpoint for one storage
+// service, honouring a custom endpoint (Azurite, sovereign clouds) when given.
+// service is the subdomain label: "blob", "file", "table".
+func azureStorageServiceBase(c *gin.Context, account, service string) (string, bool) {
+	if raw := strings.TrimSpace(c.Query("endpoint")); raw != "" && !strings.HasPrefix(raw, "${") {
+		normalised, err := azureOptionsBaseURL(raw)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": "The Custom Endpoint must be a full http(s) URL"})
+			return "", false
+		}
+		return normalised, true
+	}
+	return "https://" + account + "." + service + ".core.windows.net", true
+}
+
+func (s *Service) getAzureFilesShares(c *gin.Context) {
+	account := strings.TrimSpace(c.Query("account_name"))
+	if !azureNamePattern.MatchString(account) {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Set the Storage Account (letters, digits and dashes only) to load this list"})
+		return
+	}
+	base, ok := azureStorageServiceBase(c, account, "file")
+	if !ok {
+		return
+	}
+
+	q := url.Values{}
+	q.Set("comp", "list")
+	q.Set("maxresults", "500")
+	req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, base+"/?"+q.Encode(), nil)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Could not build the Azure Files request"})
+		return
+	}
+	req.Header.Set("x-ms-date", time.Now().UTC().Format(gohttp.TimeFormat))
+	req.Header.Set("x-ms-version", azureStorageAPIVersion)
+
+	switch strings.ToLower(strings.TrimSpace(c.Query("auth_method"))) {
+	case "", "shared_key":
+		accountKey, resolved := s.resolveAzureSecretParam(c, "account_key", "Account Key")
+		if !resolved {
+			return
+		}
+		auth, err := azureStorageSharedKeyAuth(account, accountKey, req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": "The Account Key is not valid base64 — copy it from the storage account's Access keys page"})
+			return
+		}
+		req.Header.Set("Authorization", auth)
+	case "entra":
+		// Azure Files does support Entra for the data plane, but ONLY with a
+		// share-level identity configuration that most accounts do not have —
+		// and never for this list call. Saying so beats a bare 401.
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Listing shares needs the Account Key — Microsoft Entra can't authorise this call. Set the Account Key, or type the share name (the flow itself still runs)."})
+		return
+	default:
+		c.JSON(gohttp.StatusOK, gin.H{"error": "The Authentication method must be Shared Key or Microsoft Entra"})
+		return
+	}
+
+	body, errMsg := doAzureOptionsGet(azureOptionsClient(c), req, "Azure Files")
+	if errMsg != "" {
+		c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
+		return
+	}
+
+	var parsed struct {
+		Shares struct {
+			Share []struct {
+				Name string `xml:"Name"`
+			} `xml:"Share"`
+		} `xml:"Shares"`
+	}
+	if err := xml.Unmarshal(body, &parsed); err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Failed to parse the Azure Files response"})
+		return
+	}
+	options := make([]api.InputOption, 0, len(parsed.Shares.Share))
+	for _, share := range parsed.Shares.Share {
+		if share.Name == "" {
+			continue
+		}
+		options = append(options, api.InputOption{Name: share.Name, Value: share.Name})
+	}
+	writeAzureOptions(c, options)
+}
+
+// ---------------------------------------------------------------------------
+// Azure Table Storage — SharedKeyLite signing + the tables list
+// ---------------------------------------------------------------------------
+
+// azureTablesSharedKeyLiteAuth signs one Table Storage request.
+//
+// This is the THIRD distinct Azure signing scheme in this file, and the point
+// worth internalising is that "Azure Storage Shared Key" is not one algorithm:
+//
+//   - Blob/Queue/File  SharedKey      — 13-line string-to-sign (verb, eleven
+//     header slots, canonicalised headers +
+//     resource)
+//   - Table            SharedKey      — 5-line (verb, MD5, type, date, resource)
+//   - Table            SharedKeyLite  — 2-line (date, resource)  ← this one
+//
+// SharedKeyLite is used here because it is the scheme the aztables SDK uses, so
+// the proxy and the executor node authenticate identically, and because two
+// lines have far less to get subtly wrong than thirteen.
+//
+// The date signed is the x-ms-date value, and x-ms-date is what is sent — the
+// full Table SharedKey scheme signs the `Date` header instead, which is the
+// asymmetry that makes these two easy to conflate.
+func azureTablesSharedKeyLiteAuth(account, accountKeyB64, xmsDate, canonicalisedResource string) (string, error) {
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(accountKeyB64))
+	if err != nil || len(key) == 0 {
+		return "", errors.New("account key is not valid base64")
+	}
+	stringToSign := xmsDate + "\n" + canonicalisedResource
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(stringToSign))
+	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	return "SharedKeyLite " + account + ":" + signature, nil
+}
+
+func (s *Service) getAzureTablesTables(c *gin.Context) {
+	account := strings.TrimSpace(c.Query("account_name"))
+	if !azureNamePattern.MatchString(account) {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Set the Storage Account (letters, digits and dashes only) to load this list"})
+		return
+	}
+	base, ok := azureStorageServiceBase(c, account, "table")
+	if !ok {
+		return
+	}
+
+	req, err := gohttp.NewRequestWithContext(c.Request.Context(), gohttp.MethodGet, base+"/Tables", nil)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Could not build the Azure Table Storage request"})
+		return
+	}
+	xmsDate := time.Now().UTC().Format(gohttp.TimeFormat)
+	req.Header.Set("x-ms-date", xmsDate)
+	req.Header.Set("x-ms-version", azureStorageAPIVersion)
+	// nometadata keeps the response to bare table names; the default verbose
+	// form wraps every row in OData annotations we would only discard.
+	req.Header.Set("Accept", "application/json;odata=nometadata")
+	req.Header.Set("DataServiceVersion", "3.0;NetFx")
+
+	switch strings.ToLower(strings.TrimSpace(c.Query("auth_method"))) {
+	case "", "shared_key":
+		accountKey, resolved := s.resolveAzureSecretParam(c, "account_key", "Account Key")
+		if !resolved {
+			return
+		}
+		// The canonicalised resource for SharedKeyLite is "/{account}{path}".
+		// The account appears twice for Azurite-style endpoints (once here,
+		// once in the path) — Microsoft's documented emulator rule, and the
+		// same doubling azureStorageStringToSign handles for Blob. Signing the
+		// LOGICAL path instead of the request path is what produced a flat 403
+		// against Azurite in wave 1; use the request path.
+		resource := "/" + account + req.URL.EscapedPath()
+		auth, err := azureTablesSharedKeyLiteAuth(account, accountKey, xmsDate, resource)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": "The Account Key is not valid base64 — copy it from the storage account's Access keys page"})
+			return
+		}
+		req.Header.Set("Authorization", auth)
+	case "entra":
+		tenantID, clientID, clientSecret, resolved := s.resolveAzureServicePrincipal(c)
+		if !resolved {
+			return
+		}
+		token, errMsg := azureClientCredentialsToken(c, tenantID, clientID, clientSecret, "https://storage.azure.com/.default")
+		if errMsg != "" {
+			c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	default:
+		c.JSON(gohttp.StatusOK, gin.H{"error": "The Authentication method must be Shared Key or Microsoft Entra"})
+		return
+	}
+
+	body, errMsg := doAzureOptionsGet(azureOptionsClient(c), req, "Azure Table Storage")
+	if errMsg != "" {
+		c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
+		return
+	}
+
+	var parsed struct {
+		Value []struct {
+			TableName string `json:"TableName"`
+		} `json:"value"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Failed to parse the Azure Table Storage response"})
+		return
+	}
+	options := make([]api.InputOption, 0, len(parsed.Value))
+	for _, t := range parsed.Value {
+		if t.TableName == "" {
+			continue
+		}
+		options = append(options, api.InputOption{Name: t.TableName, Value: t.TableName})
+	}
+	writeAzureOptions(c, options)
+}
