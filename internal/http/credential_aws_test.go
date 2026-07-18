@@ -67,6 +67,23 @@ func TestBuildTrustPolicy(t *testing.T) {
 	}
 }
 
+func TestGenerateCredUserName(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		u := generateCredUserName()
+		if !strings.HasPrefix(u, "flomation-cred-") {
+			t.Fatalf("unexpected prefix: %q", u)
+		}
+		if len(u) != len("flomation-cred-")+16 { // 8 random bytes -> 16 hex chars
+			t.Fatalf("unexpected length for %q", u)
+		}
+		if seen[u] {
+			t.Fatalf("duplicate user name: %q", u)
+		}
+		seen[u] = true
+	}
+}
+
 func TestAWSTrustPrincipalARNFallback(t *testing.T) {
 	// A Service with no AWS config returns the placeholder rather than panicking.
 	s := &Service{}

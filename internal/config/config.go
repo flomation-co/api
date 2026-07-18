@@ -111,12 +111,28 @@ type Config struct {
 	AWS              *AWSConfig                     `json:"aws,omitempty"`
 }
 
-// AWSConfig holds platform-level AWS settings. TrustPrincipalARN is the IAM
-// principal (a dedicated Flomation IAM user/role) that customers grant
-// sts:AssumeRole on their Organisation Role. It is surfaced to the editor via
-// GET /config/platform and shown in the AWS Role credential's trust-policy help.
+// AWSConfig holds platform-level AWS settings.
+//
+// Provisioning holds the tightly-scoped IAM identity the API uses to mint a
+// dedicated per-credential Flomation IAM user for each AWS Role credential
+// (auto-provisioning). It can only manage assume-role-only users under a fixed
+// path (enforced by a permissions boundary), and lives ONLY here — never on the
+// runner. When Provisioning is nil, AWS Role credentials fall back to the
+// single-principal TrustPrincipalARN (a placeholder if that too is unset).
 type AWSConfig struct {
-	TrustPrincipalARN string `json:"trust_principal_arn"`
+	TrustPrincipalARN string                 `json:"trust_principal_arn"`
+	Provisioning      *AWSProvisioningConfig `json:"provisioning,omitempty"`
+}
+
+// AWSProvisioningConfig is the credentials + guardrails for auto-provisioning
+// per-credential IAM users in Flomation's own AWS account.
+type AWSProvisioningConfig struct {
+	AccessKeyID            string `json:"access_key_id"`
+	SecretAccessKey        string `json:"secret_access_key"`
+	Region                 string `json:"region"`
+	AccountID              string `json:"account_id"`
+	UserPath               string `json:"user_path"`                // e.g. "/flomation-creds/"
+	PermissionsBoundaryARN string `json:"permissions_boundary_arn"` // caps minted users to sts:AssumeRole only
 }
 
 func LoadConfig(path string) (*Config, error) {

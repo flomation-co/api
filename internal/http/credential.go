@@ -68,6 +68,11 @@ func (s *Service) deleteEnvironmentCredential(c *gin.Context) {
 	environmentID := c.Param("environment")
 	credID := c.Param("id")
 
+	// Best-effort teardown of a dedicated AWS Role IAM user before the row goes.
+	// A failure here only orphans an assume-role-only user (recoverable by a
+	// sweep), so it must not block the credential deletion.
+	s.cleanupAWSRoleIdentity(c, credID)
+
 	if err := s.persistence.DeleteCredential(credID, environmentID); err != nil {
 		log.WithError(err).Error("unable to delete credential")
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -126,7 +131,7 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	// External ID, store the role details in metadata, and return the trust
 	// policy for the customer to paste into their AWS role.
 	if req.ProviderSlug == "aws_role" {
-		s.createAWSRoleCredential(c, environmentID, req)
+		s.createAWSRoleCredential(c, environmentID, env, req)
 		return
 	}
 

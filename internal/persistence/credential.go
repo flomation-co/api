@@ -128,18 +128,24 @@ func (s *Service) CreateCredential(cred *api.EnvironmentCredential, environmentK
 	return id, err
 }
 
-// CreateAWSRoleCredential creates a token-less credential that is immediately
-// active. All of its data (role_arn, external_id, region) lives in the plaintext
-// metadata JSONB — there is no OAuth exchange and nothing secret to encrypt, so
-// the credential does not pass through the pending → active token lifecycle.
-func (s *Service) CreateAWSRoleCredential(environmentID, name string, metadata json.RawMessage) (string, error) {
+// CreateAWSRoleCredential creates an immediately-active AWS Role credential. The
+// per-credential Flomation IAM user's SECRET access key is encrypted into
+// access_token (with the environment key, like any credential secret); its
+// non-secret fields (role_arn, external_id, region, iam_user_arn,
+// base_access_key_id) live in the plaintext metadata JSONB. baseSecret may be ""
+// for the single-principal fallback, in which case no token is stored.
+func (s *Service) CreateAWSRoleCredential(environmentID, name, environmentKey, baseSecret string, metadata json.RawMessage) (string, error) {
 	var id string
 	err := s.conn.QueryRow(`
 		INSERT INTO environment_credential (
-			environment_id, provider_slug, name, status, metadata
-		) VALUES ($1, 'aws_role', $2, 'active', $3)
+			environment_id, provider_slug, name, status, access_token, metadata
+		) VALUES (
+			$1, 'aws_role', $2, 'active',
+			CASE WHEN $3 = '' THEN NULL ELSE PGP_SYM_ENCRYPT($3, $4) END,
+			$5
+		)
 		RETURNING id`,
-		environmentID, name, []byte(metadata),
+		environmentID, name, baseSecret, environmentKey, []byte(metadata),
 	).Scan(&id)
 	return id, err
 }
