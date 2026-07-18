@@ -217,6 +217,28 @@ func (s *Service) GetCredentialWithMetaByID(id, environmentKey string) (*string,
 	return row.AccessToken, row.Metadata, nil
 }
 
+// IncompleteAWSRoleCredential identifies an aws_role credential whose wizard was
+// never completed (no role_arn attached), for cleanup.
+type IncompleteAWSRoleCredential struct {
+	ID            string `db:"id"`
+	EnvironmentID string `db:"environment_id"`
+	IAMUserName   string `db:"iam_user_name"`
+}
+
+// ListIncompleteAWSRoleCredentials returns aws_role credentials older than
+// olderThanSeconds that still have no role_arn in metadata — i.e. wizards
+// abandoned after minting the identity but before attaching a role.
+func (s *Service) ListIncompleteAWSRoleCredentials(olderThanSeconds int) ([]IncompleteAWSRoleCredential, error) {
+	var rows []IncompleteAWSRoleCredential
+	err := s.conn.Select(&rows, `
+		SELECT id, environment_id, COALESCE(metadata->>'iam_user_name', '') AS iam_user_name
+		FROM environment_credential
+		WHERE provider_slug = 'aws_role'
+		  AND created_at < NOW() - make_interval(secs => $1)
+		  AND COALESCE(metadata->>'role_arn', '') = ''`, olderThanSeconds)
+	return rows, err
+}
+
 // UpdateCredentialMetadata overwrites a credential's metadata JSONB column.
 // Used by the OAuth callback to persist the per-account identifier discovered
 // only after authorisation (QuickBooks realmId returned on the callback; Xero
