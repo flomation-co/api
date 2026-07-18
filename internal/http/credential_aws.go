@@ -24,10 +24,19 @@ import (
 // role. The dedicated identity means a compromised execution using this
 // credential can only ever assume this credential's role.
 func (s *Service) createAWSRoleCredential(c *gin.Context, environmentID string, env *api.Environment, req createCredentialRequest) {
+	// Role ARN is OPTIONAL at creation: the wizard mints Flomation's identity
+	// first (step 1), the customer builds their role from the returned policies
+	// (step 2), then attaches the ARN via setAWSRoleARN. When absent, the minted
+	// user is granted sts:AssumeRole on "*" (capped to assume-role by the
+	// boundary; trust is gated by the customer's role either way).
 	roleARN := strings.TrimSpace(req.RoleARN)
-	if !validRoleARN(roleARN) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid IAM role ARN is required (arn:aws:iam::<account>:role/<name>)"})
+	if roleARN != "" && !validRoleARN(roleARN) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid IAM role ARN (arn:aws:iam::<account>:role/<name>)"})
 		return
+	}
+	inlineResource := roleARN
+	if inlineResource == "" {
+		inlineResource = "*"
 	}
 
 	prov, err := s.awsProvisioner()
@@ -44,7 +53,7 @@ func (s *Service) createAWSRoleCredential(c *gin.Context, environmentID string, 
 	externalID := generateExternalID()
 	userName := generateCredUserName()
 
-	identity, err := prov.CreateCredentialIdentity(c.Request.Context(), userName, roleARN)
+	identity, err := prov.CreateCredentialIdentity(c.Request.Context(), userName, inlineResource)
 	if err != nil {
 		log.WithError(err).Error("unable to provision AWS credential identity")
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to provision AWS identity: " + err.Error()})
@@ -85,6 +94,45 @@ func (s *Service) createAWSRoleCredential(c *gin.Context, environmentID string, 
 		"trust_principal_arn": identity.UserARN,
 		"trust_policy":        buildTrustPolicy(identity.UserARN, externalID),
 	})
+}
+
+// setAWSRoleARN is step 2 of the wizard: attach the customer role ARN (created
+// from the policies shown in the UI) to an existing aws_role credential.
+func (s *Service) setAWSRoleARN(c *gin.Context) {
+	credID := c.Param("id")
+
+	var body struct {
+		RoleARN string `json:"role_arn"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	roleARN := strings.TrimSpace(body.RoleARN)
+	if !validRoleARN(roleARN) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid IAM role ARN is required"})
+		return
+	}
+
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil || cred == nil || cred.ProviderSlug != "aws_role" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "AWS role credential not found"})
+		return
+	}
+
+	merged, err := api.MergeMetadata(cred.Metadata, map[string]interface{}{"role_arn": roleARN})
+	if err != nil {
+		log.WithError(err).Error("unable to merge aws_role metadata")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if err := s.persistence.UpdateCredentialMetadata(credID, merged); err != nil {
+		log.WithError(err).Error("unable to update aws_role metadata")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": credID, "role_arn": roleARN})
 }
 
 // awsProvisioner builds the IAM provisioner from config, or (nil, nil) when
