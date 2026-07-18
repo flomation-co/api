@@ -199,6 +199,7 @@ var subCategoryMetadata = map[string]struct {
 	"azure/entra":                  {Name: "Entra ID", Icon: "id-badge", Description: "Microsoft Entra ID (Azure AD) — users, groups, membership, licences, and guest invites"},
 	"azure/tables":                 {Name: "Table Storage", Icon: "table", Description: "Azure Table Storage — tables and entities, with queries and partial updates"},
 	"azure/files":                  {Name: "Files", Icon: "folder-tree", Description: "Azure Files — file shares, directories and files, with time-limited share links"},
+	"azure/compute":                {Name: "Virtual Machines", Icon: "server", Description: "Azure Virtual Machines — lifecycle, network security groups, disks, snapshots, images, SSH keys and tags"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
