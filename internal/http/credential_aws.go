@@ -135,6 +135,60 @@ func (s *Service) setAWSRoleARN(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": credID, "role_arn": roleARN})
 }
 
+// testAWSRoleAccess performs a real STS AssumeRole using the credential's own
+// dedicated keys + External ID against the supplied role ARN, so the wizard can
+// confirm the trust policy is wired correctly before finishing. Returns
+// {ok:true} on success or {ok:false, error} with the AWS reason.
+func (s *Service) testAWSRoleAccess(c *gin.Context) {
+	environmentID := c.Param("environment")
+	credID := c.Param("id")
+	user := s.getUserFromContext(c)
+
+	var body struct {
+		RoleARN string `json:"role_arn"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	roleARN := strings.TrimSpace(body.RoleARN)
+	if !validRoleARN(roleARN) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid IAM role ARN is required"})
+		return
+	}
+
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil || env == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "environment not found"})
+		return
+	}
+
+	baseSecret, metaRaw, err := s.persistence.GetCredentialWithMetaByID(credID, env.SecretKey)
+	if err != nil || baseSecret == nil || metaRaw == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "AWS role credential not found"})
+		return
+	}
+	var meta struct {
+		BaseAccessKeyID string `json:"base_access_key_id"`
+		ExternalID      string `json:"external_id"`
+		Region          string `json:"region"`
+	}
+	if err := json.Unmarshal(*metaRaw, &meta); err != nil || meta.BaseAccessKeyID == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "credential is missing its Flomation identity"})
+		return
+	}
+
+	if err := awsiam.TestAssumeRole(c.Request.Context(), meta.BaseAccessKeyID, *baseSecret, meta.Region, roleARN, meta.ExternalID); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // awsProvisioner builds the IAM provisioner from config, or (nil, nil) when
 // provisioning isn't configured.
 func (s *Service) awsProvisioner() (*awsiam.Provisioner, error) {

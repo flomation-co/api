@@ -197,6 +197,26 @@ func (s *Service) GetCredentialWithMetaByName(environmentID, name, environmentKe
 	return row.AccessToken, row.Metadata, nil
 }
 
+// GetCredentialWithMetaByID resolves a credential's decrypted access token and
+// metadata by id (used to test AWS Role access with the credential's own base
+// keys). Returns (nil, nil, nil) when no active credential matches.
+func (s *Service) GetCredentialWithMetaByID(id, environmentKey string) (*string, *json.RawMessage, error) {
+	var row struct {
+		AccessToken *string          `db:"access_token"`
+		Metadata    *json.RawMessage `db:"metadata"`
+	}
+	if err := s.conn.Get(&row, `
+		SELECT PGP_SYM_DECRYPT(access_token, $2) AS access_token, metadata
+		FROM environment_credential
+		WHERE id = $1 AND status = 'active'`, id, environmentKey); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	return row.AccessToken, row.Metadata, nil
+}
+
 // UpdateCredentialMetadata overwrites a credential's metadata JSONB column.
 // Used by the OAuth callback to persist the per-account identifier discovered
 // only after authorisation (QuickBooks realmId returned on the callback; Xero
