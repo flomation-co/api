@@ -445,6 +445,12 @@ func (m *mockPersistence) GetCredentialByID(string) (*api.EnvironmentCredential,
 func (m *mockPersistence) CreateCredential(*api.EnvironmentCredential, string) (string, error) {
 	return "", nil
 }
+func (m *mockPersistence) CreateAWSRoleCredential(string, string, string, string, json.RawMessage) (string, error) {
+	return "aws-cred-id", nil
+}
+func (m *mockPersistence) GetCredentialWithMetaByID(string, string) (*string, *json.RawMessage, error) {
+	return nil, nil, nil
+}
 func (m *mockPersistence) StoreCredentialTokens(string, string, string, string, string, string, *time.Time) error {
 	return nil
 }

@@ -367,6 +367,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
+	v1.GET("config/platform", s.jwtMiddleware, s.getPlatformConfig)
 
 	// Organisations Group
 	orgs := v1.Group("organisation")
@@ -642,6 +643,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
 	environment.POST("/:environment/credential", s.jwtMiddleware, s.createEnvironmentCredential)
 	environment.POST("/:environment/credential/:id/reauthorise", s.jwtMiddleware, s.reauthoriseCredential)
+	environment.PUT("/:environment/credential/:id/aws-role", s.jwtMiddleware, s.setAWSRoleARN)
+	environment.POST("/:environment/credential/:id/aws-role/test", s.jwtMiddleware, s.testAWSRoleAccess)
 	environment.DELETE("/:environment/credential/:id", s.jwtMiddleware, s.deleteEnvironmentCredential)
 
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)

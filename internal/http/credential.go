@@ -68,6 +68,11 @@ func (s *Service) deleteEnvironmentCredential(c *gin.Context) {
 	environmentID := c.Param("environment")
 	credID := c.Param("id")
 
+	// Best-effort teardown of a dedicated AWS Role IAM user before the row goes.
+	// A failure here only orphans an assume-role-only user (recoverable by a
+	// sweep), so it must not block the credential deletion.
+	s.cleanupAWSRoleIdentity(c, credID)
+
 	if err := s.persistence.DeleteCredential(credID, environmentID); err != nil {
 		log.WithError(err).Error("unable to delete credential")
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -88,6 +93,10 @@ type createCredentialRequest struct {
 	// URLVars supplies per-tenant OAuth URL variable values (e.g.
 	// {"shop":"my-store"}) for providers that declare url_variables.
 	URLVars map[string]string `json:"url_vars"`
+	// RoleARN / Region apply only to the aws_role provider: the customer's IAM
+	// role to assume, and its region.
+	RoleARN string `json:"role_arn"`
+	Region  string `json:"region"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
@@ -115,6 +124,14 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
 	if err != nil || env == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "environment not found"})
+		return
+	}
+
+	// aws_role is a token-less credential: no OAuth round-trip. Generate an
+	// External ID, store the role details in metadata, and return the trust
+	// policy for the customer to paste into their AWS role.
+	if req.ProviderSlug == "aws_role" {
+		s.createAWSRoleCredential(c, environmentID, env, req)
 		return
 	}
 
