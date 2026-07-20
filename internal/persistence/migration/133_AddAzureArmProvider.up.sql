@@ -1,5 +1,5 @@
 -- Azure Resource Manager (ARM) managed-auth provider — Phase 1 of "Connect
--- Azure" (see executor/docs/azure-connect-phase1.md).
+-- Azure".
 --
 -- Delegated OAuth against the management plane: the customer consents once, the
 -- generic credential connector mints + auto-refreshes the token, and the Azure
