@@ -36,6 +36,14 @@ type URLVariable struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
 	Placeholder string `json:"placeholder,omitempty"`
+	// Optional variables may be left blank at connect time; when blank, Default
+	// is substituted. Used for values that have a sensible fallback the operator
+	// only overrides in special cases — e.g. Azure's {tenant}, which defaults to
+	// "organizations" (any work/school tenant) but can be pinned to a specific
+	// tenant ID for guest/cross-tenant sign-in. A required variable (the default)
+	// has no fallback and must be supplied (e.g. Shopify's {shop}).
+	Optional bool   `json:"optional,omitempty"`
+	Default  string `json:"default,omitempty"`
 }
 
 // urlVarValuePattern restricts a variable value to a single DNS label
