@@ -105,11 +105,22 @@ func (s *Service) buildOCIProvider(c *gin.Context) (common.ConfigurationProvider
 	user := strings.TrimSpace(c.Query("user_ocid"))
 	region := strings.ToLower(strings.TrimSpace(c.Query("region")))
 	fingerprint := strings.TrimSpace(c.Query("fingerprint"))
-	for label, v := range map[string]string{"Tenancy OCID": tenancy, "User OCID": user, "Region": region, "Key Fingerprint": fingerprint} {
-		if v == "" {
-			c.JSON(gohttp.StatusOK, gin.H{"error": "Fill in the " + label + " first"})
-			return nil, false
-		}
+	// Checked in form order (not a map — map iteration is non-deterministic, which
+	// would show a random "fill in X first" when several fields are blank), so an
+	// operator filling top-to-bottom is always prompted for the first empty field.
+	switch {
+	case tenancy == "":
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Fill in the Tenancy OCID first"})
+		return nil, false
+	case user == "":
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Fill in the User OCID first"})
+		return nil, false
+	case region == "":
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Fill in the Region first"})
+		return nil, false
+	case fingerprint == "":
+		c.JSON(gohttp.StatusOK, gin.H{"error": "Fill in the Key Fingerprint first"})
+		return nil, false
 	}
 	if !validOCIRegion.MatchString(region) {
 		c.JSON(gohttp.StatusOK, gin.H{"error": fmt.Sprintf("Region %q is not a valid OCI region", region)})
@@ -245,6 +256,8 @@ func (s *Service) getOracleAvailabilityDomains(c *gin.Context) {
 		return
 	}
 	client.HTTPClient = ociOptionsHTTPClient
+	// ADs are bounded per tenancy (typically 1–3), so this is a single call — no
+	// pagination needed (deliberate, unlike the capped loops elsewhere in the file).
 	resp, err := client.ListAvailabilityDomains(c.Request.Context(), identity.ListAvailabilityDomainsRequest{CompartmentId: &compartment})
 	if err != nil {
 		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
