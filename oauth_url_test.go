@@ -135,8 +135,13 @@ func TestProviderURLVariables(t *testing.T) {
 	if len(tv) != 1 || !tv[0].Optional || tv[0].Default != "organizations" {
 		t.Fatalf("optional/default not parsed: %+v", tv)
 	}
-	if vs[0].Optional || vs[0].Default != "" {
-		t.Fatalf("required var should have zero-valued Optional/Default: %+v", vs[0])
+	// A required variable (no optional/default in the JSON) parses them
+	// zero-valued. Parsed fresh rather than reusing an earlier `vs` so the
+	// assertion doesn't depend on scoping above.
+	reqRaw := json.RawMessage(`[{"key":"shop","label":"Shop Subdomain"}]`)
+	rv := CredentialProvider{URLVariablesRaw: &reqRaw}.URLVariables()
+	if len(rv) != 1 || rv[0].Optional || rv[0].Default != "" {
+		t.Fatalf("required var should have zero-valued Optional/Default: %+v", rv)
 	}
 	// A concrete tenant GUID and the default keyword both pass the host-safe
 	// value charset (single label of letters/digits/hyphens).
