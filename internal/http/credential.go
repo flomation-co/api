@@ -125,10 +125,22 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	}
 
 	// Validate the provider's per-tenant URL variables are all supplied and
-	// host-safe (surfaces a clear message before an OAuth round-trip).
+	// host-safe (surfaces a clear message before an OAuth round-trip). An
+	// optional variable left blank falls back to its declared Default, which is
+	// stored on the credential so every downstream substitution (authorize,
+	// token exchange, refresh) reads a concrete value with no default logic.
 	for _, v := range provider.URLVariables() {
-		val := req.URLVars[v.Key]
+		val := strings.TrimSpace(req.URLVars[v.Key])
 		if val == "" {
+			if v.Optional {
+				if v.Default != "" {
+					if req.URLVars == nil {
+						req.URLVars = map[string]string{}
+					}
+					req.URLVars[v.Key] = v.Default
+				}
+				continue
+			}
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is required", v.Label)})
 			return
 		}
