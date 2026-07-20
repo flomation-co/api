@@ -32,6 +32,11 @@ import (
 // arbitrary host. With this, the host is always *.oraclecloud.com.
 var validOCIRegion = regexp.MustCompile(`^[a-z0-9-]+$`)
 
+// ociOptionsMaxPages caps how many pages any option proxy will pull, so a large
+// catalogue (Oracle's platform images alone are 200+) can't turn one dropdown
+// fetch into an unbounded walk — the same guard the other proxies apply.
+const ociOptionsMaxPages = 10
+
 // ociOptionsHTTPClient is SSRF-hardened defence in depth (region validation
 // already pins the host to oraclecloud.com): block link-local + cloud-metadata
 // IPs at dial time and refuse cross-host redirects.
@@ -204,7 +209,7 @@ func (s *Service) getOracleCompartments(c *gin.Context) {
 	opts := []api.InputOption{{Name: "root (tenancy)", Value: tenancy}}
 	subtree := true
 	req := identity.ListCompartmentsRequest{CompartmentId: &tenancy, CompartmentIdInSubtree: &subtree, AccessLevel: identity.ListCompartmentsAccessLevelAny}
-	for {
+	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListCompartments(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
@@ -270,7 +275,7 @@ func (s *Service) getOracleShapes(c *gin.Context) {
 	seen := map[string]bool{}
 	opts := []api.InputOption{}
 	req := core.ListShapesRequest{CompartmentId: &compartment}
-	for {
+	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListShapes(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
@@ -312,7 +317,7 @@ func (s *Service) getOracleImages(c *gin.Context) {
 	if shape := strings.TrimSpace(c.Query("shape")); shape != "" && !strings.HasPrefix(shape, "${") {
 		req.Shape = &shape
 	}
-	for {
+	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListImages(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
@@ -346,7 +351,7 @@ func (s *Service) getOracleVcns(c *gin.Context) {
 	client.HTTPClient = ociOptionsHTTPClient
 	opts := []api.InputOption{}
 	req := core.ListVcnsRequest{CompartmentId: &compartment}
-	for {
+	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListVcns(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
@@ -383,7 +388,7 @@ func (s *Service) getOracleSubnets(c *gin.Context) {
 	if vcn := strings.TrimSpace(c.Query("vcn_ocid")); vcn != "" && !strings.HasPrefix(vcn, "${") {
 		req.VcnId = &vcn
 	}
-	for {
+	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListSubnets(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
