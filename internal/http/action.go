@@ -121,7 +121,8 @@ var categoryMetadata = map[string]api.ActionCategory{
 	// subCategoryMetadata below. The Azure OpenAI chat node (ai/azure_openai)
 	// and Azure AI Search (vectordatabase/azureaisearch) live under their
 	// capability categories, not here.
-	"azure": {Key: "azure", Name: "Azure", Icon: "azure", Description: "Microsoft Azure integrations"},
+	"azure":  {Key: "azure", Name: "Azure", Icon: "azure", Description: "Microsoft Azure integrations"},
+	"oracle": {Key: "oracle", Name: "Oracle Cloud", Icon: "oracle", Description: "Oracle Cloud Infrastructure (OCI) integrations"},
 }
 
 // subCategoryMetadata maps sub-paths (e.g. "aws/s3") to display metadata.
@@ -200,6 +201,7 @@ var subCategoryMetadata = map[string]struct {
 	"azure/tables":                 {Name: "Table Storage", Icon: "table", Description: "Azure Table Storage — tables and entities, with queries and partial updates"},
 	"azure/files":                  {Name: "Files", Icon: "folder-tree", Description: "Azure Files — file shares, directories and files, with time-limited share links"},
 	"azure/compute":                {Name: "Virtual Machines", Icon: "server", Description: "Azure Virtual Machines — lifecycle, network security groups, disks, snapshots, images, SSH keys and tags"},
+	"oracle/compute":               {Name: "Compute", Icon: "server", Description: "Oracle Cloud Compute — instance lifecycle, shapes, images, VNICs, networking and tags"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
