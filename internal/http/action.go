@@ -739,6 +739,11 @@ func (s *Service) getActions(c *gin.Context) {
 				if dyn, ok := dynamicOptionsMetadata[a.ID+"#"+inputs[idx].Name]; ok {
 					d := dyn
 					inputs[idx].DynamicOptions = &d
+				} else if dyn, ok := awsDynamicOption(a.ID, inputs[idx].Name); ok {
+					// Rule-based: any aws/* action's resource inputs get the
+					// matching live picker (see aws_options.go).
+					d := dyn
+					inputs[idx].DynamicOptions = &d
 				}
 			}
 			a.Inputs = inputs
