@@ -128,6 +128,28 @@ func (s *Service) CreateCredential(cred *api.EnvironmentCredential, environmentK
 	return id, err
 }
 
+// CreateAWSRoleCredential creates an immediately-active AWS Role credential. The
+// per-credential Flomation IAM user's SECRET access key is encrypted into
+// access_token (with the environment key, like any credential secret); its
+// non-secret fields (role_arn, external_id, region, iam_user_arn,
+// base_access_key_id) live in the plaintext metadata JSONB. baseSecret may be ""
+// for the single-principal fallback, in which case no token is stored.
+func (s *Service) CreateAWSRoleCredential(environmentID, name, environmentKey, baseSecret string, metadata json.RawMessage) (string, error) {
+	var id string
+	err := s.conn.QueryRow(`
+		INSERT INTO environment_credential (
+			environment_id, provider_slug, name, status, access_token, metadata
+		) VALUES (
+			$1, 'aws_role', $2, 'active',
+			CASE WHEN $3 = '' THEN NULL ELSE PGP_SYM_ENCRYPT($3, $4) END,
+			$5
+		)
+		RETURNING id`,
+		environmentID, name, baseSecret, environmentKey, []byte(metadata),
+	).Scan(&id)
+	return id, err
+}
+
 // StoreCredentialTokens saves the OAuth tokens after a successful authorization.
 // clientID/clientSecret are persisted so the background refresh poller can use them
 // without needing access to application config (supports config-default credentials).
@@ -159,17 +181,62 @@ func (s *Service) GetCredentialWithMetaByName(environmentID, name, environmentKe
 		AccessToken *string          `db:"access_token"`
 		Metadata    *json.RawMessage `db:"metadata"`
 	}
+	// No "access_token IS NOT NULL" guard: token-less credentials (e.g. aws_role,
+	// which carry only metadata — role_arn/external_id/region) must still resolve.
+	// PGP_SYM_DECRYPT(NULL, key) returns NULL, so AccessToken scans as nil and
+	// only the metadata is served.
 	if err := s.conn.Get(&row, `
 		SELECT PGP_SYM_DECRYPT(access_token, $3) AS access_token, metadata
 		FROM environment_credential
-		WHERE environment_id = $1 AND name = $2 AND status = 'active'
-		AND access_token IS NOT NULL`, environmentID, name, environmentKey); err != nil {
+		WHERE environment_id = $1 AND name = $2 AND status = 'active'`, environmentID, name, environmentKey); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil, nil
 		}
 		return nil, nil, err
 	}
 	return row.AccessToken, row.Metadata, nil
+}
+
+// GetCredentialWithMetaByID resolves a credential's decrypted access token and
+// metadata by id (used to test AWS Role access with the credential's own base
+// keys). Returns (nil, nil, nil) when no active credential matches.
+func (s *Service) GetCredentialWithMetaByID(id, environmentKey string) (*string, *json.RawMessage, error) {
+	var row struct {
+		AccessToken *string          `db:"access_token"`
+		Metadata    *json.RawMessage `db:"metadata"`
+	}
+	if err := s.conn.Get(&row, `
+		SELECT PGP_SYM_DECRYPT(access_token, $2) AS access_token, metadata
+		FROM environment_credential
+		WHERE id = $1 AND status = 'active'`, id, environmentKey); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	return row.AccessToken, row.Metadata, nil
+}
+
+// IncompleteAWSRoleCredential identifies an aws_role credential whose wizard was
+// never completed (no role_arn attached), for cleanup.
+type IncompleteAWSRoleCredential struct {
+	ID            string `db:"id"`
+	EnvironmentID string `db:"environment_id"`
+	IAMUserName   string `db:"iam_user_name"`
+}
+
+// ListIncompleteAWSRoleCredentials returns aws_role credentials older than
+// olderThanSeconds that still have no role_arn in metadata — i.e. wizards
+// abandoned after minting the identity but before attaching a role.
+func (s *Service) ListIncompleteAWSRoleCredentials(olderThanSeconds int) ([]IncompleteAWSRoleCredential, error) {
+	var rows []IncompleteAWSRoleCredential
+	err := s.conn.Select(&rows, `
+		SELECT id, environment_id, COALESCE(metadata->>'iam_user_name', '') AS iam_user_name
+		FROM environment_credential
+		WHERE provider_slug = 'aws_role'
+		  AND created_at < NOW() - make_interval(secs => $1)
+		  AND COALESCE(metadata->>'role_arn', '') = ''`, olderThanSeconds)
+	return rows, err
 }
 
 // UpdateCredentialMetadata overwrites a credential's metadata JSONB column.

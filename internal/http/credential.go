@@ -68,6 +68,11 @@ func (s *Service) deleteEnvironmentCredential(c *gin.Context) {
 	environmentID := c.Param("environment")
 	credID := c.Param("id")
 
+	// Best-effort teardown of a dedicated AWS Role IAM user before the row goes.
+	// A failure here only orphans an assume-role-only user (recoverable by a
+	// sweep), so it must not block the credential deletion.
+	s.cleanupAWSRoleIdentity(c, credID)
+
 	if err := s.persistence.DeleteCredential(credID, environmentID); err != nil {
 		log.WithError(err).Error("unable to delete credential")
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -88,6 +93,10 @@ type createCredentialRequest struct {
 	// URLVars supplies per-tenant OAuth URL variable values (e.g.
 	// {"shop":"my-store"}) for providers that declare url_variables.
 	URLVars map[string]string `json:"url_vars"`
+	// RoleARN / Region apply only to the aws_role provider: the customer's IAM
+	// role to assume, and its region.
+	RoleARN string `json:"role_arn"`
+	Region  string `json:"region"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
@@ -118,6 +127,14 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 		return
 	}
 
+	// aws_role is a token-less credential: no OAuth round-trip. Generate an
+	// External ID, store the role details in metadata, and return the trust
+	// policy for the customer to paste into their AWS role.
+	if req.ProviderSlug == "aws_role" {
+		s.createAWSRoleCredential(c, environmentID, env, req)
+		return
+	}
+
 	// Use provider defaults if client credentials not provided
 	scopes := provider.DefaultScopes
 	if req.Scopes != nil && *req.Scopes != "" {
@@ -125,13 +142,33 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	}
 
 	// Validate the provider's per-tenant URL variables are all supplied and
-	// host-safe (surfaces a clear message before an OAuth round-trip).
+	// host-safe (surfaces a clear message before an OAuth round-trip). An
+	// optional variable left blank falls back to its declared Default, which is
+	// stored on the credential so every downstream substitution (authorize,
+	// token exchange, refresh) reads a concrete value with no default logic.
 	for _, v := range provider.URLVariables() {
-		val := req.URLVars[v.Key]
-		if val == "" {
+		if strings.TrimSpace(req.URLVars[v.Key]) != "" {
+			continue
+		}
+		if !v.Optional {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is required", v.Label)})
 			return
 		}
+		// Optional and blank → substitute the declared default. An optional URL
+		// variable MUST declare a default: the auth/token URL still contains its
+		// {placeholder}, so with nothing to fill it the OAuth URL is malformed.
+		// Enforce that invariant loudly here (a provider-seed bug) rather than
+		// letting it slip through to a confusing OAuth failure downstream.
+		if v.Default == "" {
+			log.WithFields(log.Fields{"provider": provider.Slug, "variable": v.Key}).
+				Error("optional URL variable declared without a default")
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		if req.URLVars == nil {
+			req.URLVars = map[string]string{}
+		}
+		req.URLVars[v.Key] = v.Default
 	}
 	if _, err := api.SubstituteURLVariables(provider.AuthURL, req.URLVars); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

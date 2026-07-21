@@ -367,6 +367,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
+	v1.GET("config/platform", s.jwtMiddleware, s.getPlatformConfig)
 
 	// Organisations Group
 	orgs := v1.Group("organisation")
@@ -455,6 +456,12 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/wordpress-categories", s.jwtMiddleware, s.getWordPressCategories)
 	actions.GET("/options/wordpress-tags", s.jwtMiddleware, s.getWordPressTags)
 	actions.GET("/options/wordpress-authors", s.jwtMiddleware, s.getWordPressAuthors)
+	actions.GET("/options/oracle-compartments", s.jwtMiddleware, s.getOracleCompartments)
+	actions.GET("/options/oracle-availability-domains", s.jwtMiddleware, s.getOracleAvailabilityDomains)
+	actions.GET("/options/oracle-shapes", s.jwtMiddleware, s.getOracleShapes)
+	actions.GET("/options/oracle-images", s.jwtMiddleware, s.getOracleImages)
+	actions.GET("/options/oracle-vcns", s.jwtMiddleware, s.getOracleVcns)
+	actions.GET("/options/oracle-subnets", s.jwtMiddleware, s.getOracleSubnets)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
 	actions.GET("/options/jira-projects", s.jwtMiddleware, s.getJiraProjects)
 	actions.GET("/options/jira-issue-types", s.jwtMiddleware, s.getJiraIssueTypes)
@@ -649,6 +656,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
 	environment.POST("/:environment/credential", s.jwtMiddleware, s.createEnvironmentCredential)
 	environment.POST("/:environment/credential/:id/reauthorise", s.jwtMiddleware, s.reauthoriseCredential)
+	environment.PUT("/:environment/credential/:id/aws-role", s.jwtMiddleware, s.setAWSRoleARN)
+	environment.POST("/:environment/credential/:id/aws-role/test", s.jwtMiddleware, s.testAWSRoleAccess)
 	environment.DELETE("/:environment/credential/:id", s.jwtMiddleware, s.deleteEnvironmentCredential)
 
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)
