@@ -135,6 +135,8 @@ var subCategoryMetadata = map[string]struct {
 	"aws/ec2":                        {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
 	"aws/rds":                        {Name: "RDS", Icon: "database", Description: "Relational Database Service operations"},
 	"aws/vpc":                        {Name: "VPC", Icon: "circle-nodes", Description: "Virtual Private Cloud networking — subnets, route tables, gateways, peering and VPN"},
+	"aws/elbv2":                      {Name: "Elastic Load Balancing", Icon: "arrows-split-up-and-left", Description: "Application, Network and Gateway load balancers — target groups, listeners, rules and target health"},
+	"aws/autoscaling":                {Name: "Auto Scaling", Icon: "arrows-up-down", Description: "EC2 Auto Scaling groups — desired capacity, scaling policies, scheduled actions and instance refresh"},
 	"social/linkedin":                {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
 	"social/facebook":                {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
 	"google/drive":                   {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},

@@ -10,8 +10,10 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -90,6 +92,10 @@ var awsResourceInputs = map[string]string{
 	"key_name":    "key-pairs",
 	// S3 (aws/s3/* — the bucket is the primary resource users wire).
 	"bucket": "s3-buckets",
+	// Elastic Load Balancing + Auto Scaling (aws/elbv2/*, aws/autoscaling/*).
+	"load_balancer_arn":       "load-balancers",
+	"target_group_arn":        "target-groups",
+	"auto_scaling_group_name": "asgs",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -269,6 +275,12 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listKeyPairs(ctx, cfg)
 		case "s3-buckets":
 			opts, err = listS3Buckets(ctx, cfg)
+		case "load-balancers":
+			opts, err = listLoadBalancers(ctx, cfg)
+		case "target-groups":
+			opts, err = listTargetGroups(ctx, cfg)
+		case "asgs":
+			opts, err = listAutoScalingGroups(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -792,6 +804,61 @@ func listS3Buckets(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) 
 	for _, b := range out.Buckets {
 		name := awssdk.ToString(b.Name)
 		opts = append(opts, awsOption{Name: name, Value: name})
+	}
+	return opts, nil
+}
+
+func listLoadBalancers(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := elasticloadbalancingv2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := elasticloadbalancingv2.NewDescribeLoadBalancersPaginator(client, &elasticloadbalancingv2.DescribeLoadBalancersInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, lb := range page.LoadBalancers {
+			arn := awssdk.ToString(lb.LoadBalancerArn)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", awssdk.ToString(lb.LoadBalancerName), string(lb.Type)), Value: arn})
+		}
+	}
+	return opts, nil
+}
+
+func listTargetGroups(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := elasticloadbalancingv2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := elasticloadbalancingv2.NewDescribeTargetGroupsPaginator(client, &elasticloadbalancingv2.DescribeTargetGroupsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, tg := range page.TargetGroups {
+			arn := awssdk.ToString(tg.TargetGroupArn)
+			label := awssdk.ToString(tg.TargetGroupName)
+			if tg.Protocol != "" {
+				label = fmt.Sprintf("%s — %s:%d", label, string(tg.Protocol), awssdk.ToInt32(tg.Port))
+			}
+			opts = append(opts, awsOption{Name: label, Value: arn})
+		}
+	}
+	return opts, nil
+}
+
+func listAutoScalingGroups(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := autoscaling.NewFromConfig(cfg)
+	var opts []awsOption
+	p := autoscaling.NewDescribeAutoScalingGroupsPaginator(client, &autoscaling.DescribeAutoScalingGroupsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range page.AutoScalingGroups {
+			name := awssdk.ToString(g.AutoScalingGroupName)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %d/%d/%d (min/desired/max)", name, awssdk.ToInt32(g.MinSize), awssdk.ToInt32(g.DesiredCapacity), awssdk.ToInt32(g.MaxSize)), Value: name})
+		}
 	}
 	return opts, nil
 }
