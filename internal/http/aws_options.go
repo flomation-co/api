@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/gin-gonic/gin"
 
@@ -79,6 +80,16 @@ var awsResourceInputs = map[string]string{
 	"transit_gateway_attachment_id":  "transit-gateway-attachments",
 	"transit_gateway_route_table_id": "transit-gateway-route-tables",
 	"service_id":                     "vpc-endpoint-services",
+	// EC2 compute resources (aws/ec2/* — volumes, snapshots, AMIs, key pairs).
+	// These map the *current-region* resource inputs only; the copy actions'
+	// source_* inputs deliberately have no picker (they name resources in a
+	// different, user-supplied source region).
+	"volume_id":   "volumes",
+	"snapshot_id": "snapshots",
+	"image_id":    "images",
+	"key_name":    "key-pairs",
+	// S3 (aws/s3/* — the bucket is the primary resource users wire).
+	"bucket": "s3-buckets",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -248,6 +259,16 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listTransitGatewayRouteTables(ctx, cfg)
 		case "vpc-endpoint-services":
 			opts, err = listVpcEndpointServices(ctx, cfg)
+		case "volumes":
+			opts, err = listVolumes(ctx, cfg)
+		case "snapshots":
+			opts, err = listSnapshots(ctx, cfg)
+		case "images":
+			opts, err = listImages(ctx, cfg)
+		case "key-pairs":
+			opts, err = listKeyPairs(ctx, cfg)
+		case "s3-buckets":
+			opts, err = listS3Buckets(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -681,6 +702,96 @@ func listVpcEndpointServices(ctx context.Context, cfg awssdk.Config) ([]awsOptio
 			id := awssdk.ToString(s.ServiceId)
 			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", ec2Label(id, s.Tags), awssdk.ToString(s.ServiceName)), Value: id})
 		}
+	}
+	return opts, nil
+}
+
+func listVolumes(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeVolumesPaginator(client, &ec2.DescribeVolumesInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range page.Volumes {
+			id := awssdk.ToString(v.VolumeId)
+			size := awssdk.ToInt32(v.Size)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %d GiB, %s", ec2Label(id, v.Tags), size, string(v.State)), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listSnapshots(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	// Scope to snapshots this account owns — the public/shared pool is enormous.
+	p := ec2.NewDescribeSnapshotsPaginator(client, &ec2.DescribeSnapshotsInput{OwnerIds: []string{"self"}})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range page.Snapshots {
+			id := awssdk.ToString(s.SnapshotId)
+			desc := awssdk.ToString(s.Description)
+			label := ec2Label(id, s.Tags)
+			if desc != "" {
+				label = fmt.Sprintf("%s — %s", label, desc)
+			}
+			opts = append(opts, awsOption{Name: label, Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listImages(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	// Self-owned AMIs only (the public catalogue is far too large to list).
+	out, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{Owners: []string{"self"}})
+	if err != nil {
+		return nil, err
+	}
+	var opts []awsOption
+	for _, img := range out.Images {
+		id := awssdk.ToString(img.ImageId)
+		name := awssdk.ToString(img.Name)
+		label := ec2Label(id, img.Tags)
+		if name != "" {
+			label = fmt.Sprintf("%s — %s", name, id)
+		}
+		opts = append(opts, awsOption{Name: label, Value: id})
+	}
+	return opts, nil
+}
+
+func listKeyPairs(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	out, err := client.DescribeKeyPairs(ctx, &ec2.DescribeKeyPairsInput{})
+	if err != nil {
+		return nil, err
+	}
+	var opts []awsOption
+	for _, kp := range out.KeyPairs {
+		name := awssdk.ToString(kp.KeyName)
+		// The key pair's Value is its name (that's what create/delete/import take).
+		opts = append(opts, awsOption{Name: name, Value: name})
+	}
+	return opts, nil
+}
+
+func listS3Buckets(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := s3.NewFromConfig(cfg)
+	out, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		return nil, err
+	}
+	var opts []awsOption
+	for _, b := range out.Buckets {
+		name := awssdk.ToString(b.Name)
+		opts = append(opts, awsOption{Name: name, Value: name})
 	}
 	return opts, nil
 }
