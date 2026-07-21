@@ -45,6 +45,19 @@ func TestAWSDynamicOption(t *testing.T) {
 	g.Expect(ok).To(BeTrue())
 	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-images"))
 
+	// ELBv2 + Auto Scaling pickers.
+	dyn, ok = awsDynamicOption("aws/elbv2/create_listener", "load_balancer_arn")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-load-balancers"))
+
+	dyn, ok = awsDynamicOption("aws/elbv2/register_targets", "target_group_arn")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-target-groups"))
+
+	dyn, ok = awsDynamicOption("aws/autoscaling/set_desired_capacity", "auto_scaling_group_name")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-asgs"))
+
 	// A genuinely non-resource input on an aws/* action gets nothing.
 	_, ok = awsDynamicOption("aws/rds/create_db_instance", "master_username")
 	g.Expect(ok).To(BeFalse())
@@ -74,6 +87,8 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		// EC2 compute + S3 pickers
 		"volumes": true, "snapshots": true, "images": true, "key-pairs": true,
 		"s3-buckets": true,
+		// ELBv2 + Auto Scaling pickers
+		"load-balancers": true, "target-groups": true, "asgs": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)
