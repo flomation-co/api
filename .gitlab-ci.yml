@@ -62,11 +62,13 @@ lint:
     # GOMEMLIMIT bounds only the Go HEAP, not total RSS — govulncheck holds a large
     # OFF-heap footprint (mmap'd package export data, SSA), so 3600MiB heap + off-heap
     # still blew past 4Gi. Set GOMEMLIMIT well under the cap (2800MiB) to leave ~1.3Gi
-    # headroom for that off-heap RSS, and GOMAXPROCS=1 to minimise peak concurrent memory.
+    # headroom for that off-heap RSS. GOMAXPROCS=2 is the sweet spot: GOMAXPROCS=1 fixed
+    # the govulncheck OOM but starved golangci-lint's parallel package loading so it blew
+    # its 5m timeout; 2 gives golangci-lint enough throughput while keeping peak memory low.
     KUBERNETES_MEMORY_REQUEST: "4Gi"
     KUBERNETES_MEMORY_LIMIT: "4Gi"
     GOMEMLIMIT: "2800MiB"
-    GOMAXPROCS: "1"
+    GOMAXPROCS: "2"
   script:
     - make lint
 
