@@ -133,6 +133,7 @@ var subCategoryMetadata = map[string]struct {
 }{
 	"aws/s3":                         {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
 	"aws/ec2":                        {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+	"aws/rds":                        {Name: "RDS", Icon: "database", Description: "Relational Database Service operations"},
 	"social/linkedin":                {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
 	"social/facebook":                {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
 	"google/drive":                   {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
@@ -739,6 +740,11 @@ func (s *Service) getActions(c *gin.Context) {
 			}
 			for idx := range inputs {
 				if dyn, ok := dynamicOptionsMetadata[a.ID+"#"+inputs[idx].Name]; ok {
+					d := dyn
+					inputs[idx].DynamicOptions = &d
+				} else if dyn, ok := awsDynamicOption(a.ID, inputs[idx].Name); ok {
+					// Rule-based: any aws/* action's resource inputs get the
+					// matching live picker (see aws_options.go).
 					d := dyn
 					inputs[idx].DynamicOptions = &d
 				}

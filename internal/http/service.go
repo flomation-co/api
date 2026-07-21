@@ -514,6 +514,13 @@ func (s *Service) registerRoutes(config *config.Config) {
 		actions.GET("/options/awx-"+slug, s.jwtMiddleware, s.awxOptions(slug))
 	}
 	actions.GET("/options/awx-adhoc-modules", s.jwtMiddleware, s.getAWXAdHocModules)
+	// AWS resource pickers (security groups, subnets, KMS keys, IAM roles, SNS
+	// topics, RDS subnet groups) for the aws/* actions. awsResourceInputs is the
+	// shared source of truth for both the routes and the rule-based marker
+	// injection (aws_options.go).
+	for _, slug := range awsResourceInputs {
+		actions.GET("/options/aws-"+slug, s.jwtMiddleware, s.awsOptions(slug))
+	}
 	// pgvector pickers open a raw Postgres connection to a caller-named host —
 	// the only option proxy that is not HTTP, and the only one that could be
 	// aimed at the api's own control-plane database. See pgvector_options.go for
