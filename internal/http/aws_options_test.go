@@ -3,6 +3,7 @@ package http
 import (
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	. "github.com/onsi/gomega"
 )
 
@@ -49,8 +50,56 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		"security-groups": true, "subnets": true, "subnet-groups": true,
 		"kms-keys": true, "iam-roles": true, "sns-topics": true,
 		"db-instance-classes": true,
+		// VPC networking pickers
+		"vpcs": true, "route-tables": true, "internet-gateways": true,
+		"nat-gateways": true, "network-acls": true, "vpc-endpoints": true,
+		"vpc-peering-connections": true, "transit-gateways": true, "elastic-ips": true,
+		"dhcp-options": true, "network-interfaces": true, "customer-gateways": true,
+		"vpn-gateways":                true,
+		"transit-gateway-attachments": true, "transit-gateway-route-tables": true,
+		"vpc-endpoint-services": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)
 	}
+}
+
+// Regression: several inputs map to the same picker slug (e.g. subnet_id and
+// subnet_ids both → "subnets"), so route registration MUST dedupe by slug — gin
+// panics on a duplicate path. This reproduces the crash without dedup and proves
+// the deduped registration is panic-free.
+func TestAWSOptionRoutesDedupeBySlug(t *testing.T) {
+	g := NewWithT(t)
+	gin.SetMode(gin.TestMode)
+
+	// There genuinely are duplicate slug values, else the guard is meaningless.
+	unique := map[string]bool{}
+	for _, slug := range awsResourceInputs {
+		unique[slug] = true
+	}
+	g.Expect(len(unique)).To(BeNumerically("<", len(awsResourceInputs)),
+		"expected some input names to share a slug (the condition the dedup guards)")
+
+	noop := func(c *gin.Context) {}
+
+	// Without dedup: registering one route per input name collides → panic (the bug).
+	g.Expect(func() {
+		grp := gin.New().Group("/api/v1/action")
+		for _, slug := range awsResourceInputs {
+			grp.GET("/options/aws-"+slug, noop)
+		}
+	}).To(Panic())
+
+	// With dedup (as service.go does): one route per unique slug → no panic.
+	g.Expect(func() {
+		grp := gin.New().Group("/api/v1/action")
+		seen := map[string]bool{}
+		for _, slug := range awsResourceInputs {
+			if seen[slug] {
+				continue
+			}
+			seen[slug] = true
+			grp.GET("/options/aws-"+slug, noop)
+		}
+	}).ToNot(Panic())
 }
