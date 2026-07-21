@@ -462,6 +462,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/oracle-images", s.jwtMiddleware, s.getOracleImages)
 	actions.GET("/options/oracle-vcns", s.jwtMiddleware, s.getOracleVcns)
 	actions.GET("/options/oracle-subnets", s.jwtMiddleware, s.getOracleSubnets)
+	actions.GET("/options/oracle-route-tables", s.jwtMiddleware, s.getOracleRouteTables)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
 	actions.GET("/options/jira-projects", s.jwtMiddleware, s.getJiraProjects)
 	actions.GET("/options/jira-issue-types", s.jwtMiddleware, s.getJiraIssueTypes)

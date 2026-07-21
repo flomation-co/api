@@ -206,6 +206,7 @@ var subCategoryMetadata = map[string]struct {
 	"oracle/compute":               {Name: "Compute", Icon: "server", Description: "Oracle Cloud Compute — instance lifecycle, shapes, images, VNICs, networking and tags"},
 	"oracle/objectstorage":         {Name: "Object Storage", Icon: "box", Description: "Oracle Cloud Object Storage — buckets, objects, copy/rename, and pre-authenticated (presigned) request URLs"},
 	"oracle/autonomousdatabase":    {Name: "Autonomous Database", Icon: "database", Description: "Oracle Cloud Autonomous Database — provision, scale, back up, clone and generate connection wallets for self-driving Oracle databases"},
+	"oracle/networking":            {Name: "Networking", Icon: "network-wired", Description: "Oracle Cloud Networking — VCNs, subnets, security lists, route tables, gateways, network security groups, DHCP options and public IPs"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 

@@ -100,6 +100,35 @@ func init() {
 		dynamicOptionsMetadata["oracle/objectstorage/"+a+"#compartment_ocid"] = api.InputDynamicOptions{Endpoint: "/api/v1/action/options/oracle-compartments", Params: creds}
 	}
 
+	// Networking: reuse the existing compartment + VCN pickers across the write
+	// surface. compartment_ocid on every create + list; the destination on the
+	// move actions; vcn_ocid on every create that lives in a VCN and the optional
+	// VCN filter on the lists; and the NEW route-table picker on the create forms
+	// that reference a route table (all of which carry compartment + vcn to scope
+	// it). Per-resource ops (get/update/delete on a resource, NSG rule actions)
+	// take a plain OCID — like Compute's instance_ocid, they have no compartment
+	// field to scope a list.
+	netReg := func(id, input, endpoint string, params []string) {
+		dynamicOptionsMetadata["oracle/networking/"+id+"#"+input] = api.InputDynamicOptions{Endpoint: endpoint, Params: params}
+	}
+	netResources := []string{"vcn", "subnet", "security_list", "route_table", "internet_gateway", "nat_gateway", "service_gateway", "nsg", "dhcp_options", "public_ip"}
+	for _, r := range netResources {
+		netReg(r+"_create", "compartment_ocid", "/api/v1/action/options/oracle-compartments", creds)
+		netReg(r+"_get_all", "compartment_ocid", "/api/v1/action/options/oracle-compartments", creds)
+	}
+	for _, r := range []string{"vcn", "subnet", "security_list", "route_table", "internet_gateway", "nat_gateway", "nsg"} {
+		netReg(r+"_change_compartment", "target_compartment_ocid", "/api/v1/action/options/oracle-compartments", creds)
+	}
+	// vcn_ocid: on the VCN-scoped creates and the optional list filters.
+	for _, r := range []string{"subnet", "security_list", "route_table", "internet_gateway", "nat_gateway", "service_gateway", "nsg", "dhcp_options"} {
+		netReg(r+"_create", "vcn_ocid", "/api/v1/action/options/oracle-vcns", credsComp)
+		netReg(r+"_get_all", "vcn_ocid", "/api/v1/action/options/oracle-vcns", credsComp)
+	}
+	// route_table_ocid: the NEW oracle-route-tables picker (compartment + vcn scoped).
+	for _, id := range []string{"subnet_create", "internet_gateway_create", "nat_gateway_create", "service_gateway_create"} {
+		netReg(id, "route_table_ocid", "/api/v1/action/options/oracle-route-tables", credsCompVCN)
+	}
+
 	// Autonomous Database: compartment picker on the compartment-scoped actions
 	// (reuse oracle-compartments, creds-only). Per-database actions take a plain
 	// database OCID with no picker — matching the Compute node's instance_ocid,
@@ -382,6 +411,46 @@ func (s *Service) getOracleVcns(c *gin.Context) {
 	req := core.ListVcnsRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListVcns(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleRouteTables lists the route tables in a compartment (optionally scoped
+// to a VCN) for the route_table_ocid picker on the create forms. Mirrors
+// getOracleSubnets — compartment required, VCN optional.
+func (s *Service) getOracleRouteTables(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := core.NewVirtualNetworkClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := core.ListRouteTablesRequest{CompartmentId: &compartment}
+	if vcn := strings.TrimSpace(c.Query("vcn_ocid")); vcn != "" && !strings.HasPrefix(vcn, "${") {
+		req.VcnId = &vcn
+	}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListRouteTables(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
 			return
