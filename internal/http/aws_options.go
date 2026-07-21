@@ -75,6 +75,10 @@ var awsResourceInputs = map[string]string{
 	"network_interface_id":      "network-interfaces",
 	"customer_gateway_id":       "customer-gateways",
 	"vpn_gateway_id":            "vpn-gateways",
+	// VPC v2 (transit-gateway wiring + endpoint services).
+	"transit_gateway_attachment_id":  "transit-gateway-attachments",
+	"transit_gateway_route_table_id": "transit-gateway-route-tables",
+	"service_id":                     "vpc-endpoint-services",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -238,6 +242,12 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listCustomerGateways(ctx, cfg)
 		case "vpn-gateways":
 			opts, err = listVpnGateways(ctx, cfg)
+		case "transit-gateway-attachments":
+			opts, err = listTransitGatewayAttachments(ctx, cfg)
+		case "transit-gateway-route-tables":
+			opts, err = listTransitGatewayRouteTables(ctx, cfg)
+		case "vpc-endpoint-services":
+			opts, err = listVpcEndpointServices(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -620,6 +630,57 @@ func listVpnGateways(ctx context.Context, cfg awssdk.Config) ([]awsOption, error
 	for _, g := range out.VpnGateways {
 		id := awssdk.ToString(g.VpnGatewayId)
 		opts = append(opts, awsOption{Name: ec2Label(id, g.Tags), Value: id})
+	}
+	return opts, nil
+}
+
+func listTransitGatewayAttachments(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeTransitGatewayAttachmentsPaginator(client, &ec2.DescribeTransitGatewayAttachmentsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range page.TransitGatewayAttachments {
+			id := awssdk.ToString(a.TransitGatewayAttachmentId)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", ec2Label(id, a.Tags), string(a.ResourceType)), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listTransitGatewayRouteTables(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeTransitGatewayRouteTablesPaginator(client, &ec2.DescribeTransitGatewayRouteTablesInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, rt := range page.TransitGatewayRouteTables {
+			id := awssdk.ToString(rt.TransitGatewayRouteTableId)
+			opts = append(opts, awsOption{Name: ec2Label(id, rt.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listVpcEndpointServices(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeVpcEndpointServiceConfigurationsPaginator(client, &ec2.DescribeVpcEndpointServiceConfigurationsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range page.ServiceConfigurations {
+			id := awssdk.ToString(s.ServiceId)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", ec2Label(id, s.Tags), awssdk.ToString(s.ServiceName)), Value: id})
+		}
 	}
 	return opts, nil
 }

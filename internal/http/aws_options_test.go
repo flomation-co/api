@@ -55,7 +55,9 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		"nat-gateways": true, "network-acls": true, "vpc-endpoints": true,
 		"vpc-peering-connections": true, "transit-gateways": true, "elastic-ips": true,
 		"dhcp-options": true, "network-interfaces": true, "customer-gateways": true,
-		"vpn-gateways": true,
+		"vpn-gateways":                true,
+		"transit-gateway-attachments": true, "transit-gateway-route-tables": true,
+		"vpc-endpoint-services": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)
