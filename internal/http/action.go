@@ -202,6 +202,7 @@ var subCategoryMetadata = map[string]struct {
 	"azure/files":                  {Name: "Files", Icon: "folder-tree", Description: "Azure Files — file shares, directories and files, with time-limited share links"},
 	"azure/compute":                {Name: "Virtual Machines", Icon: "server", Description: "Azure Virtual Machines — lifecycle, network security groups, disks, snapshots, images, SSH keys and tags"},
 	"oracle/compute":               {Name: "Compute", Icon: "server", Description: "Oracle Cloud Compute — instance lifecycle, shapes, images, VNICs, networking and tags"},
+	"oracle/objectstorage":         {Name: "Object Storage", Icon: "box", Description: "Oracle Cloud Object Storage — buckets, objects, copy/rename, and pre-authenticated (presigned) request URLs"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 

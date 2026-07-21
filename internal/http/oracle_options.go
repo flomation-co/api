@@ -93,6 +93,12 @@ func init() {
 		reg(a, "vcn_ocid", "/api/v1/action/options/oracle-vcns", credsComp)
 	}
 	reg("instance_launch", "subnet_ocid", "/api/v1/action/options/oracle-subnets", credsCompVCN)
+
+	// Object Storage: the compartment picker on the two compartment-scoped bucket
+	// actions reuses the same oracle-compartments proxy (creds only, no dependency).
+	for _, a := range []string{"bucket_create", "bucket_get_all"} {
+		dynamicOptionsMetadata["oracle/objectstorage/"+a+"#compartment_ocid"] = api.InputDynamicOptions{Endpoint: "/api/v1/action/options/oracle-compartments", Params: creds}
+	}
 }
 
 // buildOCIProvider assembles an OCI ConfigurationProvider from the query params
