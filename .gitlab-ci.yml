@@ -55,6 +55,16 @@ lint:
     # config.toml to permit cpu_*_overwrite_max_allowed, else these are ignored.
     KUBERNETES_CPU_REQUEST: "2"
     KUBERNETES_CPU_LIMIT: "4"
+    # govulncheck loads the whole module dependency graph into memory to trace
+    # call paths; as the AWS SDK surface grew (adding service/s3 pulled a larger
+    # transitive graph) it OOM-killed (exit 137) at the runner's 4Gi ceiling.
+    # Pin memory to that ceiling (the runner rejects a request above 4Gi) and set
+    # GOMEMLIMIT just under it so the Go GC keeps the heap below the container's
+    # hard cgroup limit instead of being killed. GOMAXPROCS caps parallel memory.
+    KUBERNETES_MEMORY_REQUEST: "4Gi"
+    KUBERNETES_MEMORY_LIMIT: "4Gi"
+    GOMEMLIMIT: "3600MiB"
+    GOMAXPROCS: "2"
   script:
     - make lint
 
