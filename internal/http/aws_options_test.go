@@ -32,6 +32,19 @@ func TestAWSDynamicOption(t *testing.T) {
 	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-db-instance-classes"))
 	g.Expect(dyn.Params).To(ContainElement("engine"))
 
+	// EC2/S3 resource inputs added alongside the rounded-out EC2 + S3 suites.
+	dyn, ok = awsDynamicOption("aws/ec2/attach_volume", "volume_id")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-volumes"))
+
+	dyn, ok = awsDynamicOption("aws/s3/put_bucket_policy", "bucket")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-s3-buckets"))
+
+	dyn, ok = awsDynamicOption("aws/ec2/deregister_image", "image_id")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-images"))
+
 	// A genuinely non-resource input on an aws/* action gets nothing.
 	_, ok = awsDynamicOption("aws/rds/create_db_instance", "master_username")
 	g.Expect(ok).To(BeFalse())
@@ -58,6 +71,9 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		"vpn-gateways":                true,
 		"transit-gateway-attachments": true, "transit-gateway-route-tables": true,
 		"vpc-endpoint-services": true,
+		// EC2 compute + S3 pickers
+		"volumes": true, "snapshots": true, "images": true, "key-pairs": true,
+		"s3-buckets": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)
