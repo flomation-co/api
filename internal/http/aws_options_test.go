@@ -25,8 +25,14 @@ func TestAWSDynamicOption(t *testing.T) {
 	g.Expect(ok).To(BeTrue())
 	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-sns-topics"))
 
-	// A non-resource input on an aws/* action gets nothing.
-	_, ok = awsDynamicOption("aws/rds/create_db_instance", "db_instance_class")
+	// db_instance_class is an engine/region-aware picker (DescribeOrderable).
+	dyn, ok = awsDynamicOption("aws/rds/create_db_instance", "db_instance_class")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-db-instance-classes"))
+	g.Expect(dyn.Params).To(ContainElement("engine"))
+
+	// A genuinely non-resource input on an aws/* action gets nothing.
+	_, ok = awsDynamicOption("aws/rds/create_db_instance", "master_username")
 	g.Expect(ok).To(BeFalse())
 
 	// A resource-named input on a NON-aws action gets nothing (rule is scoped).
@@ -42,6 +48,7 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 	handled := map[string]bool{
 		"security-groups": true, "subnets": true, "subnet-groups": true,
 		"kms-keys": true, "iam-roles": true, "sns-topics": true,
+		"db-instance-classes": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)

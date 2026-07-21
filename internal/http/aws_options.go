@@ -44,6 +44,9 @@ import (
 var awsOptionParams = []string{
 	"aws_region", "aws_access_key", "aws_secret_key", "aws_session_token",
 	"assume_role_arn", "external_id", "credential", "environment",
+	// engine is only consumed by the instance-class picker (DescribeOrderable
+	// requires it); the resource pickers ignore it.
+	"engine",
 }
 
 // awsResourceInputs maps an AWS action input name to the picker slug that fills
@@ -55,6 +58,7 @@ var awsResourceInputs = map[string]string{
 	"kms_key_id":             "kms-keys",
 	"role_arn":               "iam-roles",
 	"sns_topic_arn":          "sns-topics",
+	"db_instance_class":      "db-instance-classes",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -185,6 +189,13 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listIAMRoles(ctx, cfg)
 		case "sns-topics":
 			opts, err = listSNSTopics(ctx, cfg)
+		case "db-instance-classes":
+			engine := strings.TrimSpace(c.Query("engine"))
+			if engine == "" {
+				c.JSON(gohttp.StatusOK, gin.H{"error": "Choose an engine to list the instance classes available in this region"})
+				return
+			}
+			opts, err = listOrderableInstanceClasses(ctx, cfg, engine)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -307,6 +318,34 @@ func listSNSTopics(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) 
 				name = arn[i+1:]
 			}
 			opts = append(opts, awsOption{Name: name, Value: arn})
+		}
+	}
+	return opts, nil
+}
+
+// listOrderableInstanceClasses returns the distinct DB instance classes orderable
+// for the given engine in this region, powering the db_instance_class picker.
+// DescribeOrderableDBInstanceOptions returns one row per class/version/AZ combo,
+// so classes are de-duplicated. Bounded at 200 distinct classes.
+func listOrderableInstanceClasses(ctx context.Context, cfg awssdk.Config, engine string) ([]awsOption, error) {
+	client := rds.NewFromConfig(cfg)
+	seen := map[string]bool{}
+	var opts []awsOption
+	p := rds.NewDescribeOrderableDBInstanceOptionsPaginator(client, &rds.DescribeOrderableDBInstanceOptionsInput{
+		Engine: awssdk.String(engine),
+	})
+	for p.HasMorePages() && len(opts) < 200 {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range page.OrderableDBInstanceOptions {
+			class := awssdk.ToString(o.DBInstanceClass)
+			if class == "" || seen[class] {
+				continue
+			}
+			seen[class] = true
+			opts = append(opts, awsOption{Name: class, Value: class})
 		}
 	}
 	return opts, nil
