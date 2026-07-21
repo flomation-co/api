@@ -99,6 +99,16 @@ func init() {
 	for _, a := range []string{"bucket_create", "bucket_get_all"} {
 		dynamicOptionsMetadata["oracle/objectstorage/"+a+"#compartment_ocid"] = api.InputDynamicOptions{Endpoint: "/api/v1/action/options/oracle-compartments", Params: creds}
 	}
+
+	// Autonomous Database: compartment picker on the compartment-scoped actions
+	// (reuse oracle-compartments, creds-only). Per-database actions take a plain
+	// database OCID with no picker — matching the Compute node's instance_ocid,
+	// since a per-database action has no compartment field to scope a DB list.
+	for _, a := range []string{"db_get_all", "db_create", "db_clone", "db_list_versions", "db_list_clones", "db_list_backups"} {
+		dynamicOptionsMetadata["oracle/autonomousdatabase/"+a+"#compartment_ocid"] = api.InputDynamicOptions{Endpoint: "/api/v1/action/options/oracle-compartments", Params: creds}
+	}
+	// The destination compartment on the move action is also a real compartment field.
+	dynamicOptionsMetadata["oracle/autonomousdatabase/db_change_compartment#target_compartment_ocid"] = api.InputDynamicOptions{Endpoint: "/api/v1/action/options/oracle-compartments", Params: creds}
 }
 
 // buildOCIProvider assembles an OCI ConfigurationProvider from the query params
