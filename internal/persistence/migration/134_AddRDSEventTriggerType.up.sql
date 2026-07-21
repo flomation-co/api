@@ -10,11 +10,12 @@
 -- The api derives it by turning 'trigger/rds_event' into 'rds-event' (underscores
 -- -> hyphens).
 --
--- NUMBERING: 132. main is at 131 (131_AddDatabaseRowTriggerType) when this is
--- written. golang-migrate SILENTLY SKIPS an out-of-order version and a DUPLICATE
--- makes the api fail to BOOT (502). Git does not flag a clash (filenames differ)
--- and the Go tests do not run migrations against a real database, so re-check this
--- number AFTER rebasing on main, not just now.
+-- NUMBERING: 134. RENUMBERED from 132 -> 134 after 132_AddAWSRoleProvider and
+-- 133_AddAzureArmProvider landed on main from concurrent branches (main was at
+-- 131 when first written). golang-migrate SILENTLY SKIPS an out-of-order version
+-- and a DUPLICATE makes the api fail to BOOT (502). Git does not flag a clash
+-- (filenames differ) and the Go tests do not run migrations against a real
+-- database, so re-check this number AFTER rebasing on main, not just now.
 --
 -- IDEMPOTENCY -- deliberately NOT "ON CONFLICT DO NOTHING": trigger_type.name has
 -- no UNIQUE constraint (see migration 06), so ON CONFLICT has no arbiter index and
