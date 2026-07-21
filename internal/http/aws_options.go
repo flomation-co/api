@@ -11,6 +11,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -59,6 +60,21 @@ var awsResourceInputs = map[string]string{
 	"role_arn":               "iam-roles",
 	"sns_topic_arn":          "sns-topics",
 	"db_instance_class":      "db-instance-classes",
+	// VPC networking resources (aws/vpc/* actions).
+	"vpc_id":                    "vpcs",
+	"subnet_id":                 "subnets",
+	"route_table_id":            "route-tables",
+	"internet_gateway_id":       "internet-gateways",
+	"nat_gateway_id":            "nat-gateways",
+	"network_acl_id":            "network-acls",
+	"vpc_endpoint_id":           "vpc-endpoints",
+	"vpc_peering_connection_id": "vpc-peering-connections",
+	"transit_gateway_id":        "transit-gateways",
+	"allocation_id":             "elastic-ips",
+	"dhcp_options_id":           "dhcp-options",
+	"network_interface_id":      "network-interfaces",
+	"customer_gateway_id":       "customer-gateways",
+	"vpn_gateway_id":            "vpn-gateways",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -196,6 +212,32 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 				return
 			}
 			opts, err = listOrderableInstanceClasses(ctx, cfg, engine)
+		case "vpcs":
+			opts, err = listVPCs(ctx, cfg)
+		case "route-tables":
+			opts, err = listRouteTables(ctx, cfg)
+		case "internet-gateways":
+			opts, err = listInternetGateways(ctx, cfg)
+		case "nat-gateways":
+			opts, err = listNatGateways(ctx, cfg)
+		case "network-acls":
+			opts, err = listNetworkAcls(ctx, cfg)
+		case "vpc-endpoints":
+			opts, err = listVpcEndpoints(ctx, cfg)
+		case "vpc-peering-connections":
+			opts, err = listVpcPeeringConnections(ctx, cfg)
+		case "transit-gateways":
+			opts, err = listTransitGateways(ctx, cfg)
+		case "elastic-ips":
+			opts, err = listElasticIPs(ctx, cfg)
+		case "dhcp-options":
+			opts, err = listDhcpOptions(ctx, cfg)
+		case "network-interfaces":
+			opts, err = listNetworkInterfaces(ctx, cfg)
+		case "customer-gateways":
+			opts, err = listCustomerGateways(ctx, cfg)
+		case "vpn-gateways":
+			opts, err = listVpnGateways(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -347,6 +389,237 @@ func listOrderableInstanceClasses(ctx context.Context, cfg awssdk.Config, engine
 			seen[class] = true
 			opts = append(opts, awsOption{Name: class, Value: class})
 		}
+	}
+	return opts, nil
+}
+
+// ec2Label renders "<Name tag> (<id>)" when the resource has a Name tag, else the
+// bare id — the same convention listSubnets/listSecurityGroups use.
+func ec2Label(id string, tags []ec2types.Tag) string {
+	for _, t := range tags {
+		if awssdk.ToString(t.Key) == "Name" {
+			if v := awssdk.ToString(t.Value); v != "" {
+				return fmt.Sprintf("%s (%s)", v, id)
+			}
+		}
+	}
+	return id
+}
+
+func listVPCs(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeVpcsPaginator(client, &ec2.DescribeVpcsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range page.Vpcs {
+			id := awssdk.ToString(v.VpcId)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", ec2Label(id, v.Tags), awssdk.ToString(v.CidrBlock)), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listRouteTables(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeRouteTablesPaginator(client, &ec2.DescribeRouteTablesInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, rt := range page.RouteTables {
+			id := awssdk.ToString(rt.RouteTableId)
+			opts = append(opts, awsOption{Name: ec2Label(id, rt.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listInternetGateways(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeInternetGatewaysPaginator(client, &ec2.DescribeInternetGatewaysInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range page.InternetGateways {
+			id := awssdk.ToString(g.InternetGatewayId)
+			opts = append(opts, awsOption{Name: ec2Label(id, g.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listNatGateways(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeNatGatewaysPaginator(client, &ec2.DescribeNatGatewaysInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range page.NatGateways {
+			id := awssdk.ToString(g.NatGatewayId)
+			opts = append(opts, awsOption{Name: ec2Label(id, g.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listNetworkAcls(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeNetworkAclsPaginator(client, &ec2.DescribeNetworkAclsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range page.NetworkAcls {
+			id := awssdk.ToString(a.NetworkAclId)
+			opts = append(opts, awsOption{Name: ec2Label(id, a.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listVpcEndpoints(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeVpcEndpointsPaginator(client, &ec2.DescribeVpcEndpointsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range page.VpcEndpoints {
+			id := awssdk.ToString(e.VpcEndpointId)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", ec2Label(id, e.Tags), awssdk.ToString(e.ServiceName)), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listVpcPeeringConnections(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeVpcPeeringConnectionsPaginator(client, &ec2.DescribeVpcPeeringConnectionsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, pc := range page.VpcPeeringConnections {
+			id := awssdk.ToString(pc.VpcPeeringConnectionId)
+			opts = append(opts, awsOption{Name: ec2Label(id, pc.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listTransitGateways(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeTransitGatewaysPaginator(client, &ec2.DescribeTransitGatewaysInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range page.TransitGateways {
+			id := awssdk.ToString(g.TransitGatewayId)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", id, awssdk.ToString(g.Description)), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listDhcpOptions(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeDhcpOptionsPaginator(client, &ec2.DescribeDhcpOptionsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range page.DhcpOptions {
+			id := awssdk.ToString(d.DhcpOptionsId)
+			opts = append(opts, awsOption{Name: ec2Label(id, d.Tags), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listNetworkInterfaces(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	var opts []awsOption
+	p := ec2.NewDescribeNetworkInterfacesPaginator(client, &ec2.DescribeNetworkInterfacesInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, ni := range page.NetworkInterfaces {
+			id := awssdk.ToString(ni.NetworkInterfaceId)
+			// NetworkInterface exposes its tags as TagSet, not Tags.
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", ec2Label(id, ni.TagSet), awssdk.ToString(ni.Description)), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+// listElasticIPs, listCustomerGateways and listVpnGateways have no paginator —
+// single Describe call.
+func listElasticIPs(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	out, err := client.DescribeAddresses(ctx, &ec2.DescribeAddressesInput{})
+	if err != nil {
+		return nil, err
+	}
+	var opts []awsOption
+	for _, a := range out.Addresses {
+		id := awssdk.ToString(a.AllocationId)
+		if id == "" {
+			continue // classic EIPs have no allocation id
+		}
+		opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", awssdk.ToString(a.PublicIp), ec2Label(id, a.Tags)), Value: id})
+	}
+	return opts, nil
+}
+
+func listCustomerGateways(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	out, err := client.DescribeCustomerGateways(ctx, &ec2.DescribeCustomerGatewaysInput{})
+	if err != nil {
+		return nil, err
+	}
+	var opts []awsOption
+	for _, g := range out.CustomerGateways {
+		id := awssdk.ToString(g.CustomerGatewayId)
+		opts = append(opts, awsOption{Name: ec2Label(id, g.Tags), Value: id})
+	}
+	return opts, nil
+}
+
+func listVpnGateways(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := ec2.NewFromConfig(cfg)
+	out, err := client.DescribeVpnGateways(ctx, &ec2.DescribeVpnGatewaysInput{})
+	if err != nil {
+		return nil, err
+	}
+	var opts []awsOption
+	for _, g := range out.VpnGateways {
+		id := awssdk.ToString(g.VpnGatewayId)
+		opts = append(opts, awsOption{Name: ec2Label(id, g.Tags), Value: id})
 	}
 	return opts, nil
 }

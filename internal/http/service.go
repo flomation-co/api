@@ -518,7 +518,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// topics, RDS subnet groups) for the aws/* actions. awsResourceInputs is the
 	// shared source of truth for both the routes and the rule-based marker
 	// injection (aws_options.go).
+	// Several input names can map to the same picker slug (e.g. both subnet_id and
+	// subnet_ids → "subnets"), so register each unique slug ONCE — gin panics on a
+	// duplicate route.
+	registeredAWS := map[string]bool{}
 	for _, slug := range awsResourceInputs {
+		if registeredAWS[slug] {
+			continue
+		}
+		registeredAWS[slug] = true
 		actions.GET("/options/aws-"+slug, s.jwtMiddleware, s.awsOptions(slug))
 	}
 	// pgvector pickers open a raw Postgres connection to a caller-named host —
