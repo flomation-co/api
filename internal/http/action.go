@@ -223,6 +223,7 @@ var subCategoryMetadata = map[string]struct {
 	"oracle/dns":                   {Name: "DNS", Icon: "globe", Description: "Oracle Cloud DNS — manage public and private zones and their records, steer traffic with policies, and run private-DNS views, resolvers and TSIG keys"},
 	"oracle/identity":              {Name: "Identity", Icon: "shield-halved", Description: "Oracle Cloud Identity (IAM) — users, groups and memberships, policies, compartments, dynamic groups, credentials, tagging, federation and identity domains"},
 	"oracle/filestorage":           {Name: "File Storage", Icon: "folder-tree", Description: "Oracle Cloud File Storage — provision NFS file systems and mount targets, wire exports, take and schedule snapshots, replicate across regions, and set quotas"},
+	"oracle/vault":                 {Name: "Vault", Icon: "lock", Description: "Oracle Cloud Vault & KMS — manage vaults, master encryption keys and key versions, run crypto operations (encrypt/decrypt/sign/verify), and store, rotate and retrieve secrets"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
