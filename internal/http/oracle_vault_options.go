@@ -144,8 +144,8 @@ func (s *Service) oracleVaultManagementClient(c *gin.Context) (keymanagement.Kms
 		return keymanagement.KmsManagementClient{}, false
 	}
 	endpoint := ""
-	if vResp.Vault.ManagementEndpoint != nil {
-		endpoint = *vResp.Vault.ManagementEndpoint
+	if vResp.ManagementEndpoint != nil {
+		endpoint = *vResp.ManagementEndpoint
 	}
 	if endpoint == "" {
 		c.JSON(gohttp.StatusOK, gin.H{"error": "the selected vault has no management endpoint yet — it may still be provisioning"})
