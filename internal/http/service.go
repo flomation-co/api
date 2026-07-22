@@ -721,6 +721,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	environment.POST("/:environment/credential", s.jwtMiddleware, s.createEnvironmentCredential)
 	environment.POST("/:environment/credential/:id/reauthorise", s.jwtMiddleware, s.reauthoriseCredential)
 	environment.PUT("/:environment/credential/:id/aws-role", s.jwtMiddleware, s.setAWSRoleARN)
+	environment.PUT("/:environment/credential/:id/aws-permissions", s.jwtMiddleware, s.updateAWSRolePermissions)
 	environment.POST("/:environment/credential/:id/aws-role/test", s.jwtMiddleware, s.testAWSRoleAccess)
 	environment.DELETE("/:environment/credential/:id", s.jwtMiddleware, s.deleteEnvironmentCredential)
 
