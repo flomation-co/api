@@ -76,6 +76,15 @@ func TestAWSDynamicOption(t *testing.T) {
 	g.Expect(ok).To(BeTrue())
 	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-log-groups"))
 
+	// IAM + Secrets pickers.
+	dyn, ok = awsDynamicOption("aws/secretsmanager/get_secret_value", "secret_id")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-secrets"))
+
+	dyn, ok = awsDynamicOption("aws/iam/attach_user_policy", "policy_arn")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-iam-policies"))
+
 	// A genuinely non-resource input on an aws/* action gets nothing.
 	_, ok = awsDynamicOption("aws/rds/create_db_instance", "master_username")
 	g.Expect(ok).To(BeFalse())
@@ -111,6 +120,8 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		"hosted-zones": true, "health-checks": true,
 		// CloudWatch pickers
 		"alarms": true, "log-groups": true,
+		// IAM + Secrets pickers
+		"secrets": true, "iam-users": true, "iam-groups": true, "iam-policies": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)
