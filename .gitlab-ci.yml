@@ -87,14 +87,27 @@ security-scan:
 compile:
   stage: build
   variables:
-    # Give the build pod 4 cores so the per-platform cross-compiles run in
-    # parallel. JOBS is pinned (not left to $(nproc)) because nproc does not
-    # reliably reflect a k8s CFS CPU limit — last run it reported 1, forcing
-    # make -j1 (serial). Requires the runner's config.toml to permit
-    # cpu_*_overwrite_max_allowed, else these are ignored and -j4 just throttles.
+    # Build parallelism is deliberately capped to keep peak compiler memory under
+    # the runner's cgroup limit. As the OCI/AWS/Azure SDK surface grew (each new
+    # provider node pulls a larger transitive package graph), the compile job began
+    # OOM-killing (exit 137) at JOBS=4 — four parallel per-platform cross-compiles,
+    # each loading the whole package tree, plus Go's default package parallelism.
+    # This job set no memory request, so it ran on the runner's default (well under
+    # 4Gi). JOBS=2 halves the concurrent cross-compiles and GOMAXPROCS=2 caps Go's
+    # per-build package concurrency (go build -p defaults to GOMAXPROCS), cutting
+    # peak memory ~4x; GOMAXPROCS (not GOFLAGS=-p) so it stays valid for `go mod`
+    # subcommands too. The runner rejects any MemoryRequest above 4Gi ("higher than
+    # limit allowed 4Gi"), so we pin request=limit=4Gi to guarantee the full
+    # allowance rather than the lower default the growing build would blow past.
+    # JOBS is pinned (not $(nproc)) because nproc does not reliably reflect a k8s
+    # CFS CPU limit. Requires the runner's config.toml to permit
+    # cpu_*_overwrite_max_allowed / the memory overwrite, else these are ignored.
     KUBERNETES_CPU_REQUEST: "2"
     KUBERNETES_CPU_LIMIT: "4"
-    JOBS: "4"
+    KUBERNETES_MEMORY_REQUEST: "4Gi"
+    KUBERNETES_MEMORY_LIMIT: "4Gi"
+    JOBS: "2"
+    GOMAXPROCS: "2"
   script:
     - make build
   artifacts:
