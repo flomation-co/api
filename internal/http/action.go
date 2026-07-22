@@ -212,6 +212,7 @@ var subCategoryMetadata = map[string]struct {
 	"oracle/blockvolume":           {Name: "Block Volumes", Icon: "hard-drive", Description: "Oracle Cloud Block Volumes — provision and attach block/boot volumes, take and copy backups, and schedule them with backup policies"},
 	"oracle/loadbalancer":          {Name: "Load Balancer", Icon: "circle-nodes", Description: "Oracle Cloud Load Balancer — provision Layer-7 load balancers, wire backend sets and listeners, manage SSL certificates, hostnames and routing, and track backend health"},
 	"oracle/networkloadbalancer":   {Name: "Network Load Balancer", Icon: "ethernet", Description: "Oracle Cloud Network Load Balancer — provision Layer 3/4 (TCP/UDP) load balancers, wire backend sets and listeners, tune health checks, and track backend health"},
+	"oracle/dns":                   {Name: "DNS", Icon: "globe", Description: "Oracle Cloud DNS — manage public and private zones and their records, steer traffic with policies, and run private-DNS views, resolvers and TSIG keys"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
