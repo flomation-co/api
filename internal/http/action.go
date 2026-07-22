@@ -227,6 +227,7 @@ var subCategoryMetadata = map[string]struct {
 	"oracle/notifications":         {Name: "Notifications", Icon: "bell", Description: "Oracle Cloud Notifications (ONS) — create topics, manage subscriptions across email, SMS, HTTPS, Slack and more, and publish a message that fans out to every subscriber"},
 	"oracle/containerengine":       {Name: "Container Engine", Icon: "cubes", Description: "Oracle Cloud Container Engine for Kubernetes (OKE) — provision and manage clusters, node pools and virtual node pools, install add-ons, generate kubeconfig, rotate credentials, and track asynchronous work requests"},
 	"oracle/exadata":               {Name: "Exadata", Icon: "microchip", Description: "Oracle Cloud Exadata Database Service on Dedicated Infrastructure — provision and manage cloud Exadata infrastructure and VM clusters, inspect DB servers and nodes, and schedule maintenance runs"},
+	"oracle/streaming":             {Name: "Streaming", Icon: "tower-broadcast", Description: "Oracle Cloud Streaming — a Kafka-compatible managed streaming service: create and manage streams, stream pools and connect harnesses, publish messages, and consume them with cursors and consumer groups"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
