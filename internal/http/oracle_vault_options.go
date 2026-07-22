@@ -31,7 +31,7 @@ func init() {
 	vaultsEP := "/api/v1/action/options/oracle-vault-vaults"
 	keysEP := "/api/v1/action/options/oracle-vault-keys"
 	keyVersionsEP := "/api/v1/action/options/oracle-vault-key-versions"
-	secretsEP := "/api/v1/action/options/oracle-vault-secrets"
+	secretsEP := "/api/v1/action/options/oracle-vault-secrets" // #nosec G101 -- an option-proxy route path, not a credential (the "secrets" in the name trips gosec's identifier heuristic)
 
 	reg := func(id, input, endpoint string, params []string) {
 		dynamicOptionsMetadata["oracle/vault/"+id+"#"+input] = api.InputDynamicOptions{Endpoint: endpoint, Params: params}
