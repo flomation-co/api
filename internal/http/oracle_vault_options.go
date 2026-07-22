@@ -147,6 +147,10 @@ func (s *Service) oracleVaultManagementClient(c *gin.Context) (keymanagement.Kms
 	if vResp.Vault.ManagementEndpoint != nil {
 		endpoint = *vResp.Vault.ManagementEndpoint
 	}
+	if endpoint == "" {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "the selected vault has no management endpoint yet — it may still be provisioning"})
+		return keymanagement.KmsManagementClient{}, false
+	}
 	mc, err := keymanagement.NewKmsManagementClientWithConfigurationProvider(provider, endpoint)
 	if err != nil {
 		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
@@ -174,6 +178,10 @@ func (s *Service) getOracleVaultVaults(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
+			// Only offer usable vaults — deleted / pending-deletion vaults would pollute the picker.
+			if resp.Items[i].LifecycleState != keymanagement.VaultSummaryLifecycleStateActive {
+				continue
+			}
 			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
@@ -202,6 +210,13 @@ func (s *Service) getOracleVaultKeys(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
+			// Enabled and disabled keys are both valid targets (a disabled key can be re-enabled,
+			// inspected, etc.); skip only keys that are deleted or on their way there.
+			switch resp.Items[i].LifecycleState {
+			case keymanagement.KeySummaryLifecycleStateEnabled, keymanagement.KeySummaryLifecycleStateDisabled:
+			default:
+				continue
+			}
 			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
@@ -230,6 +245,11 @@ func (s *Service) getOracleVaultKeyVersions(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
+			switch resp.Items[i].LifecycleState {
+			case keymanagement.KeyVersionSummaryLifecycleStateEnabled, keymanagement.KeyVersionSummaryLifecycleStateDisabled:
+			default:
+				continue
+			}
 			id := strDeref(resp.Items[i].Id)
 			name := id
 			if resp.Items[i].TimeCreated != nil {
@@ -272,6 +292,9 @@ func (s *Service) getOracleVaultSecrets(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
+			if resp.Items[i].LifecycleState != ovault.SecretSummaryLifecycleStateActive {
+				continue
+			}
 			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].SecretName), Value: strDeref(resp.Items[i].Id)})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
