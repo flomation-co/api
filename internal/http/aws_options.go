@@ -11,6 +11,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -100,6 +102,9 @@ var awsResourceInputs = map[string]string{
 	// Route 53 (aws/route53/*).
 	"hosted_zone_id":  "hosted-zones",
 	"health_check_id": "health-checks",
+	// CloudWatch (aws/cloudwatch/*, aws/cloudwatchlogs/*).
+	"alarm_name":     "alarms",
+	"log_group_name": "log-groups",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -289,6 +294,10 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listHostedZones(ctx, cfg)
 		case "health-checks":
 			opts, err = listHealthChecks(ctx, cfg)
+		case "alarms":
+			opts, err = listAlarms(ctx, cfg)
+		case "log-groups":
+			opts, err = listLogGroups(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -910,6 +919,44 @@ func listHealthChecks(ctx context.Context, cfg awssdk.Config) ([]awsOption, erro
 				}
 			}
 			opts = append(opts, awsOption{Name: label, Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listAlarms(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := cloudwatch.NewFromConfig(cfg)
+	var opts []awsOption
+	p := cloudwatch.NewDescribeAlarmsPaginator(client, &cloudwatch.DescribeAlarmsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range page.MetricAlarms {
+			name := awssdk.ToString(a.AlarmName)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", name, string(a.StateValue)), Value: name})
+		}
+		for _, a := range page.CompositeAlarms {
+			name := awssdk.ToString(a.AlarmName)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s (composite)", name, string(a.StateValue)), Value: name})
+		}
+	}
+	return opts, nil
+}
+
+func listLogGroups(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := cloudwatchlogs.NewFromConfig(cfg)
+	var opts []awsOption
+	p := cloudwatchlogs.NewDescribeLogGroupsPaginator(client, &cloudwatchlogs.DescribeLogGroupsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range page.LogGroups {
+			name := awssdk.ToString(g.LogGroupName)
+			opts = append(opts, awsOption{Name: name, Value: name})
 		}
 	}
 	return opts, nil

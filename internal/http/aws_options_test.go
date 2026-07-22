@@ -67,6 +67,15 @@ func TestAWSDynamicOption(t *testing.T) {
 	g.Expect(ok).To(BeTrue())
 	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-health-checks"))
 
+	// CloudWatch pickers.
+	dyn, ok = awsDynamicOption("aws/cloudwatch/set_alarm_state", "alarm_name")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-alarms"))
+
+	dyn, ok = awsDynamicOption("aws/cloudwatchlogs/filter_log_events", "log_group_name")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-log-groups"))
+
 	// A genuinely non-resource input on an aws/* action gets nothing.
 	_, ok = awsDynamicOption("aws/rds/create_db_instance", "master_username")
 	g.Expect(ok).To(BeFalse())
@@ -100,6 +109,8 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		"load-balancers": true, "target-groups": true, "asgs": true,
 		// Route 53 pickers
 		"hosted-zones": true, "health-checks": true,
+		// CloudWatch pickers
+		"alarms": true, "log-groups": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)
