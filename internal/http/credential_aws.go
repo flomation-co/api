@@ -67,6 +67,7 @@ func (s *Service) createAWSRoleCredential(c *gin.Context, environmentID string, 
 		"iam_user_arn":       identity.UserARN,
 		"iam_user_name":      identity.UserName,
 		"base_access_key_id": identity.AccessKeyID,
+		"permission_levels":  sanitisePermissionLevels(req.PermissionLevels),
 	})
 	if err != nil {
 		_ = prov.DeleteCredentialIdentity(c.Request.Context(), userName)
@@ -133,6 +134,64 @@ func (s *Service) setAWSRoleARN(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"id": credID, "role_arn": roleARN})
+}
+
+// updateAWSRolePermissions persists the picker's per-service access-level map on
+// an existing aws_role credential (metadata), so the editor's "edit permissions"
+// flow can pre-fill next time. Flomation does NOT apply this to AWS — the policy
+// generated from it lives on the customer's role — so this is store-only.
+func (s *Service) updateAWSRolePermissions(c *gin.Context) {
+	credID := c.Param("id")
+
+	var body struct {
+		PermissionLevels map[string]string `json:"permission_levels"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil || cred == nil || cred.ProviderSlug != "aws_role" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "AWS role credential not found"})
+		return
+	}
+
+	levels := sanitisePermissionLevels(body.PermissionLevels)
+	merged, err := api.MergeMetadata(cred.Metadata, map[string]interface{}{"permission_levels": levels})
+	if err != nil {
+		log.WithError(err).Error("unable to merge aws_role permission levels")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if err := s.persistence.UpdateCredentialMetadata(credID, merged); err != nil {
+		log.WithError(err).Error("unable to update aws_role permission levels")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": credID, "permission_levels": levels})
+}
+
+// sanitisePermissionLevels defensively bounds the stored level map: it's opaque,
+// non-enforced UI state, but it lands in a JSONB column, so cap the entry count
+// and string lengths and drop empties. Returns a non-nil map so metadata never
+// stores JSON null.
+func sanitisePermissionLevels(in map[string]string) map[string]string {
+	out := map[string]string{}
+	const maxEntries, maxLen = 64, 64
+	for k, v := range in {
+		if len(out) >= maxEntries {
+			break
+		}
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" || v == "" || len(k) > maxLen || len(v) > maxLen {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // testAWSRoleAccess performs a real STS AssumeRole using the credential's own

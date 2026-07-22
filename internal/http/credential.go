@@ -97,6 +97,11 @@ type createCredentialRequest struct {
 	// role to assume, and its region.
 	RoleARN string `json:"role_arn"`
 	Region  string `json:"region"`
+	// PermissionLevels is the aws_role picker's per-service access-level map
+	// ({serviceId: level}). Persisted in metadata so the "edit permissions" flow
+	// can pre-fill the picker; NOT enforced by Flomation (the policy lives on the
+	// customer's role).
+	PermissionLevels map[string]string `json:"permission_levels"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
