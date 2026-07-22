@@ -225,6 +225,7 @@ var subCategoryMetadata = map[string]struct {
 	"oracle/filestorage":           {Name: "File Storage", Icon: "folder-tree", Description: "Oracle Cloud File Storage — provision NFS file systems and mount targets, wire exports, take and schedule snapshots, replicate across regions, and set quotas"},
 	"oracle/vault":                 {Name: "Vault", Icon: "lock", Description: "Oracle Cloud Vault & KMS — manage vaults, master encryption keys and key versions, run crypto operations (encrypt/decrypt/sign/verify), and store, rotate and retrieve secrets"},
 	"oracle/notifications":         {Name: "Notifications", Icon: "bell", Description: "Oracle Cloud Notifications (ONS) — create topics, manage subscriptions across email, SMS, HTTPS, Slack and more, and publish a message that fans out to every subscriber"},
+	"oracle/containerengine":       {Name: "Container Engine", Icon: "cubes", Description: "Oracle Cloud Container Engine for Kubernetes (OKE) — provision and manage clusters, node pools and virtual node pools, install add-ons, generate kubeconfig, rotate credentials, and track asynchronous work requests"},
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
