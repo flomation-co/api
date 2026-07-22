@@ -15,6 +15,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/oracle/oci-go-sdk/v65/loadbalancer"
+	nlbsdk "github.com/oracle/oci-go-sdk/v65/networkloadbalancer"
 
 	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/rbac"
@@ -269,6 +270,51 @@ func init() {
 	}
 	for _, a := range []string{"listener_create", "listener_update"} {
 		lbReg(a, "protocol", lbProtoEP, credsComp)
+	}
+
+	// Network Load Balancer: pickers scoped like the classic LB. The compartment
+	// scopes the NLB picker; the NLB scopes its backend sets. Backend-set *create*
+	// names a new set (plain text). Policy/protocol are static enum lists (no
+	// compartment). subnet reuses oracle-subnets; a backend's instance target reuses
+	// oracle-instances.
+	credsCompNlb := append(append([]string{}, credsComp...), "network_load_balancer_ocid")
+	nlbReg := func(id, input, endpoint string, params []string) {
+		dynamicOptionsMetadata["oracle/networkloadbalancer/"+id+"#"+input] = api.InputDynamicOptions{Endpoint: endpoint, Params: params}
+	}
+	nlbEP := "/api/v1/action/options/oracle-network-load-balancers"
+	nlbBsEP := "/api/v1/action/options/oracle-nlb-backend-sets"
+	nlbPolicyEP := "/api/v1/action/options/oracle-nlb-policies"
+	nlbProtoEP := "/api/v1/action/options/oracle-nlb-protocols"
+
+	nlbPerResource := []string{
+		"backend_create", "backend_delete", "backend_get", "backend_get_health", "backend_get_operational_status", "backend_list",
+		"backend_set_create", "backend_set_delete", "backend_set_get", "backend_set_get_health", "backend_set_get_health_checker", "backend_set_list", "backend_set_update", "backend_set_update_health_checker",
+		"backend_update", "listener_create", "listener_delete", "listener_get", "listener_list", "listener_update",
+		"network_load_balancer_change_compartment", "network_load_balancer_delete", "network_load_balancer_get", "network_load_balancer_get_health", "network_load_balancer_update", "network_load_balancer_update_network_security_groups",
+	}
+	for _, a := range nlbPerResource {
+		nlbReg(a, "compartment_ocid", comp, creds)
+		nlbReg(a, "network_load_balancer_ocid", nlbEP, credsComp)
+	}
+	for _, a := range []string{"network_load_balancer_create", "network_load_balancer_list", "network_load_balancer_list_healths", "work_request_list"} {
+		nlbReg(a, "compartment_ocid", comp, creds)
+	}
+	nlbReg("network_load_balancer_change_compartment", "destination_compartment_ocid", comp, creds)
+	nlbReg("network_load_balancer_create", "subnet_ocid", "/api/v1/action/options/oracle-subnets", credsComp)
+	nlbReg("backend_create", "target_ocid", "/api/v1/action/options/oracle-instances", credsComp)
+	// backend_set_name → NLB backend-set picker on the actions that TARGET an existing set.
+	for _, a := range []string{"backend_create", "backend_delete", "backend_get", "backend_get_health", "backend_get_operational_status", "backend_list", "backend_set_delete", "backend_set_get", "backend_set_get_health", "backend_set_get_health_checker", "backend_set_update", "backend_set_update_health_checker", "backend_update"} {
+		nlbReg(a, "backend_set_name", nlbBsEP, credsCompNlb)
+	}
+	for _, a := range []string{"listener_create", "listener_update"} {
+		nlbReg(a, "default_backend_set_name", nlbBsEP, credsCompNlb)
+	}
+	// Static enum dropdowns: backend-set policy, listener protocol (no compartment).
+	for _, a := range []string{"backend_set_create", "backend_set_update"} {
+		nlbReg(a, "policy", nlbPolicyEP, creds)
+	}
+	for _, a := range []string{"listener_create", "listener_update"} {
+		nlbReg(a, "protocol", nlbProtoEP, creds)
 	}
 }
 
@@ -992,6 +1038,123 @@ func (s *Service) oracleLbCompartmentNames(c *gin.Context, list func(loadbalance
 	}
 	client.HTTPClient = ociOptionsHTTPClient
 	opts, err := list(client, compartment)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleNetworkLoadBalancers lists the NLBs in a compartment for the
+// network_load_balancer_ocid picker.
+func (s *Service) getOracleNetworkLoadBalancers(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := nlbsdk.NewNetworkLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := nlbsdk.ListNetworkLoadBalancersRequest{CompartmentId: &compartment}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListNetworkLoadBalancers(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleNlbBackendSets lists the backend sets of an NLB for the backend_set_name
+// picker (keyed by name within the NLB, so the option value is the name).
+func (s *Service) getOracleNlbBackendSets(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	nlbID, ok := s.ociRequireDependency(c, "network_load_balancer_ocid", "Select a network load balancer first")
+	if !ok {
+		return
+	}
+	client, err := nlbsdk.NewNetworkLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	resp, err := client.ListBackendSets(c.Request.Context(), nlbsdk.ListBackendSetsRequest{NetworkLoadBalancerId: &nlbID})
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	opts := []api.InputOption{}
+	for i := range resp.Items {
+		name := strDeref(resp.Items[i].Name)
+		opts = append(opts, api.InputOption{Name: name, Value: name})
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleNlbPolicies / getOracleNlbProtocols list the static enum choices for the
+// backend-set policy and listener protocol pickers (no compartment needed).
+func (s *Service) getOracleNlbPolicies(c *gin.Context) {
+	s.oracleNlbEnumList(c, func(client nlbsdk.NetworkLoadBalancerClient) ([]api.InputOption, error) {
+		resp, err := client.ListNetworkLoadBalancersPolicies(c.Request.Context(), nlbsdk.ListNetworkLoadBalancersPoliciesRequest{})
+		if err != nil {
+			return nil, err
+		}
+		opts := []api.InputOption{}
+		for _, p := range resp.Items {
+			opts = append(opts, api.InputOption{Name: string(p), Value: string(p)})
+		}
+		return opts, nil
+	})
+}
+
+func (s *Service) getOracleNlbProtocols(c *gin.Context) {
+	s.oracleNlbEnumList(c, func(client nlbsdk.NetworkLoadBalancerClient) ([]api.InputOption, error) {
+		resp, err := client.ListNetworkLoadBalancersProtocols(c.Request.Context(), nlbsdk.ListNetworkLoadBalancersProtocolsRequest{})
+		if err != nil {
+			return nil, err
+		}
+		opts := []api.InputOption{}
+		for _, p := range resp.Items {
+			opts = append(opts, api.InputOption{Name: string(p), Value: string(p)})
+		}
+		return opts, nil
+	})
+}
+
+// oracleNlbEnumList is the shared plumbing for the compartment-independent NLB enum
+// lookups (policies/protocols).
+func (s *Service) oracleNlbEnumList(c *gin.Context, list func(nlbsdk.NetworkLoadBalancerClient) ([]api.InputOption, error)) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	client, err := nlbsdk.NewNetworkLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts, err := list(client)
 	if err != nil {
 		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
 		return
