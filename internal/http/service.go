@@ -509,6 +509,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/oracle-oke-clusters", s.jwtMiddleware, s.getOracleOKEClusters)
 	actions.GET("/options/oracle-oke-node-pools", s.jwtMiddleware, s.getOracleOKENodePools)
 	actions.GET("/options/oracle-oke-virtual-node-pools", s.jwtMiddleware, s.getOracleOKEVirtualNodePools)
+	actions.GET("/options/oracle-exadata-infrastructures", s.jwtMiddleware, s.getOracleExadataInfrastructures)
+	actions.GET("/options/oracle-exadata-vm-clusters", s.jwtMiddleware, s.getOracleExadataVmClusters)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
 	actions.GET("/options/jira-projects", s.jwtMiddleware, s.getJiraProjects)
 	actions.GET("/options/jira-issue-types", s.jwtMiddleware, s.getJiraIssueTypes)
