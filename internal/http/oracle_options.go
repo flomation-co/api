@@ -1098,15 +1098,22 @@ func (s *Service) getOracleNlbBackendSets(c *gin.Context) {
 		return
 	}
 	client.HTTPClient = ociOptionsHTTPClient
-	resp, err := client.ListBackendSets(c.Request.Context(), nlbsdk.ListBackendSetsRequest{NetworkLoadBalancerId: &nlbID})
-	if err != nil {
-		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
-		return
-	}
 	opts := []api.InputOption{}
-	for i := range resp.Items {
-		name := strDeref(resp.Items[i].Name)
-		opts = append(opts, api.InputOption{Name: name, Value: name})
+	req := nlbsdk.ListBackendSetsRequest{NetworkLoadBalancerId: &nlbID}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListBackendSets(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			name := strDeref(resp.Items[i].Name)
+			opts = append(opts, api.InputOption{Name: name, Value: name})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
 	}
 	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
 }
