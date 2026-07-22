@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/gin-gonic/gin"
@@ -96,6 +97,9 @@ var awsResourceInputs = map[string]string{
 	"load_balancer_arn":       "load-balancers",
 	"target_group_arn":        "target-groups",
 	"auto_scaling_group_name": "asgs",
+	// Route 53 (aws/route53/*).
+	"hosted_zone_id":  "hosted-zones",
+	"health_check_id": "health-checks",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -281,6 +285,10 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listTargetGroups(ctx, cfg)
 		case "asgs":
 			opts, err = listAutoScalingGroups(ctx, cfg)
+		case "hosted-zones":
+			opts, err = listHostedZones(ctx, cfg)
+		case "health-checks":
+			opts, err = listHealthChecks(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -858,6 +866,50 @@ func listAutoScalingGroups(ctx context.Context, cfg awssdk.Config) ([]awsOption,
 		for _, g := range page.AutoScalingGroups {
 			name := awssdk.ToString(g.AutoScalingGroupName)
 			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %d/%d/%d (min/desired/max)", name, awssdk.ToInt32(g.MinSize), awssdk.ToInt32(g.DesiredCapacity), awssdk.ToInt32(g.MaxSize)), Value: name})
+		}
+	}
+	return opts, nil
+}
+
+func listHostedZones(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := route53.NewFromConfig(cfg)
+	var opts []awsOption
+	p := route53.NewListHostedZonesPaginator(client, &route53.ListHostedZonesInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, z := range page.HostedZones {
+			// The zone id comes back as "/hostedzone/Z123"; strip the prefix so
+			// the value matches what the actions expect.
+			id := strings.TrimPrefix(awssdk.ToString(z.Id), "/hostedzone/")
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", awssdk.ToString(z.Name), id), Value: id})
+		}
+	}
+	return opts, nil
+}
+
+func listHealthChecks(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := route53.NewFromConfig(cfg)
+	var opts []awsOption
+	p := route53.NewListHealthChecksPaginator(client, &route53.ListHealthChecksInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, hc := range page.HealthChecks {
+			id := awssdk.ToString(hc.Id)
+			label := id
+			if hc.HealthCheckConfig != nil {
+				if fqdn := awssdk.ToString(hc.HealthCheckConfig.FullyQualifiedDomainName); fqdn != "" {
+					label = fmt.Sprintf("%s — %s", fqdn, id)
+				} else if ip := awssdk.ToString(hc.HealthCheckConfig.IPAddress); ip != "" {
+					label = fmt.Sprintf("%s — %s", ip, id)
+				}
+			}
+			opts = append(opts, awsOption{Name: label, Value: id})
 		}
 	}
 	return opts, nil
