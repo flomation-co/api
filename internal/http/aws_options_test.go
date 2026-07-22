@@ -58,6 +58,15 @@ func TestAWSDynamicOption(t *testing.T) {
 	g.Expect(ok).To(BeTrue())
 	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-asgs"))
 
+	// Route 53 pickers.
+	dyn, ok = awsDynamicOption("aws/route53/change_resource_record_sets", "hosted_zone_id")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-hosted-zones"))
+
+	dyn, ok = awsDynamicOption("aws/route53/get_health_check", "health_check_id")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(dyn.Endpoint).To(Equal("/api/v1/action/options/aws-health-checks"))
+
 	// A genuinely non-resource input on an aws/* action gets nothing.
 	_, ok = awsDynamicOption("aws/rds/create_db_instance", "master_username")
 	g.Expect(ok).To(BeFalse())
@@ -89,6 +98,8 @@ func TestAWSResourceSlugsAllHandled(t *testing.T) {
 		"s3-buckets": true,
 		// ELBv2 + Auto Scaling pickers
 		"load-balancers": true, "target-groups": true, "asgs": true,
+		// Route 53 pickers
+		"hosted-zones": true, "health-checks": true,
 	}
 	for input, slug := range awsResourceInputs {
 		g.Expect(handled[slug]).To(BeTrue(), "input %q maps to slug %q which awsOptions doesn't handle", input, slug)

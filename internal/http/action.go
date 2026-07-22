@@ -137,6 +137,8 @@ var subCategoryMetadata = map[string]struct {
 	"aws/vpc":                        {Name: "VPC", Icon: "circle-nodes", Description: "Virtual Private Cloud networking — subnets, route tables, gateways, peering and VPN"},
 	"aws/elbv2":                      {Name: "Elastic Load Balancing", Icon: "arrows-split-up-and-left", Description: "Application, Network and Gateway load balancers — target groups, listeners, rules and target health"},
 	"aws/autoscaling":                {Name: "Auto Scaling", Icon: "arrows-up-down", Description: "EC2 Auto Scaling groups — desired capacity, scaling policies, scheduled actions and instance refresh"},
+	"aws/route53":                    {Name: "Route 53", Icon: "globe", Description: "DNS and traffic management — hosted zones, records, health checks and query logging"},
+	"aws/route53domains":             {Name: "Route 53 Domains", Icon: "id-badge", Description: "Domain registration — register, transfer, renew and manage domains, contacts and nameservers"},
 	"social/linkedin":                {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
 	"social/facebook":                {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
 	"google/drive":                   {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
