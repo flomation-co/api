@@ -2,6 +2,7 @@ package http
 
 import (
 	gohttp "net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	dnssdk "github.com/oracle/oci-go-sdk/v65/dns"
@@ -19,7 +20,23 @@ import (
 // init in this package — Go runs them all). DNS resources are keyed by OCID, except
 // resolver endpoints which are keyed by NAME within their parent resolver.
 
+// dnsOptionLabel is the display label for a picker option: the resource's own name,
+// or a fallback when it is blank (OCI display names are optional on views, resolvers
+// and steering policies, so a blank one would render an empty, un-pickable row).
+func dnsOptionLabel(name, id string) string {
+	if strings.TrimSpace(name) != "" {
+		return name
+	}
+	if id != "" {
+		return "(unnamed) " + id
+	}
+	return "(unnamed)"
+}
+
 func init() {
+	// creds is the signing-key connection every proxy needs; the credsComp / credsResolver
+	// variants append the dependency that scopes a given picker. Each append starts from a
+	// fresh []string{} copy so the shared creds slice is never mutated.
 	creds := []string{"tenancy_ocid", "user_ocid", "region", "fingerprint", "private_key", "private_key_passphrase"}
 	credsComp := append(append([]string{}, creds...), "compartment_ocid")
 	credsResolver := append(append([]string{}, creds...), "resolver_ocid")
@@ -183,7 +200,8 @@ func (s *Service) getOracleDnsSteeringPolicies(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
-			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+			id := strDeref(resp.Items[i].Id)
+			opts = append(opts, api.InputOption{Name: dnsOptionLabel(strDeref(resp.Items[i].DisplayName), id), Value: id})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
 			break
@@ -211,7 +229,8 @@ func (s *Service) getOracleDnsSteeringPolicyAttachments(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
-			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+			id := strDeref(resp.Items[i].Id)
+			opts = append(opts, api.InputOption{Name: dnsOptionLabel(strDeref(resp.Items[i].DisplayName), id), Value: id})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
 			break
@@ -239,7 +258,8 @@ func (s *Service) getOracleDnsViews(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
-			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+			id := strDeref(resp.Items[i].Id)
+			opts = append(opts, api.InputOption{Name: dnsOptionLabel(strDeref(resp.Items[i].DisplayName), id), Value: id})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
 			break
@@ -267,7 +287,8 @@ func (s *Service) getOracleDnsResolvers(c *gin.Context) {
 			return
 		}
 		for i := range resp.Items {
-			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+			id := strDeref(resp.Items[i].Id)
+			opts = append(opts, api.InputOption{Name: dnsOptionLabel(strDeref(resp.Items[i].DisplayName), id), Value: id})
 		}
 		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
 			break
