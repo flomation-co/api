@@ -14,6 +14,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
+	"github.com/oracle/oci-go-sdk/v65/loadbalancer"
 
 	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/rbac"
@@ -206,6 +207,68 @@ func init() {
 	// Bronze/Silver/Gold/Platinum set, since it treats compartment_ocid as optional.
 	for _, a := range []string{"backup_policy_assign", "backup_policy_get", "backup_policy_update", "backup_policy_delete"} {
 		bvReg(a, "policy_ocid", policyEP, credsComp)
+	}
+
+	// Load Balancer: pickers for every identity-picked resource. The compartment
+	// scopes the load-balancer picker; the load balancer in turn scopes its backend
+	// sets and certificates (which are keyed by NAME within an LB, so the picker's
+	// value is the name). Sub-resource creates that NAME a new resource keep plain
+	// text; subnet_ocids stays plain text (it's a comma-list, not single-select).
+	credsCompLb := append(append([]string{}, credsComp...), "load_balancer_ocid")
+	lbReg := func(id, input, endpoint string, params []string) {
+		dynamicOptionsMetadata["oracle/loadbalancer/"+id+"#"+input] = api.InputDynamicOptions{Endpoint: endpoint, Params: params}
+	}
+	lbEP := "/api/v1/action/options/oracle-load-balancers"
+	bsEP := "/api/v1/action/options/oracle-lb-backend-sets"
+	certEP := "/api/v1/action/options/oracle-lb-certificates"
+	lbShapeEP := "/api/v1/action/options/oracle-lb-shapes"
+	lbPolicyEP := "/api/v1/action/options/oracle-lb-policies"
+	lbProtoEP := "/api/v1/action/options/oracle-lb-protocols"
+
+	// Per-load-balancer actions: compartment picker (scopes the LB picker) + the LB
+	// picker itself. Every action here carries compartment_ocid + load_balancer_ocid.
+	lbPerResource := []string{
+		"backend_create", "backend_delete", "backend_get", "backend_get_health", "backend_list",
+		"backend_set_create", "backend_set_delete", "backend_set_get", "backend_set_get_health", "backend_set_get_health_checker", "backend_set_list", "backend_set_update", "backend_set_update_health_checker",
+		"backend_update", "certificate_create", "certificate_delete", "certificate_list",
+		"hostname_create", "hostname_delete", "hostname_get", "hostname_list", "hostname_update",
+		"listener_create", "listener_delete", "listener_list_rules", "listener_update",
+		"load_balancer_change_compartment", "load_balancer_delete", "load_balancer_get", "load_balancer_get_health", "load_balancer_update", "load_balancer_update_network_security_groups", "load_balancer_update_shape",
+		"path_route_set_create", "path_route_set_delete", "path_route_set_get", "path_route_set_list", "path_route_set_update",
+		"routing_policy_create", "routing_policy_delete", "routing_policy_get", "routing_policy_list", "routing_policy_update",
+		"rule_set_create", "rule_set_delete", "rule_set_get", "rule_set_list", "rule_set_update",
+		"ssl_cipher_suite_create", "ssl_cipher_suite_delete", "ssl_cipher_suite_get", "ssl_cipher_suite_list", "ssl_cipher_suite_update",
+		"work_request_list",
+	}
+	for _, a := range lbPerResource {
+		lbReg(a, "compartment_ocid", comp, creds)
+		lbReg(a, "load_balancer_ocid", lbEP, credsComp)
+	}
+	// Compartment-scoped actions (no LB): create + the compartment-wide lists.
+	for _, a := range []string{"load_balancer_create", "load_balancer_list", "load_balancer_list_health", "shape_list", "policy_list", "protocol_list"} {
+		lbReg(a, "compartment_ocid", comp, creds)
+	}
+	lbReg("load_balancer_change_compartment", "destination_compartment_ocid", comp, creds)
+	// backend_set_name → backend-set picker on the actions that TARGET an existing set
+	// (not backend_set_create, which names a new one). Scoped by the LB.
+	for _, a := range []string{"backend_create", "backend_delete", "backend_get", "backend_get_health", "backend_list", "backend_set_delete", "backend_set_get", "backend_set_get_health", "backend_set_get_health_checker", "backend_set_update", "backend_set_update_health_checker", "backend_update"} {
+		lbReg(a, "backend_set_name", bsEP, credsCompLb)
+	}
+	// A listener's default backend set must reference an existing one.
+	for _, a := range []string{"listener_create", "listener_update"} {
+		lbReg(a, "default_backend_set_name", bsEP, credsCompLb)
+	}
+	// certificate_name → cert picker on delete (create names a new one; there is no get).
+	lbReg("certificate_delete", "certificate_name", certEP, credsCompLb)
+	// Reference dropdowns (compartment-scoped): shape, backend-set policy, listener protocol.
+	for _, a := range []string{"load_balancer_create", "load_balancer_update_shape"} {
+		lbReg(a, "shape_name", lbShapeEP, credsComp)
+	}
+	for _, a := range []string{"backend_set_create", "backend_set_update"} {
+		lbReg(a, "policy", lbPolicyEP, credsComp)
+	}
+	for _, a := range []string{"listener_create", "listener_update"} {
+		lbReg(a, "protocol", lbProtoEP, credsComp)
 	}
 }
 
@@ -760,6 +823,178 @@ func (s *Service) getOracleBackupPolicies(c *gin.Context) {
 			break
 		}
 		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleLoadBalancers lists the load balancers in a compartment for the
+// load_balancer_ocid picker across the Load Balancer node.
+func (s *Service) getOracleLoadBalancers(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := loadbalancer.NewLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := loadbalancer.ListLoadBalancersRequest{CompartmentId: &compartment}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListLoadBalancers(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleLbBackendSets lists the backend sets of a load balancer for the
+// backend_set_name picker. Scoped by load_balancer_ocid (backend sets are named
+// within an LB, so the option value is the name, not an OCID).
+func (s *Service) getOracleLbBackendSets(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	lbID, ok := s.ociRequireDependency(c, "load_balancer_ocid", "Select a load balancer first")
+	if !ok {
+		return
+	}
+	client, err := loadbalancer.NewLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	resp, err := client.ListBackendSets(c.Request.Context(), loadbalancer.ListBackendSetsRequest{LoadBalancerId: &lbID})
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	opts := []api.InputOption{}
+	for i := range resp.Items {
+		name := strDeref(resp.Items[i].Name)
+		opts = append(opts, api.InputOption{Name: name, Value: name})
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleLbCertificates lists the SSL certificate bundles of a load balancer for
+// the certificate_name picker. Scoped by load_balancer_ocid; value is the name.
+func (s *Service) getOracleLbCertificates(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	lbID, ok := s.ociRequireDependency(c, "load_balancer_ocid", "Select a load balancer first")
+	if !ok {
+		return
+	}
+	client, err := loadbalancer.NewLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	resp, err := client.ListCertificates(c.Request.Context(), loadbalancer.ListCertificatesRequest{LoadBalancerId: &lbID})
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	opts := []api.InputOption{}
+	for i := range resp.Items {
+		name := strDeref(resp.Items[i].CertificateName)
+		opts = append(opts, api.InputOption{Name: name, Value: name})
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleLbShapes lists the load-balancer shape names in a compartment for the
+// shape_name picker (flexible, 100Mbps, 400Mbps, …).
+func (s *Service) getOracleLbShapes(c *gin.Context) {
+	s.oracleLbCompartmentNames(c, func(client loadbalancer.LoadBalancerClient, compartment string) ([]api.InputOption, error) {
+		resp, err := client.ListShapes(c.Request.Context(), loadbalancer.ListShapesRequest{CompartmentId: &compartment})
+		if err != nil {
+			return nil, err
+		}
+		opts := []api.InputOption{}
+		for i := range resp.Items {
+			n := strDeref(resp.Items[i].Name)
+			opts = append(opts, api.InputOption{Name: n, Value: n})
+		}
+		return opts, nil
+	})
+}
+
+// getOracleLbPolicies lists the backend-set load-balancing policies (ROUND_ROBIN, …).
+func (s *Service) getOracleLbPolicies(c *gin.Context) {
+	s.oracleLbCompartmentNames(c, func(client loadbalancer.LoadBalancerClient, compartment string) ([]api.InputOption, error) {
+		resp, err := client.ListPolicies(c.Request.Context(), loadbalancer.ListPoliciesRequest{CompartmentId: &compartment})
+		if err != nil {
+			return nil, err
+		}
+		opts := []api.InputOption{}
+		for i := range resp.Items {
+			n := strDeref(resp.Items[i].Name)
+			opts = append(opts, api.InputOption{Name: n, Value: n})
+		}
+		return opts, nil
+	})
+}
+
+// getOracleLbProtocols lists the supported listener protocols (HTTP, HTTP2, TCP, GRPC).
+func (s *Service) getOracleLbProtocols(c *gin.Context) {
+	s.oracleLbCompartmentNames(c, func(client loadbalancer.LoadBalancerClient, compartment string) ([]api.InputOption, error) {
+		resp, err := client.ListProtocols(c.Request.Context(), loadbalancer.ListProtocolsRequest{CompartmentId: &compartment})
+		if err != nil {
+			return nil, err
+		}
+		opts := []api.InputOption{}
+		for i := range resp.Items {
+			n := strDeref(resp.Items[i].Name)
+			opts = append(opts, api.InputOption{Name: n, Value: n})
+		}
+		return opts, nil
+	})
+}
+
+// oracleLbCompartmentNames is the shared plumbing for the three compartment-scoped
+// LB reference lookups (shapes/policies/protocols): build provider + client, require
+// the compartment, run the caller's list fn, and write the options envelope.
+func (s *Service) oracleLbCompartmentNames(c *gin.Context, list func(loadbalancer.LoadBalancerClient, string) ([]api.InputOption, error)) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := loadbalancer.NewLoadBalancerClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts, err := list(client, compartment)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
 	}
 	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
 }
