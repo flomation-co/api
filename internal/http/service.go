@@ -504,6 +504,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/oracle-vault-keys", s.jwtMiddleware, s.getOracleVaultKeys)
 	actions.GET("/options/oracle-vault-key-versions", s.jwtMiddleware, s.getOracleVaultKeyVersions)
 	actions.GET("/options/oracle-vault-secrets", s.jwtMiddleware, s.getOracleVaultSecrets)
+	actions.GET("/options/oracle-notifications-topics", s.jwtMiddleware, s.getOracleNotificationsTopics)
+	actions.GET("/options/oracle-notifications-subscriptions", s.jwtMiddleware, s.getOracleNotificationsSubscriptions)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
 	actions.GET("/options/jira-projects", s.jwtMiddleware, s.getJiraProjects)
 	actions.GET("/options/jira-issue-types", s.jwtMiddleware, s.getJiraIssueTypes)
