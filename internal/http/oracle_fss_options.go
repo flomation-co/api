@@ -64,7 +64,11 @@ func init() {
 		"snapshot_create", "snapshot_get", "snapshot_update", "snapshot_delete",
 		"snapshot_policy_create", "snapshot_policy_list", "snapshot_policy_get", "snapshot_policy_update", "snapshot_policy_delete",
 		"replication_create", "replication_list", "replication_get", "replication_update", "replication_delete",
-		"replication_target_list", "quota_rule_create",
+		"replication_target_list",
+		// quota_rule + export + snapshot_list carry an availability_domain purely to scope
+		// their AD-requiring file-system / export-set pickers (the action itself ignores it).
+		"quota_rule_create", "quota_rule_list", "quota_rule_get", "quota_rule_update", "quota_rule_delete",
+		"snapshot_list", "export_create", "export_list",
 		"outbound_connector_create", "outbound_connector_list", "outbound_connector_get", "outbound_connector_update", "outbound_connector_delete",
 	}
 	for _, a := range adScoped {
