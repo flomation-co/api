@@ -2,6 +2,7 @@ package http
 
 import (
 	gohttp "net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	fsssdk "github.com/oracle/oci-go-sdk/v65/filestorage"
@@ -239,6 +240,14 @@ func (s *Service) getOracleFssExports(c *gin.Context) {
 	}
 	opts := []api.InputOption{}
 	req := fsssdk.ListExportsRequest{CompartmentId: &compartment}
+	// Narrow to a specific file system / export set when the action already has one
+	// selected, so the picker isn't the whole compartment's exports in a large tenancy.
+	if fs := strings.TrimSpace(c.Query("file_system_ocid")); fs != "" {
+		req.FileSystemId = &fs
+	}
+	if es := strings.TrimSpace(c.Query("export_set_ocid")); es != "" {
+		req.ExportSetId = &es
+	}
 	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListExports(c.Request.Context(), req)
 		if err != nil {
