@@ -22,7 +22,6 @@ import (
 func init() {
 	creds := []string{"tenancy_ocid", "user_ocid", "region", "fingerprint", "private_key", "private_key_passphrase"}
 	credsComp := append(append([]string{}, creds...), "compartment_ocid")
-	credsProvider := append(append([]string{}, creds...), "identity_provider_ocid")
 
 	comp := "/api/v1/action/options/oracle-compartments"
 	usersEP := "/api/v1/action/options/oracle-iam-users"
@@ -102,7 +101,6 @@ func init() {
 		reg(a, "identity_provider_ocid", providersEP, credsComp)
 	}
 	// group_ocid on idp_group_mapping_create uses the groups picker too (registered above).
-	_ = credsProvider
 
 	// Compartment actions: the resource + destination pickers.
 	for _, a := range []string{"compartment_get", "compartment_update", "compartment_delete", "compartment_move", "compartment_recover"} {
