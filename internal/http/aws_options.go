@@ -17,10 +17,12 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/gin-gonic/gin"
 
@@ -105,6 +107,12 @@ var awsResourceInputs = map[string]string{
 	// CloudWatch (aws/cloudwatch/*, aws/cloudwatchlogs/*).
 	"alarm_name":     "alarms",
 	"log_group_name": "log-groups",
+	// IAM + Secrets Manager (aws/iam/*, aws/secretsmanager/*). kms_key_id and
+	// role_arn already have pickers (kms-keys / iam-roles).
+	"secret_id":  "secrets",
+	"user_name":  "iam-users",
+	"group_name": "iam-groups",
+	"policy_arn": "iam-policies",
 }
 
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
@@ -298,6 +306,14 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			opts, err = listAlarms(ctx, cfg)
 		case "log-groups":
 			opts, err = listLogGroups(ctx, cfg)
+		case "secrets":
+			opts, err = listSecrets(ctx, cfg)
+		case "iam-users":
+			opts, err = listIAMUsers(ctx, cfg)
+		case "iam-groups":
+			opts, err = listIAMGroups(ctx, cfg)
+		case "iam-policies":
+			opts, err = listIAMPolicies(ctx, cfg)
 		default:
 			c.JSON(gohttp.StatusOK, gin.H{"error": "unknown AWS resource list"})
 			return
@@ -957,6 +973,76 @@ func listLogGroups(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) 
 		for _, g := range page.LogGroups {
 			name := awssdk.ToString(g.LogGroupName)
 			opts = append(opts, awsOption{Name: name, Value: name})
+		}
+	}
+	return opts, nil
+}
+
+func listSecrets(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := secretsmanager.NewFromConfig(cfg)
+	var opts []awsOption
+	p := secretsmanager.NewListSecretsPaginator(client, &secretsmanager.ListSecretsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range page.SecretList {
+			name := awssdk.ToString(s.Name)
+			// The action inputs accept a name or ARN as secret_id; the name is friendlier.
+			opts = append(opts, awsOption{Name: name, Value: name})
+		}
+	}
+	return opts, nil
+}
+
+func listIAMUsers(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := iam.NewFromConfig(cfg)
+	var opts []awsOption
+	p := iam.NewListUsersPaginator(client, &iam.ListUsersInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range page.Users {
+			name := awssdk.ToString(u.UserName)
+			opts = append(opts, awsOption{Name: name, Value: name})
+		}
+	}
+	return opts, nil
+}
+
+func listIAMGroups(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := iam.NewFromConfig(cfg)
+	var opts []awsOption
+	p := iam.NewListGroupsPaginator(client, &iam.ListGroupsInput{})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range page.Groups {
+			name := awssdk.ToString(g.GroupName)
+			opts = append(opts, awsOption{Name: name, Value: name})
+		}
+	}
+	return opts, nil
+}
+
+func listIAMPolicies(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
+	client := iam.NewFromConfig(cfg)
+	var opts []awsOption
+	// Customer-managed policies only — the AWS-managed pool is enormous.
+	p := iam.NewListPoliciesPaginator(client, &iam.ListPoliciesInput{Scope: iamtypes.PolicyScopeTypeLocal})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, pol := range page.Policies {
+			arn := awssdk.ToString(pol.Arn)
+			opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", awssdk.ToString(pol.PolicyName), arn), Value: arn})
 		}
 	}
 	return opts, nil
