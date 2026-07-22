@@ -138,6 +138,75 @@ func init() {
 	}
 	// The destination compartment on the move action is also a real compartment field.
 	dynamicOptionsMetadata["oracle/autonomousdatabase/db_change_compartment#target_compartment_ocid"] = api.InputDynamicOptions{Endpoint: "/api/v1/action/options/oracle-compartments", Params: creds}
+
+	// Block Volumes: pickers for every identity-picked resource, each scoped by the
+	// compartment_ocid present on that action (which is why per-resource get/update/
+	// delete actions carry a compartment field — it scopes their volume/policy
+	// picker, unlike Compute's instance_ocid which had none). Backups, replicas and
+	// attachments key on an OCID normally chained from an upstream node's output, so
+	// they stay plain text; asset_ocid is polymorphic (volume OR boot volume) so it
+	// also stays plain. The private_key etc. remain in `creds`.
+	credsCompAD := append(append([]string{}, credsComp...), "availability_domain")
+	bvReg := func(id, input, endpoint string, params []string) {
+		dynamicOptionsMetadata["oracle/blockvolume/"+id+"#"+input] = api.InputDynamicOptions{Endpoint: endpoint, Params: params}
+	}
+	comp := "/api/v1/action/options/oracle-compartments"
+	adEP := "/api/v1/action/options/oracle-availability-domains"
+	volEP := "/api/v1/action/options/oracle-volumes"
+	bootVolEP := "/api/v1/action/options/oracle-boot-volumes"
+	groupEP := "/api/v1/action/options/oracle-volume-groups"
+	instEP := "/api/v1/action/options/oracle-instances"
+	policyEP := "/api/v1/action/options/oracle-backup-policies"
+
+	// compartment_ocid on every Block Volumes action that has one (creds-only).
+	bvCompartmentActions := []string{
+		"volume_create", "volume_get", "volume_get_all", "volume_update", "volume_delete", "volume_change_compartment", "volume_attach",
+		"volume_backup_create", "volume_backup_get", "volume_backup_get_all", "volume_backup_update", "volume_backup_delete", "volume_backup_change_compartment",
+		"boot_volume_create", "boot_volume_get", "boot_volume_get_all", "boot_volume_update", "boot_volume_delete", "boot_volume_change_compartment",
+		"boot_volume_backup_create", "boot_volume_backup_get", "boot_volume_backup_get_all", "boot_volume_backup_update", "boot_volume_backup_delete", "boot_volume_backup_change_compartment",
+		"volume_group_create", "volume_group_get", "volume_group_get_all", "volume_group_update", "volume_group_delete", "volume_group_change_compartment",
+		"volume_group_backup_create", "volume_group_backup_get", "volume_group_backup_get_all", "volume_group_backup_update", "volume_group_backup_delete", "volume_group_backup_change_compartment",
+		"backup_policy_create", "backup_policy_get", "backup_policy_get_all", "backup_policy_update", "backup_policy_delete", "backup_policy_assign", "backup_policy_get_assignment", "backup_policy_unassign",
+		"volume_kms_key_get", "volume_kms_key_update", "volume_kms_key_delete",
+		"boot_volume_kms_key_get", "boot_volume_kms_key_update", "boot_volume_kms_key_delete",
+		"volume_replica_get", "volume_replica_get_all", "boot_volume_replica_get", "boot_volume_replica_get_all", "volume_group_replica_get", "volume_group_replica_get_all",
+		"volume_attachment_get_all", "volume_attachment_update", "boot_volume_attachment_attach", "boot_volume_attachment_get_all",
+	}
+	for _, a := range bvCompartmentActions {
+		bvReg(a, "compartment_ocid", comp, creds)
+	}
+	// destination_compartment_ocid on the six move actions (real target compartment).
+	for _, a := range []string{"volume_change_compartment", "volume_backup_change_compartment", "boot_volume_change_compartment", "boot_volume_backup_change_compartment", "volume_group_change_compartment", "volume_group_backup_change_compartment"} {
+		bvReg(a, "destination_compartment_ocid", comp, creds)
+	}
+	// availability_domain (compartment-scoped).
+	for _, a := range []string{"volume_create", "volume_get_all", "boot_volume_create", "boot_volume_get_all", "volume_group_create", "volume_group_get_all", "volume_replica_get_all", "boot_volume_replica_get_all", "volume_group_replica_get_all", "boot_volume_attachment_get_all"} {
+		bvReg(a, "availability_domain", adEP, credsComp)
+	}
+	// volume_ocid → block-volume picker (compartment + optional AD scoped).
+	for _, a := range []string{"volume_get", "volume_update", "volume_delete", "volume_change_compartment", "volume_attach", "volume_backup_create", "volume_kms_key_get", "volume_kms_key_update", "volume_kms_key_delete", "volume_backup_get_all", "volume_attachment_get_all"} {
+		bvReg(a, "volume_ocid", volEP, credsCompAD)
+	}
+	// boot_volume_ocid → boot-volume picker.
+	for _, a := range []string{"boot_volume_get", "boot_volume_update", "boot_volume_delete", "boot_volume_change_compartment", "boot_volume_backup_create", "boot_volume_kms_key_get", "boot_volume_kms_key_update", "boot_volume_kms_key_delete", "boot_volume_attachment_attach", "boot_volume_backup_get_all", "boot_volume_attachment_get_all"} {
+		bvReg(a, "boot_volume_ocid", bootVolEP, credsCompAD)
+	}
+	// volume_group_ocid → volume-group picker (+ the optional list filter uses volume_group_id).
+	for _, a := range []string{"volume_group_get", "volume_group_update", "volume_group_delete", "volume_group_change_compartment", "volume_group_backup_create"} {
+		bvReg(a, "volume_group_ocid", groupEP, credsCompAD)
+	}
+	bvReg("volume_group_backup_get_all", "volume_group_id", groupEP, credsCompAD)
+	// instance_ocid → compute-instance picker on the attach actions + list filters.
+	for _, a := range []string{"volume_attach", "volume_attachment_get_all", "boot_volume_attachment_attach", "boot_volume_attachment_get_all"} {
+		bvReg(a, "instance_ocid", instEP, credsComp)
+	}
+	// policy_ocid → backup-policy picker. Forward the action's compartment so the
+	// operator's own user-defined policies appear (update/delete can only target
+	// those); with no compartment the handler still returns the predefined
+	// Bronze/Silver/Gold/Platinum set, since it treats compartment_ocid as optional.
+	for _, a := range []string{"backup_policy_assign", "backup_policy_get", "backup_policy_update", "backup_policy_delete"} {
+		bvReg(a, "policy_ocid", policyEP, credsComp)
+	}
 }
 
 // buildOCIProvider assembles an OCI ConfigurationProvider from the query params
@@ -488,6 +557,198 @@ func (s *Service) getOracleSubnets(c *gin.Context) {
 	}
 	for page := 0; page < ociOptionsMaxPages; page++ {
 		resp, err := client.ListSubnets(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleVolumes lists the block volumes in a compartment for the volume_ocid /
+// asset_ocid pickers across the Block Volumes node. Mirrors getOracleVcns:
+// compartment required, paginated under the shared cap.
+func (s *Service) getOracleVolumes(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := core.NewBlockstorageClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := core.ListVolumesRequest{CompartmentId: &compartment}
+	if ad := strings.TrimSpace(c.Query("availability_domain")); ad != "" && !strings.HasPrefix(ad, "${") {
+		req.AvailabilityDomain = &ad
+	}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListVolumes(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleBootVolumes lists the boot volumes in a compartment for the
+// boot_volume_ocid picker across the boot-volume actions. Boot volumes are
+// compartment-scoped; the availability domain is an optional narrower filter.
+func (s *Service) getOracleBootVolumes(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := core.NewBlockstorageClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := core.ListBootVolumesRequest{CompartmentId: &compartment}
+	if ad := strings.TrimSpace(c.Query("availability_domain")); ad != "" && !strings.HasPrefix(ad, "${") {
+		req.AvailabilityDomain = &ad
+	}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListBootVolumes(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleVolumeGroups lists the volume groups in a compartment for the
+// volume_group_ocid picker across the volume-group actions.
+func (s *Service) getOracleVolumeGroups(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := core.NewBlockstorageClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := core.ListVolumeGroupsRequest{CompartmentId: &compartment}
+	if ad := strings.TrimSpace(c.Query("availability_domain")); ad != "" && !strings.HasPrefix(ad, "${") {
+		req.AvailabilityDomain = &ad
+	}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListVolumeGroups(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleInstances lists the compute instances in a compartment for the
+// instance_ocid picker on the attach actions (a volume attaches to an instance).
+func (s *Service) getOracleInstances(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	compartment, ok := s.ociRequireDependency(c, "compartment_ocid", "Select a compartment first")
+	if !ok {
+		return
+	}
+	client, err := core.NewComputeClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := core.ListInstancesRequest{CompartmentId: &compartment}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListInstances(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+			return
+		}
+		for i := range resp.Items {
+			opts = append(opts, api.InputOption{Name: strDeref(resp.Items[i].DisplayName), Value: strDeref(resp.Items[i].Id)})
+		}
+		if resp.OpcNextPage == nil || *resp.OpcNextPage == "" {
+			break
+		}
+		req.Page = resp.OpcNextPage
+	}
+	c.JSON(gohttp.StatusOK, gin.H{"options": opts})
+}
+
+// getOracleBackupPolicies lists the backup policies available to assign. The
+// compartment is OPTIONAL here — with none, OCI returns its predefined
+// Bronze/Silver/Gold/Platinum policies (tenancy-wide); with one, the user-defined
+// policies in it. So this proxy does NOT require a compartment dependency.
+func (s *Service) getOracleBackupPolicies(c *gin.Context) {
+	provider, ok := s.buildOCIProvider(c)
+	if !ok {
+		return
+	}
+	client, err := core.NewBlockstorageClientWithConfigurationProvider(provider)
+	if err != nil {
+		c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
+		return
+	}
+	client.HTTPClient = ociOptionsHTTPClient
+	opts := []api.InputOption{}
+	req := core.ListVolumeBackupPoliciesRequest{}
+	if comp := strings.TrimSpace(c.Query("compartment_ocid")); comp != "" && !strings.HasPrefix(comp, "${") {
+		req.CompartmentId = &comp
+	}
+	for page := 0; page < ociOptionsMaxPages; page++ {
+		resp, err := client.ListVolumeBackupPolicies(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(gohttp.StatusOK, gin.H{"error": ociOptErr(err)})
 			return
