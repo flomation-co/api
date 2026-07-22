@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	gohttp "net/http"
 	"sort"
@@ -27,6 +28,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/awsiam"
 	"flomation.app/automate/api/internal/rbac"
 )
 
@@ -154,8 +156,13 @@ func (s *Service) resolveAWSConfig(c *gin.Context) (awssdk.Config, string, bool)
 	credentialRaw := strings.TrimSpace(c.Query("credential"))
 
 	if accessRaw == "" || secretRaw == "" {
-		if credentialRaw != "" || strings.TrimSpace(c.Query("assume_role_arn")) != "" {
-			return awssdk.Config{}, "Managed-credential and assume-role auth can't load this list — pick with access keys, or type the value in (the flow still runs)", false
+		// Managed AWS Role credential: resolve it and assume its role server-side
+		// so the dropdown works without pasted keys.
+		if credentialRaw != "" {
+			return s.resolveManagedAWSConfig(c, credentialRaw, region)
+		}
+		if strings.TrimSpace(c.Query("assume_role_arn")) != "" {
+			return awssdk.Config{}, "Assume-role auth can't load this list — pick with access keys, or type the value in (the flow still runs)", false
 		}
 		return awssdk.Config{}, "Enter AWS access keys to load this list", false
 	}
@@ -186,6 +193,77 @@ func (s *Service) resolveAWSConfig(c *gin.Context) (awssdk.Config, string, bool)
 		return awssdk.Config{}, "Could not build AWS client: " + err.Error(), false
 	}
 	return cfg, "", true
+}
+
+// resolveManagedAWSConfig resolves a ${credentials.X} managed AWS Role credential
+// and returns an aws.Config that ASSUMES its role — so resource autocomplete works
+// with managed credentials, not just pasted access keys. The credential's base
+// secret is used server-side only (never returned to the client; only resource
+// names/ids are). Gated by EnvironmentView + a user-scoped environment lookup,
+// exactly like resolveAWSSecretParam, so a requester can only resolve credentials
+// in an environment they can already view.
+func (s *Service) resolveManagedAWSConfig(c *gin.Context, credentialRaw, region string) (awssdk.Config, string, bool) {
+	name := managedCredentialName(credentialRaw)
+	if name == "" {
+		return awssdk.Config{}, "Managed-credential auth can't load this list — pick with access keys, or type the value in (the flow still runs)", false
+	}
+
+	environmentID := strings.TrimSpace(c.Query("environment"))
+	if environmentID == "" {
+		return awssdk.Config{}, "Select an environment to load this list", false
+	}
+	if !s.checkPermission(c, rbac.EnvironmentView) {
+		return awssdk.Config{}, "", false // checkPermission wrote the response
+	}
+
+	user := s.getUserFromContext(c)
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil || env == nil {
+		return awssdk.Config{}, "Environment not found", false
+	}
+
+	baseSecret, metaRaw, err := s.persistence.GetCredentialWithMetaByName(environmentID, name, env.SecretKey)
+	if err != nil || baseSecret == nil || metaRaw == nil {
+		return awssdk.Config{}, "Couldn't load this list from the credential — pick with access keys, or type the value in", false
+	}
+	var meta struct {
+		BaseAccessKeyID string `json:"base_access_key_id"`
+		ExternalID      string `json:"external_id"`
+		Region          string `json:"region"`
+		RoleARN         string `json:"role_arn"`
+	}
+	if err := json.Unmarshal(*metaRaw, &meta); err != nil || meta.BaseAccessKeyID == "" {
+		return awssdk.Config{}, "This isn't an AWS Role credential — pick with access keys, or type the value in", false
+	}
+	if strings.TrimSpace(meta.RoleARN) == "" {
+		return awssdk.Config{}, "Finish the AWS Role credential setup (attach a role ARN) to load this list", false
+	}
+
+	reg := region
+	if reg == "" {
+		reg = meta.Region
+	}
+	cfg, err := awsiam.AssumeRoleConfig(c.Request.Context(), meta.BaseAccessKeyID, *baseSecret, reg, meta.RoleARN, meta.ExternalID)
+	if err != nil {
+		return awssdk.Config{}, "Couldn't assume the credential's role: " + err.Error(), false
+	}
+	return cfg, "", true
+}
+
+// managedCredentialName extracts NAME from "${credentials.NAME}" / "${credential.NAME}",
+// or "" if raw isn't that form. Credential names are already sanitised to [A-Za-z0-9_-].
+func managedCredentialName(raw string) string {
+	v := strings.TrimSpace(raw)
+	for _, p := range []string{"${credentials.", "${credential."} {
+		if strings.HasPrefix(v, p) && strings.HasSuffix(v, "}") {
+			return strings.TrimSpace(v[len(p) : len(v)-1])
+		}
+	}
+	return ""
 }
 
 // resolveAWSSecretParam resolves a possibly-${secrets.X} credential param,
