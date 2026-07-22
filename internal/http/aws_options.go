@@ -151,16 +151,19 @@ func (s *Service) resolveAWSConfig(c *gin.Context) (awssdk.Config, string, bool)
 		return awssdk.Config{}, "Choose a region to load this list", false
 	}
 
+	// Managed AWS Role credential: when one is selected the editor auto-fills the
+	// key params with ${credentials.X.base_access_key_id} / ${credentials.X}
+	// accessors (so they're NON-empty), so detect the managed case up front — from
+	// the credential input or the secret-key accessor — and assume the role
+	// server-side rather than trying to resolve those accessors as plain secrets.
+	if name := managedCredFromQuery(c); name != "" {
+		return s.resolveManagedAWSConfig(c, name, region)
+	}
+
 	accessRaw := strings.TrimSpace(c.Query("aws_access_key"))
 	secretRaw := strings.TrimSpace(c.Query("aws_secret_key"))
-	credentialRaw := strings.TrimSpace(c.Query("credential"))
 
 	if accessRaw == "" || secretRaw == "" {
-		// Managed AWS Role credential: resolve it and assume its role server-side
-		// so the dropdown works without pasted keys.
-		if credentialRaw != "" {
-			return s.resolveManagedAWSConfig(c, credentialRaw, region)
-		}
 		if strings.TrimSpace(c.Query("assume_role_arn")) != "" {
 			return awssdk.Config{}, "Assume-role auth can't load this list — pick with access keys, or type the value in (the flow still runs)", false
 		}
@@ -202,12 +205,7 @@ func (s *Service) resolveAWSConfig(c *gin.Context) (awssdk.Config, string, bool)
 // names/ids are). Gated by EnvironmentView + a user-scoped environment lookup,
 // exactly like resolveAWSSecretParam, so a requester can only resolve credentials
 // in an environment they can already view.
-func (s *Service) resolveManagedAWSConfig(c *gin.Context, credentialRaw, region string) (awssdk.Config, string, bool) {
-	name := managedCredentialName(credentialRaw)
-	if name == "" {
-		return awssdk.Config{}, "Managed-credential auth can't load this list — pick with access keys, or type the value in (the flow still runs)", false
-	}
-
+func (s *Service) resolveManagedAWSConfig(c *gin.Context, name, region string) (awssdk.Config, string, bool) {
 	environmentID := strings.TrimSpace(c.Query("environment"))
 	if environmentID == "" {
 		return awssdk.Config{}, "Select an environment to load this list", false
@@ -252,6 +250,20 @@ func (s *Service) resolveManagedAWSConfig(c *gin.Context, credentialRaw, region 
 		return awssdk.Config{}, "Couldn't assume the credential's role: " + err.Error(), false
 	}
 	return cfg, "", true
+}
+
+// managedCredFromQuery returns the managed AWS Role credential name referenced by
+// the request, or "" if this isn't a managed-credential request. The editor sets
+// both the `credential` input and the auto-filled `aws_secret_key` to the plain
+// ${credentials.NAME} form (aws_access_key gets the .base_access_key_id accessor,
+// so it's deliberately not consulted here).
+func managedCredFromQuery(c *gin.Context) string {
+	for _, p := range []string{"credential", "aws_secret_key"} {
+		if name := managedCredentialName(strings.TrimSpace(c.Query(p))); name != "" {
+			return name
+		}
+	}
+	return ""
 }
 
 // managedCredentialName extracts NAME from "${credentials.NAME}" / "${credential.NAME}",
