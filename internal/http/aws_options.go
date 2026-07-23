@@ -7,6 +7,7 @@ import (
 	gohttp "net/http"
 	"sort"
 	"strings"
+	"sync"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -890,25 +891,44 @@ func listSnapshots(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) 
 	return opts, nil
 }
 
-// amazonQuickStartAMIs is a curated set of common Amazon-owned base images,
-// mirroring the AWS console's "Quick Start" list. Each entry's `pattern` is an
-// AMI name glob; listImages resolves it to the single newest matching release in
-// the credential's region. The full Amazon catalogue (tens of thousands of AMIs
-// per region — every historical patch of every OS/arch/variant) is far too large
-// to list, so we surface only the latest of each family.
-var amazonQuickStartAMIs = []struct{ label, pattern string }{
-	{"Amazon Linux 2023 (x86_64)", "al2023-ami-2023.*-x86_64"},
-	{"Amazon Linux 2023 (arm64)", "al2023-ami-2023.*-arm64"},
-	{"Amazon Linux 2 (x86_64)", "amzn2-ami-hvm-*-x86_64-gp2"},
-	{"Amazon Linux 2 (arm64)", "amzn2-ami-hvm-*-arm64-gp2"},
+// quickStartAMIs is a curated set of common base images across the mainstream OS
+// families, mirroring the AWS console's "Quick Start" list. Each family is owned
+// by a different account: `owner` is an owner alias ("amazon") or the vendor's
+// well-known AWS account id (Canonical/Red Hat/Debian/SUSE). `pattern` is an AMI
+// name glob; listImages resolves it to the single newest matching release in the
+// credential's region — so the list stays current with no hard-coded ami-ids. The
+// full public catalogue (tens of thousands of AMIs per region — every historical
+// patch of every OS/arch/variant) is far too large to list, so we surface only
+// the latest of each family.
+var quickStartAMIs = []struct{ label, owner, pattern string }{
+	// Amazon Linux (owner alias "amazon").
+	{"Amazon Linux 2023 (x86_64)", "amazon", "al2023-ami-2023.*-x86_64"},
+	{"Amazon Linux 2023 (arm64)", "amazon", "al2023-ami-2023.*-arm64"},
+	{"Amazon Linux 2 (x86_64)", "amazon", "amzn2-ami-hvm-*-x86_64-gp2"},
+	{"Amazon Linux 2 (arm64)", "amazon", "amzn2-ami-hvm-*-arm64-gp2"},
+	// Ubuntu — Canonical (099720109477). hvm-ssd* matches both the older gp2 and
+	// newer gp3 image lineages.
+	{"Ubuntu 24.04 LTS (x86_64)", "099720109477", "ubuntu/images/hvm-ssd*/ubuntu-noble-24.04-amd64-server-*"},
+	{"Ubuntu 24.04 LTS (arm64)", "099720109477", "ubuntu/images/hvm-ssd*/ubuntu-noble-24.04-arm64-server-*"},
+	{"Ubuntu 22.04 LTS (x86_64)", "099720109477", "ubuntu/images/hvm-ssd*/ubuntu-jammy-22.04-amd64-server-*"},
+	// Red Hat Enterprise Linux — Red Hat (309956199498). Hourly2 = on-demand billing.
+	{"RHEL 9 (x86_64)", "309956199498", "RHEL-9.*_HVM-*-x86_64-*-Hourly2-*"},
+	{"RHEL 8 (x86_64)", "309956199498", "RHEL-8.*_HVM-*-x86_64-*-Hourly2-*"},
+	// Windows Server — Amazon-owned, refreshed monthly.
+	{"Windows Server 2022 Base", "amazon", "Windows_Server-2022-English-Full-Base-*"},
+	{"Windows Server 2019 Base", "amazon", "Windows_Server-2019-English-Full-Base-*"},
+	// Debian — official Debian (136693071363).
+	{"Debian 12 (x86_64)", "136693071363", "debian-12-amd64-*"},
+	// SUSE Linux Enterprise Server — SUSE (013907871322).
+	{"SUSE Linux Enterprise 15 (x86_64)", "013907871322", "suse-sles-15-sp*-v*-hvm-ssd-x86_64"},
 }
 
 func listImages(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
 	client := ec2.NewFromConfig(cfg)
 	// AMIs the account can actually launch: self-owned PLUS any privately shared
-	// with it (ExecutableUsers=self), followed by the latest of each Amazon-owned
-	// quick-start family. All merged + deduped by image id. A non-quick-start
-	// public AMI is still unlistable — paste the ami-… id in.
+	// with it (ExecutableUsers=self), followed by the latest quick-start base image
+	// of each common OS family. All merged + deduped by image id. A base image
+	// outside the curated families is still unlistable — paste the ami-… id in.
 	seen := map[string]bool{}
 	var opts []awsOption
 	add := func(images []ec2types.Image) {
@@ -936,27 +956,43 @@ func listImages(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
 	}
 	add(shared.Images)
 
-	// Curated Amazon quick-start base images. Best-effort: a family that errors
-	// (throttling, a region without it) or matches nothing is simply skipped, so
-	// it never fails the whole list — the user's own AMIs above always return.
-	for _, fam := range amazonQuickStartAMIs {
-		out, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{
-			Owners: []string{"amazon"},
-			Filters: []ec2types.Filter{
-				{Name: awssdk.String("name"), Values: []string{fam.pattern}},
-				{Name: awssdk.String("state"), Values: []string{"available"}},
-			},
-		})
-		if err != nil || len(out.Images) == 0 {
+	// Curated quick-start base images, one DescribeImages per family. Fanned out
+	// concurrently (each is independent) so ~a dozen lookups don't serialise into a
+	// slow dropdown; results are collected into a fixed-size slice (each goroutine
+	// owns a distinct index, so no shared-state race) and appended in catalogue
+	// order. Best-effort: a family that errors (throttling, a region without it) or
+	// matches nothing is skipped, so the user's own AMIs above always return.
+	found := make([]*awsOption, len(quickStartAMIs))
+	var wg sync.WaitGroup
+	for i := range quickStartAMIs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			fam := quickStartAMIs[i]
+			out, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{
+				Owners: []string{fam.owner},
+				Filters: []ec2types.Filter{
+					{Name: awssdk.String("name"), Values: []string{fam.pattern}},
+					{Name: awssdk.String("state"), Values: []string{"available"}},
+				},
+			})
+			if err != nil || len(out.Images) == 0 {
+				return
+			}
+			id := awssdk.ToString(latestImage(out.Images).ImageId)
+			if id == "" {
+				return
+			}
+			found[i] = &awsOption{Name: fmt.Sprintf("%s — %s", fam.label, id), Value: id}
+		}(i)
+	}
+	wg.Wait()
+	for _, opt := range found {
+		if opt == nil || seen[opt.Value] {
 			continue
 		}
-		latest := latestImage(out.Images)
-		id := awssdk.ToString(latest.ImageId)
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", fam.label, id), Value: id})
+		seen[opt.Value] = true
+		opts = append(opts, *opt)
 	}
 	return opts, nil
 }
