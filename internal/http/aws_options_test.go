@@ -92,6 +92,35 @@ func TestAWSDynamicOption(t *testing.T) {
 	// A resource-named input on a NON-aws action gets nothing (rule is scoped).
 	_, ok = awsDynamicOption("azure/compute/vm_create", "kms_key_id")
 	g.Expect(ok).To(BeFalse())
+
+	// A create/import action's *identity* input (the resource it's creating) must
+	// NOT get a picker — you're naming a new resource, not picking an existing one.
+	for _, tc := range []struct{ action, input string }{
+		{"aws/ec2/create_security_group", "group_name"},
+		{"aws/ec2/create_key_pair", "key_name"},
+		{"aws/ec2/import_key_pair", "key_name"},
+		{"aws/iam/create_group", "group_name"},
+		{"aws/iam/create_user", "user_name"},
+		{"aws/s3/create_bucket", "bucket"},
+		{"aws/autoscaling/create_auto_scaling_group", "auto_scaling_group_name"},
+		{"aws/cloudwatchlogs/create_log_group", "log_group_name"},
+	} {
+		_, ok = awsDynamicOption(tc.action, tc.input)
+		g.Expect(ok).To(BeFalse(), "%s#%s creates the resource; must have no picker", tc.action, tc.input)
+	}
+
+	// But sibling create actions that *reference* an existing resource keep theirs.
+	for _, tc := range []struct{ action, input, endpoint string }{
+		{"aws/iam/create_access_key", "user_name", "/api/v1/action/options/aws-iam-users"},
+		{"aws/cloudwatchlogs/create_log_stream", "log_group_name", "/api/v1/action/options/aws-log-groups"},
+		{"aws/s3/create_access_point", "bucket", "/api/v1/action/options/aws-s3-buckets"},
+		{"aws/s3/create_multipart_upload", "bucket", "/api/v1/action/options/aws-s3-buckets"},
+		{"aws/iam/create_policy_version", "policy_arn", "/api/v1/action/options/aws-iam-policies"},
+	} {
+		dyn, ok = awsDynamicOption(tc.action, tc.input)
+		g.Expect(ok).To(BeTrue(), "%s#%s references an existing resource; keeps its picker", tc.action, tc.input)
+		g.Expect(dyn.Endpoint).To(Equal(tc.endpoint))
+	}
 }
 
 // Every picker slug in awsResourceInputs must be handled by awsOptions' switch,

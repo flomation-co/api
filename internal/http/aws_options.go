@@ -118,12 +118,35 @@ var awsResourceInputs = map[string]string{
 	"policy_arn": "iam-policies",
 }
 
+// awsPickerExclusions lists (actionID → input) pairs where the rule-based picker
+// must NOT apply because the input names the resource the action is *creating*:
+// autocompleting existing resources there is wrong — you're choosing a new name,
+// not picking an existing one. Only "create"/"import" actions whose identity
+// input collides with a picker key need listing; sibling create actions that
+// instead *reference* an existing resource keep their picker (e.g.
+// create_access_key's user_name, create_log_stream's log_group_name,
+// create_access_point's / create_multipart_upload's bucket, create_policy_version's
+// policy_arn, create_export_task's / create_flow_logs' log_group_name).
+var awsPickerExclusions = map[string]map[string]bool{
+	"aws/autoscaling/create_auto_scaling_group": {"auto_scaling_group_name": true},
+	"aws/cloudwatchlogs/create_log_group":       {"log_group_name": true},
+	"aws/ec2/create_key_pair":                   {"key_name": true},
+	"aws/ec2/import_key_pair":                   {"key_name": true},
+	"aws/ec2/create_security_group":             {"group_name": true},
+	"aws/iam/create_group":                      {"group_name": true},
+	"aws/iam/create_user":                       {"user_name": true},
+	"aws/s3/create_bucket":                      {"bucket": true},
+}
+
 // awsDynamicOption returns the dynamic-options marker for an AWS action input, or
 // (_, false) when the input isn't an AWS-resource picker. Called from the
 // GetActions injection loop as a fallback after the exact dynamicOptionsMetadata
 // map misses.
 func awsDynamicOption(actionID, inputName string) (api.InputDynamicOptions, bool) {
 	if !strings.HasPrefix(actionID, "aws/") {
+		return api.InputDynamicOptions{}, false
+	}
+	if awsPickerExclusions[actionID][inputName] {
 		return api.InputDynamicOptions{}, false
 	}
 	slug, ok := awsResourceInputs[inputName]
