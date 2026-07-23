@@ -413,6 +413,14 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			return
 		}
 		sort.Slice(opts, func(i, j int) bool { return strings.ToLower(opts[i].Name) < strings.ToLower(opts[j].Name) })
+		// Serialise an empty result as [] not null: a lister that matched nothing
+		// (e.g. an account with no self-owned AMIs / key pairs) leaves opts nil,
+		// which JSON-encodes as `null` — the editor treats a non-array as "Failed
+		// to load options" rather than an empty dropdown. This is a successful,
+		// empty result, so return an empty list.
+		if opts == nil {
+			opts = []awsOption{}
+		}
 		c.JSON(gohttp.StatusOK, gin.H{"options": opts})
 	}
 }
