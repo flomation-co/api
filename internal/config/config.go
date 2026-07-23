@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+
 	goconfig "github.com/flomation-co/go-config"
 
 	"flomation.app/automate/api/internal/mtls"
@@ -126,6 +128,19 @@ type OCIHostingConfig struct {
 	Passphrase  string `json:"passphrase,omitempty"`
 	Bucket      string `json:"bucket"`
 	Namespace   string `json:"namespace,omitempty"` // optional; resolved via GetNamespace when blank
+}
+
+// String redacts the signing key and passphrase so an accidental %v/%+v dump of the
+// config (directly or via a parent struct) never leaks the private key.
+func (c OCIHostingConfig) String() string {
+	redact := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		return "***redacted***"
+	}
+	return fmt.Sprintf("{Tenancy:%s User:%s Region:%s Fingerprint:%s PrivateKey:%s Passphrase:%s Bucket:%s Namespace:%s}",
+		c.Tenancy, c.User, c.Region, c.Fingerprint, redact(c.PrivateKey), redact(c.Passphrase), c.Bucket, c.Namespace)
 }
 
 // AWSConfig holds platform-level AWS settings.

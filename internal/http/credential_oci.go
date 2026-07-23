@@ -210,7 +210,27 @@ func (s *Service) createOCIKeyManual(c *gin.Context, environmentID string, env *
 // scoped to) that the customer copies from the applied stack's outputs, then
 // activate the credential.
 func (s *Service) setOCIConnection(c *gin.Context) {
+	environmentID := c.Param("environment")
 	credID := c.Param("id")
+
+	// Authorize: the caller must own the environment in the path, and the credential
+	// must belong to it — otherwise an authenticated user could activate or patch
+	// another tenant's credential by guessing its id (BOLA). jwtMiddleware only
+	// authenticates; it does not scope the object.
+	user := s.getUserFromContext(c)
+	if user == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil || env == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "environment not found"})
+		return
+	}
 
 	var body struct {
 		UserOCID        string `json:"user_ocid"`
@@ -232,7 +252,7 @@ func (s *Service) setOCIConnection(c *gin.Context) {
 	}
 
 	cred, err := s.persistence.GetCredentialByID(credID)
-	if err != nil || cred == nil || cred.ProviderSlug != "oci_key" {
+	if err != nil || cred == nil || cred.ProviderSlug != "oci_key" || cred.EnvironmentID != environmentID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Oracle Cloud credential not found"})
 		return
 	}
@@ -293,7 +313,12 @@ func (s *Service) testOCIAccess(c *gin.Context) {
 		Region      string `json:"region"`
 		Fingerprint string `json:"fingerprint"`
 	}
-	if err := json.Unmarshal(*metaRaw, &meta); err != nil || meta.UserID == "" {
+	if err := json.Unmarshal(*metaRaw, &meta); err != nil {
+		log.WithError(err).Error("unable to read oci_key credential metadata")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "the stored connection details couldn't be read"})
+		return
+	}
+	if meta.UserID == "" {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "connect the stack first — the user OCID hasn't been captured yet"})
 		return
 	}
@@ -370,7 +395,13 @@ func validOCID(ocid, kind string) bool {
 	if kind != "" && !strings.HasPrefix(ocid, "ocid1."+kind+".") {
 		return false
 	}
-	return len(ocid) > len("ocid1.")+8
+	// Real OCIDs are ocid1.<type>.<realm>.[region].<unique> — five dot-separated
+	// segments (the region segment may be empty) ending in a substantial unique id.
+	// The old len>14 check let almost anything through.
+	if strings.Count(ocid, ".") < 4 {
+		return false
+	}
+	return len(ocid)-strings.LastIndexByte(ocid, '.')-1 >= 15
 }
 
 // ociReason returns the OCI service failure message without leaking key material.

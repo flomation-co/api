@@ -91,7 +91,7 @@ func TestRenderOCIStackZip(t *testing.T) {
 			t.Fatalf("open %s: %v", f.Name, err)
 		}
 		b, _ := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		files[f.Name] = string(b)
 	}
 	main, ok := files["main.tf"]
@@ -110,6 +110,41 @@ func TestRenderOCIStackZip(t *testing.T) {
 	// No schema.yaml — RM auto-injects tenancy/region/compartment; a schema risks rejection.
 	if _, ok := files["schema.yaml"]; ok {
 		t.Fatal("schema.yaml should not be shipped")
+	}
+}
+
+// scope="tenancy" bakes a different scope default; the policy statement branches on
+// it at apply time (manage all-resources in tenancy vs in a compartment).
+func TestRenderOCIStackZipTenancyScope(t *testing.T) {
+	zipBytes, err := renderOCIStackZip(goldenPublicKeyPEM, "tenancy", "abcd1234efgh5678")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		t.Fatalf("zip open: %v", err)
+	}
+	var main string
+	for _, f := range zr.File {
+		if f.Name == "main.tf" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("open main.tf: %v", err)
+			}
+			b, _ := io.ReadAll(rc)
+			_ = rc.Close()
+			main = string(b)
+		}
+	}
+	if main == "" {
+		t.Fatal("main.tf missing from stack zip")
+	}
+	if !strings.Contains(main, `variable "scope" { default = "tenancy" }`) {
+		t.Fatal("tenancy scope not baked into the stack")
+	}
+	// the tenancy branch of the policy statement must be present in the rendered locals
+	if !strings.Contains(main, "manage all-resources in tenancy") {
+		t.Fatal("tenancy policy statement branch missing")
 	}
 }
 
