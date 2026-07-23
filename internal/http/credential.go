@@ -102,6 +102,12 @@ type createCredentialRequest struct {
 	// can pre-fill the picker; NOT enforced by Flomation (the policy lives on the
 	// customer's role).
 	PermissionLevels map[string]string `json:"permission_levels"`
+	// TenancyOCID / Scope apply only to the oci_key provider. Scope is
+	// "compartment" (default) or "tenancy"; when "compartment" the compartment is
+	// chosen in the customer's console via the provisioning stack, so it is NOT
+	// required here. Region is reused from the aws_role fields above.
+	TenancyOCID string `json:"tenancy_ocid"`
+	Scope       string `json:"scope"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
@@ -137,6 +143,13 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	// policy for the customer to paste into their AWS role.
 	if req.ProviderSlug == "aws_role" {
 		s.createAWSRoleCredential(c, environmentID, env, req)
+		return
+	}
+
+	// oci_key is a token-less managed signing-key credential: Flomation generates
+	// the RSA keypair and hands back a one-click provisioning stack; no OAuth.
+	if req.ProviderSlug == "oci_key" {
+		s.createOCIKeyCredential(c, environmentID, env, req)
 		return
 	}
 

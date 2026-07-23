@@ -11,3 +11,4 @@ debian/*.substvars
 debian/*.debhelper.log
 debian/debhelper-build-stamp
 config.json
+oci_connector_livetest/
