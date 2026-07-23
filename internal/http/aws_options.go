@@ -890,13 +890,25 @@ func listSnapshots(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) 
 	return opts, nil
 }
 
+// amazonQuickStartAMIs is a curated set of common Amazon-owned base images,
+// mirroring the AWS console's "Quick Start" list. Each entry's `pattern` is an
+// AMI name glob; listImages resolves it to the single newest matching release in
+// the credential's region. The full Amazon catalogue (tens of thousands of AMIs
+// per region — every historical patch of every OS/arch/variant) is far too large
+// to list, so we surface only the latest of each family.
+var amazonQuickStartAMIs = []struct{ label, pattern string }{
+	{"Amazon Linux 2023 (x86_64)", "al2023-ami-2023.*-x86_64"},
+	{"Amazon Linux 2023 (arm64)", "al2023-ami-2023.*-arm64"},
+	{"Amazon Linux 2 (x86_64)", "amzn2-ami-hvm-*-x86_64-gp2"},
+	{"Amazon Linux 2 (arm64)", "amzn2-ami-hvm-*-arm64-gp2"},
+}
+
 func listImages(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
 	client := ec2.NewFromConfig(cfg)
 	// AMIs the account can actually launch: self-owned PLUS any privately shared
-	// with it (ExecutableUsers=self). Two calls, merged + deduped by image id.
-	// The full public catalogue (hundreds of thousands of AMIs) is deliberately
-	// excluded as unlistable — for a public base AMI (Amazon Linux, Ubuntu, …)
-	// paste the ami-… id in.
+	// with it (ExecutableUsers=self), followed by the latest of each Amazon-owned
+	// quick-start family. All merged + deduped by image id. A non-quick-start
+	// public AMI is still unlistable — paste the ami-… id in.
 	seen := map[string]bool{}
 	var opts []awsOption
 	add := func(images []ec2types.Image) {
@@ -923,7 +935,42 @@ func listImages(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
 		return nil, err
 	}
 	add(shared.Images)
+
+	// Curated Amazon quick-start base images. Best-effort: a family that errors
+	// (throttling, a region without it) or matches nothing is simply skipped, so
+	// it never fails the whole list — the user's own AMIs above always return.
+	for _, fam := range amazonQuickStartAMIs {
+		out, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{
+			Owners: []string{"amazon"},
+			Filters: []ec2types.Filter{
+				{Name: awssdk.String("name"), Values: []string{fam.pattern}},
+				{Name: awssdk.String("state"), Values: []string{"available"}},
+			},
+		})
+		if err != nil || len(out.Images) == 0 {
+			continue
+		}
+		latest := latestImage(out.Images)
+		id := awssdk.ToString(latest.ImageId)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		opts = append(opts, awsOption{Name: fmt.Sprintf("%s — %s", fam.label, id), Value: id})
+	}
 	return opts, nil
+}
+
+// latestImage returns the image with the most recent CreationDate. AMI creation
+// dates are ISO 8601, so a lexicographic compare orders them correctly.
+func latestImage(images []ec2types.Image) ec2types.Image {
+	latest := images[0]
+	for _, img := range images[1:] {
+		if awssdk.ToString(img.CreationDate) > awssdk.ToString(latest.CreationDate) {
+			latest = img
+		}
+	}
+	return latest
 }
 
 func listKeyPairs(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
