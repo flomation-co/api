@@ -12,3 +12,10 @@ debian/*.debhelper.log
 debian/debhelper-build-stamp
 config.json
 oci_connector_livetest/
+oci_uploadkey/
+oci_par_host/
+oci_provision_host/
+oci_hosttest/
+oci_bucketlist/
+oci_bucket_lifecycle/
+oci_finduser/
