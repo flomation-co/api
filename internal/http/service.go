@@ -741,6 +741,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	environment.PUT("/:environment/credential/:id/aws-role", s.jwtMiddleware, s.setAWSRoleARN)
 	environment.PUT("/:environment/credential/:id/aws-permissions", s.jwtMiddleware, s.updateAWSRolePermissions)
 	environment.POST("/:environment/credential/:id/aws-role/test", s.jwtMiddleware, s.testAWSRoleAccess)
+	environment.PUT("/:environment/credential/:id/oci-connection", s.jwtMiddleware, s.setOCIConnection)
+	environment.POST("/:environment/credential/:id/oci-key/test", s.jwtMiddleware, s.testOCIAccess)
 	environment.DELETE("/:environment/credential/:id", s.jwtMiddleware, s.deleteEnvironmentCredential)
 
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)
@@ -776,6 +778,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// Credentials
 	v1.GET("credential/providers", s.jwtMiddleware, s.getCredentialProviders)
 	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
+	// Distinct top-level path (not under credential/) so gin's radix tree doesn't
+	// conflict the :id param with the static credential/providers|callback routes.
+	// (OCI connect stacks are hosted on Object Storage via a PAR — RM only fetches
+	// zipUrls from supported providers, not a self-served endpoint.)
 
 	// Agents
 	agents := v1.Group("agent")

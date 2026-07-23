@@ -448,6 +448,10 @@ func (m *mockPersistence) CreateCredential(*api.EnvironmentCredential, string) (
 func (m *mockPersistence) CreateAWSRoleCredential(string, string, string, string, json.RawMessage) (string, error) {
 	return "aws-cred-id", nil
 }
+func (m *mockPersistence) CreateOCIKeyCredential(string, string, string, string, json.RawMessage) (string, error) {
+	return "oci-cred-id", nil
+}
+func (m *mockPersistence) ActivateCredential(string) error { return nil }
 func (m *mockPersistence) GetCredentialWithMetaByID(string, string) (*string, *json.RawMessage, error) {
 	return nil, nil, nil
 }

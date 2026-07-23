@@ -40,6 +40,12 @@ func (s *Service) getCredentialProviders(c *gin.Context) {
 				configured = true
 			}
 		}
+		// oci_key is token-less (no OAuth), so "configured" instead reflects whether
+		// managed stack hosting is set up. The editor uses this to choose the wizard:
+		// configured -> one-click managed flow; not configured -> manual key entry.
+		if p.Slug == "oci_key" {
+			configured = s.ociHostConfigured()
+		}
 		result = append(result, providerResponse{
 			CredentialProvider: p,
 			Configured:         configured,
@@ -72,6 +78,8 @@ func (s *Service) deleteEnvironmentCredential(c *gin.Context) {
 	// A failure here only orphans an assume-role-only user (recoverable by a
 	// sweep), so it must not block the credential deletion.
 	s.cleanupAWSRoleIdentity(c, credID)
+	// Best-effort removal of an oci_key credential's hosted provisioning stack.
+	s.cleanupOCIStack(credID)
 
 	if err := s.persistence.DeleteCredential(credID, environmentID); err != nil {
 		log.WithError(err).Error("unable to delete credential")
@@ -102,6 +110,19 @@ type createCredentialRequest struct {
 	// can pre-fill the picker; NOT enforced by Flomation (the policy lives on the
 	// customer's role).
 	PermissionLevels map[string]string `json:"permission_levels"`
+	// TenancyOCID / Scope apply only to the oci_key provider. Scope is
+	// "compartment" (default) or "tenancy"; when "compartment" the compartment is
+	// chosen in the customer's console via the provisioning stack, so it is NOT
+	// required here. Region is reused from the aws_role fields above.
+	TenancyOCID string `json:"tenancy_ocid"`
+	Scope       string `json:"scope"`
+	// Manual oci_key entry — used only when the server has NO stack hosting, so the
+	// one-click managed flow is unavailable. The operator pastes an existing OCI API
+	// signing key: user OCID, fingerprint and the (unencrypted) private-key PEM,
+	// alongside TenancyOCID + Region above.
+	UserOCID    string `json:"user_ocid"`
+	Fingerprint string `json:"fingerprint"`
+	PrivateKey  string `json:"private_key"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
@@ -137,6 +158,13 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	// policy for the customer to paste into their AWS role.
 	if req.ProviderSlug == "aws_role" {
 		s.createAWSRoleCredential(c, environmentID, env, req)
+		return
+	}
+
+	// oci_key is a token-less managed signing-key credential: Flomation generates
+	// the RSA keypair and hands back a one-click provisioning stack; no OAuth.
+	if req.ProviderSlug == "oci_key" {
+		s.createOCIKeyCredential(c, environmentID, env, req)
 		return
 	}
 

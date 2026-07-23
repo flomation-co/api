@@ -150,6 +150,42 @@ func (s *Service) CreateAWSRoleCredential(environmentID, name, environmentKey, b
 	return id, err
 }
 
+// CreateOCIKeyCredential creates a managed OCI signing-key credential. Flomation
+// generates the RSA keypair; the PRIVATE key PEM is encrypted into access_token
+// (with the environment key, like any credential secret), and the non-secret
+// fields (tenancy_ocid, region, fingerprint, compartment_ocid, scope, public_key,
+// user_ocid, stack_token) live in the plaintext metadata JSONB. It starts
+// 'pending': the credential is not usable until the customer applies the
+// provisioning stack and the user OCID is captured (setOCIConnection flips it to
+// 'active'). Status guards the runtime resolver from serving a half-provisioned
+// credential.
+func (s *Service) CreateOCIKeyCredential(environmentID, name, environmentKey, privateKeyPEM string, metadata json.RawMessage) (string, error) {
+	var id string
+	err := s.conn.QueryRow(`
+		INSERT INTO environment_credential (
+			environment_id, provider_slug, name, status, access_token, metadata
+		) VALUES (
+			$1, 'oci_key', $2, 'pending',
+			CASE WHEN $3 = '' THEN NULL ELSE PGP_SYM_ENCRYPT($3, $4) END,
+			$5
+		)
+		RETURNING id`,
+		environmentID, name, privateKeyPEM, environmentKey, []byte(metadata),
+	).Scan(&id)
+	return id, err
+}
+
+// ActivateCredential flips a credential to 'active' and clears any prior error —
+// used once a managed credential's provisioning completes (e.g. the OCI user OCID
+// is captured after the customer applies the stack).
+func (s *Service) ActivateCredential(id string) error {
+	_, err := s.conn.Exec(`
+		UPDATE environment_credential
+		SET status = 'active', last_error = NULL, updated_at = NOW()
+		WHERE id = $1`, id)
+	return err
+}
+
 // StoreCredentialTokens saves the OAuth tokens after a successful authorization.
 // clientID/clientSecret are persisted so the background refresh poller can use them
 // without needing access to application config (supports config-default credentials).
