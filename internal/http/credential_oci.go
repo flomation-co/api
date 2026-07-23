@@ -47,6 +47,10 @@ import (
 // provisioning stack. The private key never leaves Flomation; the customer never
 // sees or pastes a key.
 func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, env *api.Environment, req createCredentialRequest) {
+	if !s.ociHostConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Oracle Cloud connections aren't set up on this server yet (stack hosting unavailable)"})
+		return
+	}
 	tenancy := strings.TrimSpace(req.TenancyOCID)
 	region := strings.TrimSpace(req.Region)
 	if !validOCID(tenancy, "tenancy") {
@@ -70,6 +74,23 @@ func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, e
 	}
 	stackToken := generateStackToken()
 
+	// Render the stack and publish it to Object Storage BEFORE inserting the row,
+	// so a hosting failure never orphans a credential. RM only fetches stack zips
+	// from supported providers, so the deploy URL wraps a PAR to our bucket.
+	zipBytes, err := renderOCIStackZip(publicPEM, scope, stackToken)
+	if err != nil {
+		log.WithError(err).Error("unable to render OCI stack")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	objectName := "stacks/" + stackToken + ".zip"
+	parURL, err := s.hostStackZip(c.Request.Context(), zipBytes, objectName)
+	if err != nil {
+		log.WithError(err).Error("unable to host OCI stack")
+		c.JSON(http.StatusBadGateway, gin.H{"error": "couldn't publish the provisioning stack — check the server's Oracle Cloud hosting configuration"})
+		return
+	}
+
 	metaBytes, err := json.Marshal(map[string]interface{}{
 		"tenancy_ocid":     tenancy,
 		"region":           region,
@@ -77,7 +98,8 @@ func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, e
 		"public_key":       publicPEM,
 		"scope":            scope,
 		"stack_token":      stackToken,
-		"user_ocid":        "", // captured after the stack applies
+		"stack_object":     objectName, // for cleanup on delete
+		"user_ocid":        "",         // captured after the stack applies
 		"compartment_ocid": "",
 	})
 	if err != nil {
@@ -97,55 +119,13 @@ func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, e
 		return
 	}
 
-	zipURL := s.ociStackZipURL(credID, stackToken)
 	c.JSON(http.StatusCreated, gin.H{
-		"id":            credID,
-		"fingerprint":   fingerprint,
-		"public_key":    publicPEM,
-		"deploy_url":    ociDeployURL(zipURL),
-		"stack_zip_url": zipURL,
-		"status":        "pending",
+		"id":          credID,
+		"fingerprint": fingerprint,
+		"public_key":  publicPEM,
+		"deploy_url":  ociDeployURL(parURL),
+		"status":      "pending",
 	})
-}
-
-// serveOCIStackZip serves the per-credential Resource Manager stack. It is
-// UNAUTHENTICATED — OCI's Resource Manager fetches it server-side — so access is
-// gated by the unguessable stack_token, and the payload is harmless anyway (a
-// public key plus generic Terraform; no secret). Returns a .zip Terraform config.
-func (s *Service) serveOCIStackZip(c *gin.Context) {
-	credID := c.Param("id")
-	// Token is in the PATH, not a query string: OCI Resource Manager's GetPackage
-	// drops query strings when it fetches the zipUrl, which would 403 here.
-	token := c.Param("token")
-
-	cred, err := s.persistence.GetCredentialByID(credID)
-	if err != nil || cred == nil || cred.ProviderSlug != "oci_key" || cred.Metadata == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "stack not found"})
-		return
-	}
-	var meta struct {
-		PublicKey  string `json:"public_key"`
-		StackToken string `json:"stack_token"`
-		TenancyID  string `json:"tenancy_ocid"`
-		Scope      string `json:"scope"`
-	}
-	if err := json.Unmarshal(*cred.Metadata, &meta); err != nil || meta.StackToken == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "stack not found"})
-		return
-	}
-	if token == "" || token != meta.StackToken {
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid stack token"})
-		return
-	}
-
-	zipBytes, err := renderOCIStackZip(meta.PublicKey, meta.Scope, credID)
-	if err != nil {
-		log.WithError(err).Error("unable to render OCI stack zip")
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-	c.Header("Content-Disposition", "attachment; filename=flomation-oci-connect.zip")
-	c.Data(http.StatusOK, "application/zip", zipBytes)
 }
 
 // setOCIConnection is step 3: capture the user OCID (and the compartment the stack
@@ -199,6 +179,9 @@ func (s *Service) setOCIConnection(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
+	// The provisioning stack has done its job now the connection is live — delete
+	// it so hosted objects don't accumulate. Best-effort.
+	s.cleanupOCIStack(credID)
 
 	c.JSON(http.StatusOK, gin.H{"id": credID, "user_ocid": userOCID, "status": "active"})
 }
@@ -284,14 +267,6 @@ func ociKeyFingerprint(pubDER []byte) string {
 		parts[i] = fmt.Sprintf("%02x", b)
 	}
 	return strings.Join(parts, ":")
-}
-
-// ociStackZipURL builds the public URL Resource Manager fetches the stack from.
-// It must be internet-reachable (the sandbox/production API host), so it derives
-// from the configured public API base.
-func (s *Service) ociStackZipURL(credID, token string) string {
-	base := strings.TrimRight(s.config.Launch.APIURL, "/")
-	return fmt.Sprintf("%s/api/v1/oci-stack/%s/%s/config.zip", base, credID, url.PathEscape(token))
 }
 
 // ociDeployURL wraps a stack zip URL in OCI's native "Deploy to Oracle Cloud"

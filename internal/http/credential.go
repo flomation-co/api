@@ -72,6 +72,8 @@ func (s *Service) deleteEnvironmentCredential(c *gin.Context) {
 	// A failure here only orphans an assume-role-only user (recoverable by a
 	// sweep), so it must not block the credential deletion.
 	s.cleanupAWSRoleIdentity(c, credID)
+	// Best-effort removal of an oci_key credential's hosted provisioning stack.
+	s.cleanupOCIStack(credID)
 
 	if err := s.persistence.DeleteCredential(credID, environmentID); err != nil {
 		log.WithError(err).Error("unable to delete credential")
