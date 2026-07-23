@@ -760,6 +760,35 @@ var wordpressTagsOption = api.InputDynamicOptions{
 	Params:   []string{"url", "username", "app_password", "allow_insecure", "environment"},
 }
 
+// stripOCIConnectInputs rewrites an OCI action's auth block for a server that has
+// no stack hosting configured. There the managed "Connect Oracle Cloud" path can't
+// work — createOCIKeyCredential 503s because it can't publish a provisioning stack —
+// so hiding that option and forcing manual signing-key entry is the honest UX.
+//
+// It drops the auth_method toggle + credential picker, and un-gates the raw signing
+// fields: their visible_when (which keys off auth_method) is cleared so they always
+// show, and the four that the connector made optional are marked required again.
+// Only touches fields gated on auth_method, so compartment_ocid and resource fields
+// are untouched. Serve-time only — the executor manifest is unchanged, and GetAuth
+// reads the same raw inputs either way.
+func stripOCIConnectInputs(inputs []api.InputDefinition) []api.InputDefinition {
+	requiredAgain := map[string]bool{"tenancy_ocid": true, "user_ocid": true, "region": true, "fingerprint": true}
+	out := make([]api.InputDefinition, 0, len(inputs))
+	for _, in := range inputs {
+		if in.Name == "auth_method" || in.Name == "credential" {
+			continue
+		}
+		if in.VisibleWhen != nil && in.VisibleWhen.Field == "auth_method" {
+			in.VisibleWhen = nil
+			if requiredAgain[in.Name] {
+				in.Required = true
+			}
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
 func (s *Service) getActions(c *gin.Context) {
 	actions, err := s.persistence.GetActions()
 	if err != nil {
@@ -771,6 +800,10 @@ func (s *Service) getActions(c *gin.Context) {
 	}
 
 	mappedActions := make(map[string]api.Action)
+
+	// When OCI stack hosting isn't configured on this server, the managed connect
+	// flow is unavailable, so serve OCI nodes with the raw signing-key fields only.
+	ociUnhosted := !s.ociHostConfigured()
 
 	for _, a := range actions {
 		a.Type, _ = strconv.ParseInt(a.ActionType, 10, 64)
@@ -794,6 +827,9 @@ func (s *Service) getActions(c *gin.Context) {
 					d := dyn
 					inputs[idx].DynamicOptions = &d
 				}
+			}
+			if ociUnhosted && strings.HasPrefix(a.ID, "oracle/") {
+				inputs = stripOCIConnectInputs(inputs)
 			}
 			a.Inputs = inputs
 		}

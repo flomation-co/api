@@ -147,3 +147,47 @@ func TestGetCategoryForUKGov(t *testing.T) {
 	g.Expect(parl.SubName).To(Equal("UK Parliament"))
 	g.Expect(parl.SubIcon).To(Equal("landmark"))
 }
+
+// When OCI stack hosting is not configured, an OCI action is served with the
+// managed connect inputs stripped and the raw signing fields un-gated + required.
+func TestStripOCIConnectInputs(t *testing.T) {
+	g := NewWithT(t)
+
+	gate := &api.InputVisibleWhen{Field: "auth_method", Values: []string{"keys"}}
+	in := []api.InputDefinition{
+		{Name: "auth_method", Type: "string"},
+		{Name: "credential", Type: "credential", VisibleWhen: &api.InputVisibleWhen{Field: "auth_method", Values: []string{"", "connect"}}},
+		{Name: "tenancy_ocid", Type: "string", VisibleWhen: gate},
+		{Name: "user_ocid", Type: "string", VisibleWhen: gate},
+		{Name: "region", Type: "string", VisibleWhen: gate},
+		{Name: "fingerprint", Type: "string", VisibleWhen: gate},
+		{Name: "private_key", Type: "secret", VisibleWhen: gate},
+		{Name: "private_key_passphrase", Type: "secret", VisibleWhen: gate},
+		{Name: "compartment_ocid", Type: "string", Required: true}, // always-visible, untouched
+		{Name: "zone_name", Type: "string", Required: true},        // resource field, untouched
+	}
+
+	out := stripOCIConnectInputs(in)
+
+	byName := map[string]api.InputDefinition{}
+	for _, c := range out {
+		byName[c.Name] = c
+	}
+	// managed-connect inputs are gone
+	g.Expect(byName).ToNot(HaveKey("auth_method"))
+	g.Expect(byName).ToNot(HaveKey("credential"))
+	// the four originally-required signing fields: un-gated + required again
+	for _, n := range []string{"tenancy_ocid", "user_ocid", "region", "fingerprint"} {
+		g.Expect(byName[n].VisibleWhen).To(BeNil(), n)
+		g.Expect(byName[n].Required).To(BeTrue(), n)
+	}
+	// the two secret fields: un-gated, but stay optional
+	for _, n := range []string{"private_key", "private_key_passphrase"} {
+		g.Expect(byName[n].VisibleWhen).To(BeNil(), n)
+		g.Expect(byName[n].Required).To(BeFalse(), n)
+	}
+	// non-auth fields are left exactly as they were
+	g.Expect(byName["compartment_ocid"].Required).To(BeTrue())
+	g.Expect(byName["zone_name"].Required).To(BeTrue())
+	g.Expect(out).To(HaveLen(8)) // 10 in, 2 removed
+}
