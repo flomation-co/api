@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	gohttp "net/http"
@@ -319,15 +320,64 @@ func init() {
 }
 
 // buildOCIProvider assembles an OCI ConfigurationProvider from the query params
-// the editor forwards (the node's connection). The private key + passphrase are
-// ${secrets.X} references resolved server-side. On any problem it writes the
-// graceful HTTP 200 + {"error": ...} (or a 403 for a permission failure) and
-// returns ok=false, so callers just `if !ok { return }`.
+// the editor forwards (the node's connection). Each param may be a plain typed
+// value, a ${secrets.X} reference, or — in "Connect Oracle Cloud" mode — a managed
+// credential reference (${credentials.NAME} for the private key, ${credentials.NAME.field}
+// for the tenancy/user/region/fingerprint), all resolved server-side. On any problem
+// it writes the graceful HTTP 200 + {"error": ...} (or a 403 for a permission
+// failure) and returns ok=false, so callers just `if !ok { return }`.
 func (s *Service) buildOCIProvider(c *gin.Context) (common.ConfigurationProvider, bool) {
-	tenancy := strings.TrimSpace(c.Query("tenancy_ocid"))
-	user := strings.TrimSpace(c.Query("user_ocid"))
-	region := strings.ToLower(strings.TrimSpace(c.Query("region")))
-	fingerprint := strings.TrimSpace(c.Query("fingerprint"))
+	environmentID := strings.TrimSpace(c.Query("environment"))
+	rawTenancy := strings.TrimSpace(c.Query("tenancy_ocid"))
+	rawUser := strings.TrimSpace(c.Query("user_ocid"))
+	rawRegion := strings.TrimSpace(c.Query("region"))
+	rawFingerprint := strings.TrimSpace(c.Query("fingerprint"))
+	rawKey := strings.TrimSpace(c.Query("private_key"))
+	rawPass := strings.TrimSpace(c.Query("private_key_passphrase"))
+
+	// Any ${...} reference (a managed connection's metadata/key, or a ${secrets.X}
+	// private key) is resolved server-side, so an environment + the EnvironmentView
+	// permission are required up front.
+	isRef := func(v string) bool { return strings.HasPrefix(v, "${") }
+	if isRef(rawTenancy) || isRef(rawUser) || isRef(rawRegion) || isRef(rawFingerprint) || isRef(rawKey) || isRef(rawPass) {
+		if environmentID == "" {
+			c.JSON(gohttp.StatusOK, gin.H{"error": "Select an environment to resolve the connection"})
+			return nil, false
+		}
+		if !s.checkPermission(c, rbac.EnvironmentView) {
+			return nil, false
+		}
+	}
+	resolve := func(v string) (string, bool) {
+		out, errMsg := s.resolveOCIParam(c, environmentID, v)
+		if errMsg != "" {
+			c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
+			return "", false
+		}
+		return out, true
+	}
+
+	tenancy, ok := resolve(rawTenancy)
+	if !ok {
+		return nil, false
+	}
+	user, ok := resolve(rawUser)
+	if !ok {
+		return nil, false
+	}
+	region, ok := resolve(rawRegion)
+	if !ok {
+		return nil, false
+	}
+	fingerprint, ok := resolve(rawFingerprint)
+	if !ok {
+		return nil, false
+	}
+	tenancy = strings.TrimSpace(tenancy)
+	user = strings.TrimSpace(user)
+	region = strings.ToLower(strings.TrimSpace(region))
+	fingerprint = strings.TrimSpace(fingerprint)
+
 	// Checked in form order (not a map — map iteration is non-deterministic, which
 	// would show a random "fill in X first" when several fields are blank), so an
 	// operator filling top-to-bottom is always prompted for the first empty field.
@@ -350,28 +400,21 @@ func (s *Service) buildOCIProvider(c *gin.Context) (common.ConfigurationProvider
 		return nil, false
 	}
 
-	// The private key is always a secret reference → an environment + view
-	// permission are required to resolve it.
-	keyRef := strings.TrimSpace(c.Query("private_key"))
-	if keyRef == "" {
+	if rawKey == "" {
 		c.JSON(gohttp.StatusOK, gin.H{"error": "Pick the Private Key secret first"})
 		return nil, false
 	}
-	environmentID := strings.TrimSpace(c.Query("environment"))
-	if environmentID == "" {
-		c.JSON(gohttp.StatusOK, gin.H{"error": "Select an environment to resolve the Private Key"})
-		return nil, false
-	}
-	if !s.checkPermission(c, rbac.EnvironmentView) {
-		return nil, false
-	}
-	key, ok := s.resolveOCISecret(c, environmentID, keyRef, "Private Key")
+	key, ok := resolve(rawKey)
 	if !ok {
 		return nil, false
 	}
+	if strings.TrimSpace(key) == "" {
+		c.JSON(gohttp.StatusOK, gin.H{"error": "The connection's private key is empty"})
+		return nil, false
+	}
 	var passPtr *string
-	if passRef := strings.TrimSpace(c.Query("private_key_passphrase")); passRef != "" {
-		pass, ok := s.resolveOCISecret(c, environmentID, passRef, "Passphrase")
+	if rawPass != "" {
+		pass, ok := resolve(rawPass)
 		if !ok {
 			return nil, false
 		}
@@ -382,36 +425,125 @@ func (s *Service) buildOCIProvider(c *gin.Context) (common.ConfigurationProvider
 
 	provider := common.NewRawConfigurationProvider(tenancy, user, region, fingerprint, key, passPtr)
 	if _, err := provider.PrivateRSAKey(); err != nil {
-		c.JSON(gohttp.StatusOK, gin.H{"error": "The private key could not be parsed — check the secret holds the full PEM"})
+		c.JSON(gohttp.StatusOK, gin.H{"error": "The private key could not be parsed — check the connection or the Private Key secret"})
 		return nil, false
 	}
 	return provider, true
 }
 
-// resolveOCISecret turns a ${secrets.X} reference into its plaintext, writing the
-// graceful error and returning ok=false on any problem. A managed-credential
-// reference is rejected (OCI is keys-only for now). A plain value passes through.
-func (s *Service) resolveOCISecret(c *gin.Context, environmentID, ref, label string) (string, bool) {
-	if strings.HasPrefix(ref, "${credential") {
-		c.JSON(gohttp.StatusOK, gin.H{"error": "Managed credentials can't populate these options — use the signing-key fields"})
-		return "", false
+// parseOCICredentialRef splits a ${credentials.NAME} or ${credentials.NAME.field}
+// reference into its credential name and (optional) metadata field. Credential names
+// are alnum/dash/underscore only (no dots), so the first dot separates name from field.
+func parseOCICredentialRef(ref string) (name, field string) {
+	inner := strings.TrimSuffix(strings.TrimPrefix(ref, "${credentials."), "}")
+	name = inner
+	if i := strings.IndexByte(inner, '.'); i >= 0 {
+		name, field = inner[:i], inner[i+1:]
 	}
-	if strings.HasPrefix(ref, "${") {
-		resolved, errMsg := s.resolveEnvironmentSecret(c, environmentID, ref)
+	return name, field
+}
+
+// resolveOCIParam turns a single connection parameter into plaintext: a managed
+// ${credentials...} reference, a ${secrets.X} secret, or a plain typed value.
+func (s *Service) resolveOCIParam(c *gin.Context, environmentID, value string) (string, string) {
+	if strings.HasPrefix(value, "${credentials.") {
+		return s.resolveOCICredentialField(c, environmentID, value)
+	}
+	if strings.HasPrefix(value, "${") {
+		return s.resolveEnvironmentSecret(c, environmentID, value)
+	}
+	return value, ""
+}
+
+// resolveOCICredentialField resolves a managed "Connect Oracle Cloud" reference —
+// ${credentials.NAME} (the private-key secret) or ${credentials.NAME.field} (a
+// metadata value such as region/tenancy_ocid/user_ocid/fingerprint/compartment_ocid)
+// — to its plaintext, so live pickers work with a connected credential and not only
+// the raw signing-key fields. Reads the credential behind the caller's already-checked
+// EnvironmentView gate. Returns ("", errMsg) on a hard failure; a metadata field that
+// isn't present returns ("", "") so the caller can prompt for it (e.g. a manual key
+// with no default compartment).
+func (s *Service) resolveOCICredentialField(c *gin.Context, environmentID, ref string) (string, string) {
+	name, field := parseOCICredentialRef(ref)
+	if name == "" {
+		return "", "Invalid connection reference"
+	}
+	user := s.getUserFromContext(c)
+	if user == nil {
+		return "", "unauthorized"
+	}
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil || env == nil {
+		return "", "Environment not found"
+	}
+	token, metadata, err := s.persistence.GetCredentialWithMetaByName(environmentID, name, env.SecretKey)
+	if err != nil || token == nil {
+		return "", fmt.Sprintf("Oracle Cloud connection %q not found in this environment", name)
+	}
+	if field == "" {
+		return *token, "" // the private key itself
+	}
+	if metadata == nil {
+		return "", "" // no metadata → let the caller prompt
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(*metadata, &m); err != nil {
+		return "", ""
+	}
+	if v, ok := m[field].(string); ok {
+		return v, ""
+	}
+	return "", ""
+}
+
+// ociResolveQuery reads a query parameter that a handler forwards as an OCI *request*
+// parameter (e.g. tenancy_ocid as a ListCompartments CompartmentId, or a compartment
+// scope) and resolves a managed ${credentials.NAME.field} / ${secrets.X} reference to
+// its plaintext. buildOCIProvider has already validated the connection and gated on
+// EnvironmentView by the time these are read, so the lookup succeeds; an unresolvable
+// value falls through unchanged (guarded call sites then skip a still-${...} value).
+// Without this, Connect-mode nodes forward the literal ${credentials...} text to OCI,
+// which rejects it as CannotParseRequest.
+func (s *Service) ociResolveQuery(c *gin.Context, name string) string {
+	v := strings.TrimSpace(c.Query(name))
+	if strings.HasPrefix(v, "${") {
+		if environmentID := strings.TrimSpace(c.Query("environment")); environmentID != "" {
+			if resolved, errMsg := s.resolveOCIParam(c, environmentID, v); errMsg == "" {
+				return strings.TrimSpace(resolved)
+			}
+		}
+	}
+	return v
+}
+
+// ociRequireDependency reads a dependency field (e.g. compartment_ocid) that later
+// options are scoped to, prompting the operator to pick it first when it's blank or
+// still an unresolved ${...} reference. A "Connect Oracle Cloud" credential auto-fills
+// compartment_ocid with a ${credentials.NAME.compartment_ocid} reference, so that form
+// is resolved to the credential's metadata; a connection with no such field (a manual
+// key has no default compartment) resolves to empty and prompts, as for an unset field.
+func (s *Service) ociRequireDependency(c *gin.Context, name, prompt string) (string, bool) {
+	v := strings.TrimSpace(c.Query(name))
+	if strings.HasPrefix(v, "${credentials.") {
+		environmentID := strings.TrimSpace(c.Query("environment"))
+		if environmentID == "" {
+			c.JSON(gohttp.StatusOK, gin.H{"error": prompt})
+			return "", false
+		}
+		if !s.checkPermission(c, rbac.EnvironmentView) {
+			return "", false // checkPermission already wrote the response
+		}
+		resolved, errMsg := s.resolveOCICredentialField(c, environmentID, v)
 		if errMsg != "" {
 			c.JSON(gohttp.StatusOK, gin.H{"error": errMsg})
 			return "", false
 		}
-		return resolved, true
+		v = strings.TrimSpace(resolved)
 	}
-	return ref, true
-}
-
-// ociRequireDependency reads a dependency field (e.g. compartment_ocid) that
-// later options are scoped to, prompting the operator to pick it first when it's
-// blank or still an unresolved ${...} reference.
-func (s *Service) ociRequireDependency(c *gin.Context, name, prompt string) (string, bool) {
-	v := strings.TrimSpace(c.Query(name))
 	if v == "" || strings.HasPrefix(v, "${") {
 		c.JSON(gohttp.StatusOK, gin.H{"error": prompt})
 		return "", false
@@ -438,7 +570,7 @@ func (s *Service) getOracleCompartments(c *gin.Context) {
 		return
 	}
 	client.HTTPClient = ociOptionsHTTPClient
-	tenancy := strings.TrimSpace(c.Query("tenancy_ocid"))
+	tenancy := s.ociResolveQuery(c, "tenancy_ocid")
 	// The tenancy root isn't returned by ListCompartments — offer it explicitly.
 	opts := []api.InputOption{{Name: "root (tenancy)", Value: tenancy}}
 	subtree := true
@@ -853,7 +985,7 @@ func (s *Service) getOracleBackupPolicies(c *gin.Context) {
 	client.HTTPClient = ociOptionsHTTPClient
 	opts := []api.InputOption{}
 	req := core.ListVolumeBackupPoliciesRequest{}
-	if comp := strings.TrimSpace(c.Query("compartment_ocid")); comp != "" && !strings.HasPrefix(comp, "${") {
+	if comp := s.ociResolveQuery(c, "compartment_ocid"); comp != "" && !strings.HasPrefix(comp, "${") {
 		req.CompartmentId = &comp
 	}
 	for page := 0; page < ociOptionsMaxPages; page++ {
