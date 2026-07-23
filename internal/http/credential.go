@@ -40,6 +40,12 @@ func (s *Service) getCredentialProviders(c *gin.Context) {
 				configured = true
 			}
 		}
+		// oci_key is token-less (no OAuth), so "configured" instead reflects whether
+		// managed stack hosting is set up. The editor uses this to choose the wizard:
+		// configured -> one-click managed flow; not configured -> manual key entry.
+		if p.Slug == "oci_key" {
+			configured = s.ociHostConfigured()
+		}
 		result = append(result, providerResponse{
 			CredentialProvider: p,
 			Configured:         configured,
@@ -110,6 +116,13 @@ type createCredentialRequest struct {
 	// required here. Region is reused from the aws_role fields above.
 	TenancyOCID string `json:"tenancy_ocid"`
 	Scope       string `json:"scope"`
+	// Manual oci_key entry — used only when the server has NO stack hosting, so the
+	// one-click managed flow is unavailable. The operator pastes an existing OCI API
+	// signing key: user OCID, fingerprint and the (unencrypted) private-key PEM,
+	// alongside TenancyOCID + Region above.
+	UserOCID    string `json:"user_ocid"`
+	Fingerprint string `json:"fingerprint"`
+	PrivateKey  string `json:"private_key"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {

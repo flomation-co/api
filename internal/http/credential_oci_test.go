@@ -6,8 +6,13 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"flomation.app/automate/api"
+	"github.com/gin-gonic/gin"
 )
 
 // A fixed public key and its OCI fingerprint as computed by OpenSSL
@@ -123,6 +128,38 @@ func TestValidOCID(t *testing.T) {
 	for _, tc := range cases {
 		if got := validOCID(tc.ocid, tc.kind); got != tc.want {
 			t.Errorf("validOCID(%q,%q)=%v want %v", tc.ocid, tc.kind, got, tc.want)
+		}
+	}
+}
+
+// createOCIKeyManual (the no-hosting fallback) must reject bad input with a 400 at
+// Create time — before any persistence call — so a manual OCI credential can never
+// be stored broken and fail only at runtime.
+func TestCreateOCIKeyManual_Validation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := &Service{} // validation returns before persistence/env are touched
+	call := func(req createCredentialRequest) int {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		s.createOCIKeyManual(c, "env1", &api.Environment{}, req)
+		return rec.Code
+	}
+	const validTenancy = "ocid1.tenancy.oc1..aaaaaaaaexampleexampleexampleexample"
+	const validUser = "ocid1.user.oc1..aaaaaaaaexampleexampleexampleexample"
+	cases := []struct {
+		name string
+		req  createCredentialRequest
+	}{
+		{"bad tenancy", createCredentialRequest{TenancyOCID: "nope", UserOCID: validUser, Region: "uk-london-1", Fingerprint: "aa:bb", PrivateKey: "x"}},
+		{"bad user", createCredentialRequest{TenancyOCID: validTenancy, UserOCID: "nope", Region: "uk-london-1", Fingerprint: "aa:bb", PrivateKey: "x"}},
+		{"missing region", createCredentialRequest{TenancyOCID: validTenancy, UserOCID: validUser, Region: "", Fingerprint: "aa:bb", PrivateKey: "x"}},
+		{"missing fingerprint", createCredentialRequest{TenancyOCID: validTenancy, UserOCID: validUser, Region: "uk-london-1", Fingerprint: "", PrivateKey: "x"}},
+		{"missing private key", createCredentialRequest{TenancyOCID: validTenancy, UserOCID: validUser, Region: "uk-london-1", Fingerprint: "aa:bb", PrivateKey: ""}},
+		{"unparseable key", createCredentialRequest{TenancyOCID: validTenancy, UserOCID: validUser, Region: "uk-london-1", Fingerprint: "aa:bb", PrivateKey: "-----BEGIN PRIVATE KEY-----\nnope\n-----END PRIVATE KEY-----"}},
+	}
+	for _, tc := range cases {
+		if got := call(tc.req); got != http.StatusBadRequest {
+			t.Errorf("%s: got %d, want 400", tc.name, got)
 		}
 	}
 }

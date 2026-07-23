@@ -48,7 +48,10 @@ import (
 // sees or pastes a key.
 func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, env *api.Environment, req createCredentialRequest) {
 	if !s.ociHostConfigured() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Oracle Cloud connections aren't set up on this server yet (stack hosting unavailable)"})
+		// No managed stack hosting on this server → fall back to manual entry: the
+		// operator pastes an existing OCI API signing key, which we store and
+		// activate directly. Never a dead-end 503 at the finish line.
+		s.createOCIKeyManual(c, environmentID, env, req)
 		return
 	}
 	tenancy := strings.TrimSpace(req.TenancyOCID)
@@ -126,6 +129,81 @@ func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, e
 		"deploy_url":  ociDeployURL(parURL),
 		"status":      "pending",
 	})
+}
+
+// createOCIKeyManual creates an oci_key credential from an operator-supplied OCI API
+// signing key. It is the fallback for servers with NO managed stack hosting: rather
+// than dead-ending the wizard with a 503, the operator pastes an existing key (the
+// tenancy/user OCID, region, fingerprint and unencrypted private-key PEM they get
+// from the OCI console) and we store + activate it directly — no keypair generation,
+// no provisioning stack, no shepherding. Once stored it behaves exactly like a
+// managed credential (same metadata shape, same testOCIAccess path).
+func (s *Service) createOCIKeyManual(c *gin.Context, environmentID string, env *api.Environment, req createCredentialRequest) {
+	tenancy := strings.TrimSpace(req.TenancyOCID)
+	userOCID := strings.TrimSpace(req.UserOCID)
+	region := strings.TrimSpace(req.Region)
+	fingerprint := strings.TrimSpace(req.Fingerprint)
+	privateKey := req.PrivateKey
+
+	if !validOCID(tenancy, "tenancy") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid tenancy OCID is required (ocid1.tenancy.oc1..…)"})
+		return
+	}
+	if !validOCID(userOCID, "user") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid user OCID is required (ocid1.user.oc1..…)"})
+		return
+	}
+	if region == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a home region is required (e.g. uk-london-1)"})
+		return
+	}
+	if fingerprint == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the API key fingerprint is required"})
+		return
+	}
+	if strings.TrimSpace(privateKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the private key (PEM) is required"})
+		return
+	}
+	// Parse the key up front so a bad or encrypted PEM fails cleanly at Create,
+	// not at runtime. NewRawConfigurationProvider + PrivateRSAKey validates it.
+	provider := ocicommon.NewRawConfigurationProvider(tenancy, userOCID, region, fingerprint, privateKey, nil)
+	if _, err := provider.PrivateRSAKey(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the private key couldn't be read — paste the full unencrypted PEM, including the BEGIN and END lines"})
+		return
+	}
+
+	metaBytes, err := json.Marshal(map[string]interface{}{
+		"tenancy_ocid": tenancy,
+		"user_ocid":    userOCID,
+		"region":       region,
+		"fingerprint":  fingerprint,
+		"manual":       true,
+	})
+	if err != nil {
+		log.WithError(err).Error("unable to encode oci_key metadata")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	credID, err := s.persistence.CreateOCIKeyCredential(environmentID, req.Name, env.SecretKey, privateKey, json.RawMessage(metaBytes))
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			c.JSON(http.StatusConflict, gin.H{"error": "credential name already exists in this environment"})
+			return
+		}
+		log.WithError(err).Error("unable to create manual oci_key credential")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	// A manually-entered key is usable immediately — there is no stack to apply.
+	if err := s.persistence.ActivateCredential(credID); err != nil {
+		log.WithError(err).Error("unable to activate manual oci_key credential")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": credID, "fingerprint": fingerprint, "status": "active"})
 }
 
 // setOCIConnection is step 3: capture the user OCID (and the compartment the stack
