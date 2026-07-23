@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"flomation.app/automate/api"
+	"flomation.app/automate/api/internal/config"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/gomega"
 )
@@ -190,4 +191,78 @@ func TestStripOCIConnectInputs(t *testing.T) {
 	g.Expect(byName["compartment_ocid"].Required).To(BeTrue())
 	g.Expect(byName["zone_name"].Required).To(BeTrue())
 	g.Expect(out).To(HaveLen(8)) // 10 in, 2 removed
+}
+
+// End-to-end at the handler: getActions strips the OCI connect block from oracle/*
+// actions ONLY when the server has no oci_hosting config, and leaves everyone else
+// (and, when hosted, the OCI block itself) untouched.
+func TestGetActions_StripsOCIConnectWhenUnhosted(t *testing.T) {
+	g := NewWithT(t)
+	gin.SetMode(gin.TestMode)
+
+	gate := &api.InputVisibleWhen{Field: "auth_method", Values: []string{"keys"}}
+	ociInputs, _ := json.Marshal([]api.InputDefinition{
+		{Name: "auth_method", Type: "string", Options: []api.InputOption{{Name: "Connect Oracle Cloud", Value: "connect"}, {Name: "API signing key (advanced)", Value: "keys"}}},
+		{Name: "credential", Type: "credential", VisibleWhen: &api.InputVisibleWhen{Field: "auth_method", Values: []string{"", "connect"}}},
+		{Name: "tenancy_ocid", Type: "string", VisibleWhen: gate},
+		{Name: "user_ocid", Type: "string", VisibleWhen: gate},
+		{Name: "region", Type: "string", VisibleWhen: gate},
+		{Name: "fingerprint", Type: "string", VisibleWhen: gate},
+		{Name: "private_key", Type: "secret", VisibleWhen: gate},
+		{Name: "private_key_passphrase", Type: "secret", VisibleWhen: gate},
+		{Name: "compartment_ocid", Type: "string", Required: true},
+	})
+	// A non-oracle action that ALSO keys visibility off auth_method (e.g. AWS/Azure
+	// connect) must be left untouched — the strip is scoped to oracle/* ids only.
+	nonOCI, _ := json.Marshal([]api.InputDefinition{
+		{Name: "auth_method", Type: "string"},
+		{Name: "credential", Type: "credential", VisibleWhen: &api.InputVisibleWhen{Field: "auth_method", Values: []string{"", "connect"}}},
+	})
+	newMock := func() *actionsMockPersistence {
+		return &actionsMockPersistence{actions: []*api.Action{
+			{ID: "oracle/dns/zone_list", ActionType: "2", Inputs: append([]byte(nil), ociInputs...)},
+			{ID: "aws/ec2/instance_list", ActionType: "2", Inputs: append([]byte(nil), nonOCI...)},
+		}}
+	}
+	type served map[string]struct {
+		Inputs []api.InputDefinition `json:"inputs"`
+	}
+	serve := func(svc *Service) served {
+		r := gin.New()
+		r.GET("/api/v1/action", svc.getActions)
+		rec := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/api/v1/action", nil)
+		r.ServeHTTP(rec, req)
+		g.Expect(rec.Code).To(Equal(http.StatusOK))
+		var s served
+		g.Expect(json.Unmarshal(rec.Body.Bytes(), &s)).To(Succeed())
+		return s
+	}
+	names := func(ins []api.InputDefinition) []string {
+		var n []string
+		for _, c := range ins {
+			n = append(n, c.Name)
+		}
+		return n
+	}
+
+	// --- unhosted (nil config => ociHostConfigured()==false): OCI connect block gone,
+	// raw fields un-gated + required; the non-oracle action is untouched.
+	unhosted := serve(&Service{persistence: newMock()})
+	oci := unhosted["oracle/dns/zone_list"].Inputs
+	g.Expect(names(oci)).ToNot(ContainElement("auth_method"))
+	g.Expect(names(oci)).ToNot(ContainElement("credential"))
+	g.Expect(oci[0].Name).To(Equal("tenancy_ocid"))
+	g.Expect(oci[0].VisibleWhen).To(BeNil())
+	g.Expect(oci[0].Required).To(BeTrue())
+	g.Expect(names(unhosted["aws/ec2/instance_list"].Inputs)).To(ContainElement("credential"), "non-oracle action must be untouched")
+
+	// --- hosted: the OCI connect block is served intact.
+	hosted := serve(&Service{persistence: newMock(), config: &config.Config{
+		OCIHosting: &config.OCIHostingConfig{Bucket: "b", Tenancy: "t", PrivateKey: "k"},
+	}})
+	oci2 := hosted["oracle/dns/zone_list"].Inputs
+	g.Expect(names(oci2)[:2]).To(Equal([]string{"auth_method", "credential"}))
+	g.Expect(oci2[2].Name).To(Equal("tenancy_ocid"))
+	g.Expect(oci2[2].VisibleWhen).ToNot(BeNil())
 }
