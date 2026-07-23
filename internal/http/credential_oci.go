@@ -376,6 +376,9 @@ resource "oci_identity_user" "flomation" {
   compartment_id = var.tenancy_ocid
   name           = "flomation-automate-%[1]s"
   description    = "Flomation Automate — managed automation user"
+  # Identity Domains tenancies require an email on user creation; harmless on
+  # legacy IAM. A synthetic, unique, no-reply address (never emailed).
+  email = "flomation-automate-%[1]s@noreply.flomation.co"
 }
 
 resource "oci_identity_group" "flomation" {
