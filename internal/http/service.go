@@ -780,7 +780,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
 	// Distinct top-level path (not under credential/) so gin's radix tree doesn't
 	// conflict the :id param with the static credential/providers|callback routes.
-	v1.GET("oci-stack/:id/config.zip", s.serveOCIStackZip) // No auth — OCI Resource Manager fetches it (gated by stack token)
+	v1.GET("oci-stack/:id/:token/config.zip", s.serveOCIStackZip) // No auth — OCI Resource Manager fetches it (token gated, in-path so RM's query-string-dropping GetPackage still passes it)
 
 	// Agents
 	agents := v1.Group("agent")

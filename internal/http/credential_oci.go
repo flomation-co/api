@@ -114,7 +114,9 @@ func (s *Service) createOCIKeyCredential(c *gin.Context, environmentID string, e
 // public key plus generic Terraform; no secret). Returns a .zip Terraform config.
 func (s *Service) serveOCIStackZip(c *gin.Context) {
 	credID := c.Param("id")
-	token := c.Query("t")
+	// Token is in the PATH, not a query string: OCI Resource Manager's GetPackage
+	// drops query strings when it fetches the zipUrl, which would 403 here.
+	token := c.Param("token")
 
 	cred, err := s.persistence.GetCredentialByID(credID)
 	if err != nil || cred == nil || cred.ProviderSlug != "oci_key" || cred.Metadata == nil {
@@ -289,7 +291,7 @@ func ociKeyFingerprint(pubDER []byte) string {
 // from the configured public API base.
 func (s *Service) ociStackZipURL(credID, token string) string {
 	base := strings.TrimRight(s.config.Launch.APIURL, "/")
-	return fmt.Sprintf("%s/api/v1/oci-stack/%s/config.zip?t=%s", base, credID, url.QueryEscape(token))
+	return fmt.Sprintf("%s/api/v1/oci-stack/%s/%s/config.zip", base, credID, url.PathEscape(token))
 }
 
 // ociDeployURL wraps a stack zip URL in OCI's native "Deploy to Oracle Cloud"
@@ -334,33 +336,31 @@ func ociReason(err error) string {
 	return msg
 }
 
-// renderOCIStackZip builds the in-memory Resource Manager stack: main.tf (creates
-// a dedicated user + group + scoped policy and uploads Flomation's public key) and
-// schema.yaml (renders a native compartment picker + scope selector in the OCI
-// console). suffix makes resource names unique per credential.
+// renderOCIStackZip builds the in-memory Resource Manager stack — a single
+// main.tf that creates a dedicated user + group + scoped policy and uploads
+// Flomation's public key. Resource Manager auto-injects tenancy_ocid, region and
+// compartment_ocid (rendering compartment_ocid as a native picker), so no
+// schema.yaml is needed — and shipping one risks an RM validation rejection.
+// suffix makes resource names unique per credential; scope bakes the operator's
+// compartment-vs-tenancy choice into the stack's default.
 func renderOCIStackZip(publicKeyPEM, scope, credID string) ([]byte, error) {
 	suffix := credID
 	if len(suffix) > 8 {
 		suffix = suffix[:8]
 	}
-	defaultScope := "compartment"
-	if scope == "tenancy" {
-		defaultScope = "tenancy"
+	if scope != "tenancy" {
+		scope = "compartment"
 	}
-
-	mainTF := fmt.Sprintf(ociStackMainTF, suffix, indentPEM(publicKeyPEM))
-	schemaYAML := fmt.Sprintf(ociStackSchemaYAML, defaultScope)
+	mainTF := fmt.Sprintf(ociStackMainTF, suffix, indentPEM(publicKeyPEM), scope)
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for name, content := range map[string]string{"main.tf": mainTF, "schema.yaml": schemaYAML} {
-		w, err := zw.Create(name)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := w.Write([]byte(content)); err != nil {
-			return nil, err
-		}
+	w, err := zw.Create("main.tf")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := w.Write([]byte(mainTF)); err != nil {
+		return nil, err
 	}
 	if err := zw.Close(); err != nil {
 		return nil, err
@@ -388,7 +388,7 @@ const ociStackMainTF = `terraform {
 variable "tenancy_ocid" {}
 variable "region" {}
 variable "compartment_ocid" { default = "" }
-variable "scope" { default = "compartment" }
+variable "scope" { default = "%[3]s" }
 
 provider "oci" {}
 
@@ -441,33 +441,4 @@ output "flomation_compartment_ocid" {
 output "flomation_fingerprint" {
   value = oci_identity_api_key.flomation.fingerprint
 }
-`
-
-// ociStackSchemaYAML: %s = default scope. Renders a native compartment picker and
-// a scope selector in the OCI console; tenancy_ocid/region stay hidden (injected).
-const ociStackSchemaYAML = `title: "Connect Oracle Cloud to Flomation Automate"
-description: "Creates a dedicated user, group, policy and API key so Flomation Automate can run your flows."
-schemaVersion: 1.1.0
-locale: "en"
-variableGroups:
-  - title: "Access"
-    variables: ["scope", "compartment_ocid"]
-  - title: "Injected"
-    variables: ["tenancy_ocid", "region"]
-    visible: false
-variables:
-  scope:
-    type: enum
-    title: "Grant Flomation access to"
-    enum: ["compartment", "tenancy"]
-    default: "%s"
-    required: true
-  compartment_ocid:
-    type: oci:identity:compartment:id
-    title: "Compartment"
-    description: "The compartment Flomation Automate may manage (ignored if you grant tenancy-wide access)."
-    default: compartment
-    required: true
-    visible:
-      eq: ["scope", "compartment"]
 `

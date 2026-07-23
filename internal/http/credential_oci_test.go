@@ -99,8 +99,12 @@ func TestRenderOCIStackZip(t *testing.T) {
 	if !strings.Contains(main, "flomation-automate-abcd1234") {
 		t.Fatal("main.tf missing the per-credential resource suffix")
 	}
-	if _, ok := files["schema.yaml"]; !ok {
-		t.Fatal("schema.yaml missing from stack zip")
+	if !strings.Contains(main, `variable "scope" { default = "compartment" }`) {
+		t.Fatal("main.tf missing the baked scope default")
+	}
+	// No schema.yaml — RM auto-injects tenancy/region/compartment; a schema risks rejection.
+	if _, ok := files["schema.yaml"]; ok {
+		t.Fatal("schema.yaml should not be shipped")
 	}
 }
 
