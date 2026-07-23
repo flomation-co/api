@@ -413,6 +413,14 @@ func (s *Service) awsOptions(slug string) gin.HandlerFunc {
 			return
 		}
 		sort.Slice(opts, func(i, j int) bool { return strings.ToLower(opts[i].Name) < strings.ToLower(opts[j].Name) })
+		// Serialise an empty result as [] not null: a lister that matched nothing
+		// (e.g. an account with no self-owned AMIs / key pairs) leaves opts nil,
+		// which JSON-encodes as `null` — the editor treats a non-array as "Failed
+		// to load options" rather than an empty dropdown. This is a successful,
+		// empty result, so return an empty list.
+		if opts == nil {
+			opts = []awsOption{}
+		}
 		c.JSON(gohttp.StatusOK, gin.H{"options": opts})
 	}
 }
@@ -884,21 +892,37 @@ func listSnapshots(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) 
 
 func listImages(ctx context.Context, cfg awssdk.Config) ([]awsOption, error) {
 	client := ec2.NewFromConfig(cfg)
-	// Self-owned AMIs only (the public catalogue is far too large to list).
-	out, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{Owners: []string{"self"}})
+	// AMIs the account can actually launch: self-owned PLUS any privately shared
+	// with it (ExecutableUsers=self). Two calls, merged + deduped by image id.
+	// The full public catalogue (hundreds of thousands of AMIs) is deliberately
+	// excluded as unlistable — for a public base AMI (Amazon Linux, Ubuntu, …)
+	// paste the ami-… id in.
+	seen := map[string]bool{}
+	var opts []awsOption
+	add := func(images []ec2types.Image) {
+		for _, img := range images {
+			id := awssdk.ToString(img.ImageId)
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			label := ec2Label(id, img.Tags)
+			if name := awssdk.ToString(img.Name); name != "" {
+				label = fmt.Sprintf("%s — %s", name, id)
+			}
+			opts = append(opts, awsOption{Name: label, Value: id})
+		}
+	}
+	owned, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{Owners: []string{"self"}})
 	if err != nil {
 		return nil, err
 	}
-	var opts []awsOption
-	for _, img := range out.Images {
-		id := awssdk.ToString(img.ImageId)
-		name := awssdk.ToString(img.Name)
-		label := ec2Label(id, img.Tags)
-		if name != "" {
-			label = fmt.Sprintf("%s — %s", name, id)
-		}
-		opts = append(opts, awsOption{Name: label, Value: id})
+	add(owned.Images)
+	shared, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{ExecutableUsers: []string{"self"}})
+	if err != nil {
+		return nil, err
 	}
+	add(shared.Images)
 	return opts, nil
 }
 
