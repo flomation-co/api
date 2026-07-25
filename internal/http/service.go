@@ -646,6 +646,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/salesforce-lookup", s.jwtMiddleware, s.getSalesforceLookup)
 	actions.GET("/options/salesforce-users", s.jwtMiddleware, s.getSalesforceUsers)
 	actions.GET("/options/salesforce-owners", s.jwtMiddleware, s.getSalesforceOwners)
+	actions.GET("/options/salesforce-lead-converted-statuses", s.jwtMiddleware, s.getSalesforceLeadConvertedStatuses)
 	actions.GET("/options/salesforce-campaign-member-status", s.jwtMiddleware, s.getSalesforceCampaignMemberStatus)
 	actions.GET("/options/salesforce-list-views", s.jwtMiddleware, s.getSalesforceListViews)
 	actions.GET("/options/salesforce-reports", s.jwtMiddleware, s.getSalesforceReports)

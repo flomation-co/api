@@ -28,13 +28,16 @@ package http
 // describe cache) is mutated here, so nothing in this file may run in parallel.
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,6 +63,7 @@ var salesforceProxySlugs = []string{
 	"salesforce-lookup",
 	"salesforce-users",
 	"salesforce-owners",
+	"salesforce-lead-converted-statuses",
 	"salesforce-campaign-member-status",
 	"salesforce-list-views",
 	"salesforce-reports",
@@ -92,6 +96,7 @@ func setupSalesforceRouter(svc *Service) *gin.Engine {
 	r.GET("/api/v1/action/options/salesforce-lookup", svc.getSalesforceLookup)
 	r.GET("/api/v1/action/options/salesforce-users", svc.getSalesforceUsers)
 	r.GET("/api/v1/action/options/salesforce-owners", svc.getSalesforceOwners)
+	r.GET("/api/v1/action/options/salesforce-lead-converted-statuses", svc.getSalesforceLeadConvertedStatuses)
 	r.GET("/api/v1/action/options/salesforce-campaign-member-status", svc.getSalesforceCampaignMemberStatus)
 	r.GET("/api/v1/action/options/salesforce-list-views", svc.getSalesforceListViews)
 	r.GET("/api/v1/action/options/salesforce-reports", svc.getSalesforceReports)
@@ -818,6 +823,68 @@ func TestSalesforceLookupMergesPolymorphicObjects(t *testing.T) {
 	g.Expect(stub.soql()).To(HaveLen(2))
 }
 
+// email_send's related_record_id names five objects, and each one costs a
+// describe followed by a query. Walked in sequence that is ten round trips one
+// after another — 2.7 s cold against a bare Developer Edition org, worse on a
+// real one, and the whole time the dropdown has nothing in it.
+//
+// The barrier is the assertion: each describe waits for all five to have arrived
+// before answering. A sequential handler never gets past the first one and the
+// stub falls through on its timeout, leaving a peak concurrency of 1.
+func TestSalesforceLookupSearchesPolymorphicObjectsConcurrently(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+
+	const objects = 5
+	var mu sync.Mutex
+	var inFlight, peak int
+	allArrived := make(chan struct{})
+	var arrivals int
+
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.HasSuffix(r.URL.Path, "/describe") {
+			_, _ = w.Write([]byte(`{"records":[]}`))
+			return true
+		}
+
+		mu.Lock()
+		inFlight++
+		if inFlight > peak {
+			peak = inFlight
+		}
+		arrivals++
+		if arrivals == objects {
+			close(allArrived)
+		}
+		mu.Unlock()
+
+		select {
+		case <-allArrived:
+		case <-time.After(3 * time.Second): // sequential: nobody else is coming
+		}
+
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+
+		_, _ = w.Write([]byte(`{"fields":[{"name":"Name","label":"Name","type":"string","nameField":true,"filterable":true,"sortable":true}]}`))
+		return true
+	}
+
+	r := setupSalesforceRouter(&Service{})
+	_, code := getSalesforceOptions(r, "salesforce-lookup", sfAuth(map[string]string{
+		"object": "Account,Contact,Lead,Opportunity,Case",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+
+	mu.Lock()
+	got := peak
+	mu.Unlock()
+	g.Expect(got).To(Equal(objects),
+		"the %d objects of a polymorphic picker were searched %d at a time", objects, got)
+}
+
 // One object of a polymorphic set failing (a Lead the user cannot see) must not
 // blank a picker that has perfectly good Contacts in it.
 func TestSalesforceLookupSurvivesOneObjectFailing(t *testing.T) {
@@ -845,22 +912,104 @@ func TestSalesforceLookupSurvivesOneObjectFailing(t *testing.T) {
 	g.Expect(sfOptionNames(body)).To(ConsistOf("Contact: Jane Smith"))
 }
 
+// orgWideEmailAddressDescribe is the real describe of OrgWideEmailAddress, taken
+// from a live org. It is STANDARD schema — no org has it any other way — and it
+// flags no nameField and carries none of the generic Name / Subject / Title /
+// CaseNumber / DeveloperName fallbacks, so nothing an administrator does could
+// make the generic path work.
+const orgWideEmailAddressDescribe = `{"fields":[
+	{"name":"Id","label":"Id","type":"id","filterable":true,"sortable":true},
+	{"name":"IsVerified","label":"Verified","type":"boolean","filterable":true,"sortable":true},
+	{"name":"Address","label":"Email Address","type":"email","filterable":true,"sortable":true},
+	{"name":"DisplayName","label":"Display Name","type":"string","filterable":true,"sortable":true},
+	{"name":"Purpose","label":"Purpose","type":"picklist","filterable":true,"sortable":true}
+]}`
+
+// email_send's "Send As: an Org-Wide Email Address" input is fed by
+// /salesforce-lookup?object=OrgWideEmailAddress. Without a label-field override
+// that picker can never return a single option in any org — it walks the name
+// fallbacks, finds none, and tells the operator a field is missing on an input
+// where nothing they can do would ever populate the list.
+func TestSalesforceLookupHandlesObjectsWithNoNameField(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/describe") {
+			_, _ = w.Write([]byte(orgWideEmailAddressDescribe))
+			return true
+		}
+		_, _ = w.Write([]byte(`{"records":[
+			{"Id":"0D25f000000AbcdCAC","DisplayName":"Support","Address":"support@acme.com"}
+		]}`))
+		return true
+	}
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-lookup", sfAuth(map[string]string{
+		"object": "OrgWideEmailAddress",
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(BeEmpty())
+	// "Support" alone is not enough to choose between two org-wide addresses, so
+	// the address rides along as the second column.
+	g.Expect(sfOptionNames(body)).To(Equal([]string{"Support — support@acme.com"}))
+	g.Expect(sfOptionValues(body)).To(Equal([]string{"0D25f000000AbcdCAC"}))
+	g.Expect(stub.soql()[0]).To(Equal(
+		"SELECT Id, DisplayName, Address FROM OrgWideEmailAddress ORDER BY DisplayName LIMIT 100"))
+}
+
+// An object with genuinely nothing to show gets a sentence about THAT, not
+// "Salesforce doesn't have that field on this object" — which sends the operator
+// looking for a mistake they did not make.
+func TestSalesforceLookupWithNoLabelFieldSaysSo(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/describe") {
+			_, _ = w.Write([]byte(`{"fields":[{"name":"Id","label":"Id","type":"id","filterable":true,"sortable":true}]}`))
+			return true
+		}
+		return false
+	}
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-lookup", sfAuth(map[string]string{
+		"object": "Opaque__c",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(Equal(
+		"Salesforce doesn't publish a name for Opaque__c records, so they can't be listed here — type the record ID in"))
+	g.Expect(sfError(body)).ToNot(ContainSubstring("doesn't have that field"))
+	// And it never asked the org for rows it could not label.
+	g.Expect(stub.soql()).To(BeEmpty())
+}
+
 // ---------------------------------------------------------------------------
 // 5. Picklists, fields, record types, external ids
 // ---------------------------------------------------------------------------
 
 const salesforceDescribeStub = `{
 	"fields":[
-		{"name":"Id","label":"Record ID","type":"id","idLookup":true,"filterable":true},
+		{"name":"Id","label":"Record ID","type":"id","idLookup":true,"filterable":true,"sortable":true},
 		{"name":"Status","label":"Lead Status","type":"picklist","createable":true,"updateable":true,
+		 "filterable":true,"sortable":true,
 		 "picklistValues":[
 			{"active":true,"label":"Working - Contacted","value":"Working - Contacted"},
 			{"active":false,"label":"Retired Status","value":"Retired Status"},
 			{"active":true,"label":"Open - Not Contacted","value":"Open - Not Contacted"}
 		 ]},
-		{"name":"Email","label":"Email","type":"email","createable":true,"updateable":true,"externalId":false,"idLookup":true},
-		{"name":"External_Ref__c","label":"External Ref","type":"string","createable":true,"externalId":true},
-		{"name":"CreatedDate","label":"Created Date","type":"datetime","createable":false,"updateable":false}
+		{"name":"Email","label":"Email","type":"email","createable":true,"updateable":true,"externalId":false,"idLookup":true,
+		 "filterable":true,"sortable":true},
+		{"name":"External_Ref__c","label":"External Ref","type":"string","createable":true,"externalId":true,
+		 "filterable":true,"sortable":true},
+		{"name":"CreatedDate","label":"Created Date","type":"datetime","createable":false,"updateable":false,
+		 "filterable":true,"sortable":true},
+		{"name":"Description","label":"Description","type":"textarea","createable":true,"updateable":true,
+		 "filterable":false,"sortable":false},
+		{"name":"BillingAddress","label":"Billing Address","type":"address","filterable":true,"sortable":false}
 	],
 	"recordTypeInfos":[
 		{"recordTypeId":"012000000000000AAA","name":"Master","active":true,"available":true,"master":true},
@@ -956,6 +1105,51 @@ func TestSalesforceFieldsRespectTheFilter(t *testing.T) {
 	g.Expect(auths).To(BeEmpty(), "an unknown filter must not cause a describe")
 }
 
+// Salesforce refuses to sort or filter on some of the fields its own describe
+// returns, and says so only at run time:
+//
+//	ORDER BY Description  -> MALFORMED_QUERY "field 'Description' can not be sorted in a query call"
+//	WHERE Description      -> INVALID_FIELD  "field 'Description' can not be filtered in a query call"
+//	WHERE BillingAddress   -> INVALID_FIELD  "Address fields can only be filtered using Distance expressions"
+//
+// (all three reproduced live). Offering them in Sort By / Filter Field / Look Up
+// By is a dropdown row that is always an error, with nothing to tell an operator
+// which of the seventy rows are the poisoned ones — the retired-picklist defect
+// one endpoint along.
+func TestSalesforceFieldsNeverOfferAnUnsortableOrUnfilterableField(t *testing.T) {
+	g := NewWithT(t)
+	salesforceDescribeOnlyStub(t)
+	r := setupSalesforceRouter(&Service{})
+
+	sortable, code := getSalesforceOptions(r, "salesforce-fields", sfAuth(map[string]string{
+		"object": "Lead", "filter": "sortable",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(sortable)).To(BeEmpty())
+	g.Expect(sfOptionValues(sortable)).To(ContainElement("CreatedDate"))
+	g.Expect(sfOptionValues(sortable)).ToNot(ContainElement("Description"))
+	g.Expect(sfOptionValues(sortable)).ToNot(ContainElement("BillingAddress"))
+
+	filterable, code := getSalesforceOptions(r, "salesforce-fields", sfAuth(map[string]string{
+		"object": "Lead", "filter": "filterable",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(filterable)).To(BeEmpty())
+	g.Expect(sfOptionValues(filterable)).To(ContainElement("Email"))
+	g.Expect(sfOptionValues(filterable)).ToNot(ContainElement("Description"))
+	// BillingAddress reports filterable:true and Salesforce still rejects it
+	// outside a DISTANCE expression, so the flag alone is not enough.
+	g.Expect(sfOptionValues(filterable)).ToNot(ContainElement("BillingAddress"))
+
+	// The SELECT list is a different question: Description is perfectly
+	// selectable, so the `fields` pickers must keep offering it.
+	all, _ := getSalesforceOptions(r, "salesforce-fields", sfAuth(map[string]string{
+		"object": "Lead", "filter": "all",
+	}))
+	g.Expect(sfOptionValues(all)).To(ContainElement("Description"))
+	g.Expect(sfOptionValues(all)).To(ContainElement("BillingAddress"))
+}
+
 func TestSalesforceExternalIDFieldsAndRecordTypes(t *testing.T) {
 	g := NewWithT(t)
 	salesforceDescribeOnlyStub(t)
@@ -1003,6 +1197,75 @@ func TestSalesforceUsersExcludeInactiveByDefault(t *testing.T) {
 	_, _ = getSalesforceOptions(r, "salesforce-users", sfAuth(map[string]string{"include_inactive": "true"}))
 	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("IsActive"))
 	g.Expect(stub.soql()[0]).To(ContainSubstring("LIMIT 200"), "still bounded")
+}
+
+// Every org ships a Chatter Free user (the stock "Chatter Expert"), and
+// Salesforce refuses one as an OwnerId: the insert comes back 400
+// OP_WITH_INVALID_USER_TYPE_EXCEPTION "Operation not valid for this user type" —
+// reproduced live on Lead, Task and Event. So every customer's owner picker
+// carries at least one row that is guaranteed to fail, sitting alphabetically
+// among the real people.
+func TestSalesforceOwnerPickersExcludeUsersWhoCannotOwnRecords(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"records":[{"Id":"0055f000004XyzAAAS","Name":"Jane Smith","Username":"jane@acme.com"}]}`))
+		return true
+	}
+	r := setupSalesforceRouter(&Service{})
+
+	// The merged users-and-queues picker.
+	_, code := getSalesforceOptions(r, "salesforce-owners", sfAuth(map[string]string{"object": "Lead"}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).To(Equal(
+		"SELECT Id, Name, Username FROM User WHERE IsActive = true AND UserType NOT IN ('CsnOnly','CsnExternal') ORDER BY Name LIMIT 200"))
+
+	// …and the plain user picker when the marker says the value becomes an owner.
+	stub.reset()
+	_, _ = getSalesforceOptions(r, "salesforce-users", sfAuth(map[string]string{"owner": "true"}))
+	g.Expect(stub.soql()[0]).To(ContainSubstring("UserType NOT IN ('CsnOnly','CsnExternal')"))
+
+	// An input that merely NAMES a user is a different question: user_get,
+	// user_update and user_deactivate legitimately target a Chatter Free user, so
+	// narrowing that list would be the same defect the other way round.
+	stub.reset()
+	_, _ = getSalesforceOptions(r, "salesforce-users", sfAuth(nil))
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("UserType"))
+
+	// It is an EXCLUDE list, never a UserType = 'Standard' whitelist: Salesforce
+	// accepts AutomatedProcess, CloudIntegrationUser and the portal types as
+	// owners (each probed live), and a partner-community user owning a registered
+	// deal is ordinary in a PRM org.
+	g.Expect(stub.soql()).ToNot(ContainElement(ContainSubstring("UserType = 'Standard'")))
+	stub.reset()
+	_, _ = getSalesforceOptions(r, "salesforce-owners", sfAuth(map[string]string{"object": "Case"}))
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("UserType ="))
+}
+
+// Every owner_id marker has to reach an owner-filtered list, or the picker it
+// feeds offers a user Salesforce will refuse.
+func TestSalesforceOwnerMarkersUseAnOwnerFilteredList(t *testing.T) {
+	g := NewWithT(t)
+
+	seen := 0
+	for key, marker := range salesforceMarkers() {
+		if !strings.HasSuffix(key, "#owner_id") {
+			continue
+		}
+		seen++
+		slug, values := salesforceMarkerQuery(t, marker.Endpoint)
+		switch slug {
+		case "salesforce-owners":
+			// Always owner-filtered — that is the whole endpoint.
+		case "salesforce-users":
+			g.Expect(values.Get("owner")).To(Equal("true"),
+				"%s fills an OwnerId from the unfiltered user list", key)
+		default:
+			t.Errorf("%s fills an OwnerId from %q", key, slug)
+		}
+	}
+	g.Expect(seen).To(BeNumerically(">", 0), "no owner_id markers found — the check has drifted")
 }
 
 // OwnerId legitimately takes a queue id on Lead and Case, so the queues have to
@@ -1093,6 +1356,61 @@ func TestSalesforceOwnersSurviveAQueueQueryFailure(t *testing.T) {
 // ---------------------------------------------------------------------------
 // 7. Two-hop, list views, reports, objects
 // ---------------------------------------------------------------------------
+
+// Convert Lead's Converted Status is the one input where the Lead.Status picklist
+// is the WRONG list. Only the statuses an administrator has ticked "Converted"
+// convert; convertLead answers any of the others with INVALID_STATUS "invalid
+// convertedStatus" — reproduced live for all three non-converted values of a
+// default org, including "Closed - Not Converted", which is exactly the row an
+// operator recording a dead lead reaches for.
+func TestSalesforceLeadConvertedStatusesOnlyListStatusesThatConvert(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		// A real org answers the WHERE; the stub returns the converted rows so the
+		// assertion below is about the STATEMENT, which is what does the work.
+		_, _ = w.Write([]byte(`{"records":[
+			{"MasterLabel":"Closed - Converted","IsDefault":true},
+			{"MasterLabel":"Qualified - Converted","IsDefault":false}
+		]}`))
+		return true
+	}
+	r := setupSalesforceRouter(&Service{})
+
+	body, code := getSalesforceOptions(r, "salesforce-lead-converted-statuses", sfAuth(nil))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).To(Equal(
+		"SELECT MasterLabel, IsDefault FROM LeadStatus WHERE IsConverted = true ORDER BY SortOrder LIMIT 200"))
+	// convertLead takes the LABEL, so the label is both what is shown and what is
+	// sent, and the order is the org's own SortOrder rather than alphabetical.
+	g.Expect(sfOptionValues(body)).To(Equal([]string{"Closed - Converted", "Qualified - Converted"}))
+	g.Expect(sfOptionNames(body)[0]).To(Equal("Closed - Converted (default)"))
+
+	// The marker has to point here and not at the picklist, or the endpoint is
+	// dead code and the dropdown still offers three statuses that cannot work.
+	marker, registered := dynamicOptionsMetadata["crm/salesforce/lead_convert#converted_status"]
+	g.Expect(registered).To(BeTrue())
+	g.Expect(marker.Endpoint).To(Equal("/api/v1/action/options/salesforce-lead-converted-statuses"))
+}
+
+// An org where no status is marked Converted gets told what to change, not an
+// empty box.
+func TestSalesforceLeadConvertedStatusesExplainAnEmptyList(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"records":[]}`))
+		return true
+	}
+	_ = stub
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-lead-converted-statuses", sfAuth(nil))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(ContainSubstring("marked as Converted"))
+}
 
 func TestSalesforceCampaignMemberStatusValidatesTheCampaignID(t *testing.T) {
 	g := NewWithT(t)
@@ -1193,9 +1511,15 @@ func TestSalesforceObjectsHideShadowObjectsAndHonourCustomOnly(t *testing.T) {
 			{"name":"Account","label":"Account","queryable":true,"custom":false},
 			{"name":"AccountHistory","label":"Account History","queryable":true,"custom":false},
 			{"name":"AccountShare","label":"Account Share","queryable":true,"custom":false},
+			{"name":"AccountFeed","label":"Account Feed","queryable":true,"custom":false},
+			{"name":"OpportunityFieldHistory","label":"Opportunity Field History","queryable":true,"custom":false},
+			{"name":"SecretShare","label":"Secret Share","queryable":false,"custom":false},
+			{"name":"SecretShareShare","label":"Secret Share Share","queryable":true,"custom":false},
 			{"name":"Lead__ChangeEvent","label":"Lead Change Event","queryable":true,"custom":false},
 			{"name":"Invoice__c","label":"Invoice","queryable":true,"custom":true},
 			{"name":"TimeShare__c","label":"Time Share","queryable":true,"custom":true},
+			{"name":"LoginHistory","label":"Login History","queryable":true,"custom":false},
+			{"name":"VerificationHistory","label":"Identity Verification History","queryable":true,"custom":false},
 			{"name":"OldThing","label":"Old","queryable":true,"custom":false,"deprecatedAndHidden":true},
 			{"name":"NotQueryable","label":"Nope","queryable":false,"custom":false}
 		]}`))
@@ -1205,8 +1529,22 @@ func TestSalesforceObjectsHideShadowObjectsAndHonourCustomOnly(t *testing.T) {
 
 	// The shadow tables are a third of a real global describe and never what an
 	// operator meant; a CUSTOM object that merely ends in "Share" survives.
+	//
+	// LoginHistory and VerificationHistory are the other half of the rule: both are
+	// real, queryable, non-deprecated standard objects (verified live), and there is
+	// no Login or Verification object for them to be the shadow of. A bare "History"
+	// suffix rule drops both, and the operator who wanted login history is left
+	// concluding Flomation cannot read it.
 	all, _ := getSalesforceOptions(r, "salesforce-objects", sfAuth(nil))
-	g.Expect(sfOptionValues(all)).To(ConsistOf("Account", "Invoice__c", "TimeShare__c"))
+	g.Expect(sfOptionValues(all)).To(ConsistOf(
+		"Account", "Invoice__c", "TimeShare__c", "LoginHistory", "VerificationHistory"))
+
+	// …and the parent test is not fooled by the parent being invisible: SecretShare
+	// is not queryable, so it never appears in the picker, but SecretShareShare is
+	// still recognised as its shadow. Field history is matched by name because
+	// OpportunityFieldHistory trims to "OpportunityField", which is not an object.
+	g.Expect(sfOptionValues(all)).ToNot(ContainElement("SecretShareShare"))
+	g.Expect(sfOptionValues(all)).ToNot(ContainElement("OpportunityFieldHistory"))
 
 	custom, _ := getSalesforceOptions(r, "salesforce-objects", sfAuth(map[string]string{"custom_only": "true"}))
 	g.Expect(sfOptionValues(custom)).To(ConsistOf("Invoice__c", "TimeShare__c"))
@@ -1218,8 +1556,15 @@ func TestSalesforceObjectsHideShadowObjectsAndHonourCustomOnly(t *testing.T) {
 func TestSalesforceBakedObjectsAreNotHiddenAsShadowObjects(t *testing.T) {
 	g := NewWithT(t)
 
+	// The baked names are their own parent set: if a marker ever baked both
+	// "Account" and "AccountHistory", the shadow rule would fire on the second and
+	// this test would say so.
+	known := map[string]bool{}
 	for _, object := range salesforceBakedObjects(t) {
-		g.Expect(salesforceIsSystemObject(object, strings.HasSuffix(object, "__c"))).
+		known[object] = true
+	}
+	for _, object := range salesforceBakedObjects(t) {
+		g.Expect(salesforceIsSystemObject(object, strings.HasSuffix(object, "__c"), known)).
 			To(BeFalse(), "%s is baked into a marker but hidden from the object picker", object)
 	}
 }
@@ -1403,6 +1748,109 @@ func TestSalesforceCacheIsBoundedAndExpires(t *testing.T) {
 	salesforceCacheMu.Unlock()
 	_, ok := salesforceCacheGet("stale")
 	g.Expect(ok).To(BeFalse())
+}
+
+// The cache alone does not stop duplicate work: an entry is only written once a
+// describe has COME BACK, so nothing stops N goroutines being partway through the
+// same describe. That is the normal case, not a rare race — the editor fetches
+// every dynamic option on mount, so opening one node fires all of its pickers at
+// once and task_update alone describes Task eight times over (~120 KB each,
+// every one of them counted against the customer's daily API allowance).
+func TestSalesforceConcurrentDescribesOfOneObjectMakeOneCall(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+
+	var describes int32
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		if !strings.HasSuffix(r.URL.Path, "/describe") {
+			return false
+		}
+		atomic.AddInt32(&describes, 1)
+		// Wide enough that every caller released from the barrier below is inside
+		// salesforceDescribeObject before this one returns.
+		time.Sleep(150 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(salesforceDescribeStub))
+		return true
+	}
+
+	r := setupSalesforceRouter(&Service{})
+
+	// The eight pickers a single task_update node opens against Task.
+	const callers = 8
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			body, code := getSalesforceOptions(r, "salesforce-picklist", sfAuth(map[string]string{
+				"object": "Task", "field": "Status",
+			}))
+			g.Expect(code).To(Equal(http.StatusOK))
+			// Every waiter still gets the real answer, not an empty list.
+			g.Expect(sfOptionValues(body)).To(ContainElement("Working - Contacted"))
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	g.Expect(atomic.LoadInt32(&describes)).To(Equal(int32(1)),
+		"%d concurrent pickers on one object produced %d describes", callers, describes)
+}
+
+// A follower must never inherit the leader's failure. Every outbound call is
+// bound to its own request's context, so the leader failing can mean nothing
+// worse than "that operator closed the config panel" — sharing that error would
+// blank six live dropdowns. On failure each waiter does the work itself.
+func TestSalesforceInFlightFollowersDoNotInheritTheLeadersFailure(t *testing.T) {
+	g := NewWithT(t)
+
+	leaderInside := make(chan struct{})
+	release := make(chan struct{})
+	var calls int32
+
+	fetch := func() (any, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			close(leaderInside)
+			<-release
+			return nil, errors.New("leader's request was cancelled")
+		}
+		return "the real answer", nil
+	}
+
+	type outcome struct {
+		value any
+		err   error
+	}
+	leaderDone := make(chan outcome, 1)
+	followerDone := make(chan outcome, 1)
+
+	go func() {
+		v, err := salesforceFetchOnce(context.Background(), "k", fetch)
+		leaderDone <- outcome{v, err}
+	}()
+	<-leaderInside
+
+	followerStarted := make(chan struct{})
+	go func() {
+		close(followerStarted)
+		v, err := salesforceFetchOnce(context.Background(), "k", fetch)
+		followerDone <- outcome{v, err}
+	}()
+	<-followerStarted
+	// Let the follower reach the in-flight entry before the leader clears it.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+
+	leader := <-leaderDone
+	g.Expect(leader.err).To(HaveOccurred(), "the leader is meant to fail in this test")
+
+	follower := <-followerDone
+	g.Expect(follower.err).ToNot(HaveOccurred(), "the follower inherited the leader's failure")
+	g.Expect(follower.value).To(Equal("the real answer"))
+	g.Expect(atomic.LoadInt32(&calls)).To(Equal(int32(2)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1923,9 +2371,22 @@ func TestSalesforceDialControlRefusesInternalDestinations(t *testing.T) {
 	g.Expect(salesforceOptionsDialControl("tcp", "169.254.169.254:80", nil)).To(HaveOccurred())
 }
 
-// End-to-end through the real transport: even with the seam pointing at it, the
-// metadata service is never connected to. This proves the Control is actually
-// wired into the client, not merely correct in isolation.
+// The Control has to be WIRED INTO the shared client, not merely correct in
+// isolation — a refactor that adds a proxy, swaps in a shared dialer or moves the
+// client to a helper drops it silently.
+//
+// The assertion has to be about the guard's own error, not about the handler's
+// prose. "Could not reach Salesforce" is what salesforceErrorMessage returns for
+// ANY non-status failure, so a version of this test that only checked the
+// sentence passed with `Control: salesforceOptionsDialControl` deleted: on a box
+// where 169.254.169.254 is simply unroutable the dial failed anyway, with
+// "connect: network is unreachable", and the test went green. On a cloud runner —
+// the one place the guard actually matters — the metadata service would have
+// answered instead. A security test that cannot fail is worse than no test.
+//
+// So the dial is driven through the CLIENT'S OWN Transport and the guard's
+// message demanded. That fails both ways: without the Control the error is a
+// connect error on this box, and no error at all where IMDS is reachable.
 func TestSalesforceMetadataServiceIsUnreachableThroughTheRealTransport(t *testing.T) {
 	g := NewWithT(t)
 
@@ -1937,10 +2398,32 @@ func TestSalesforceMetadataServiceIsUnreachableThroughTheRealTransport(t *testin
 		sfClearDescribeCache()
 	}()
 
+	transport, isTransport := salesforceOptionsHTTPClient.Transport.(*http.Transport)
+	g.Expect(isTransport).To(BeTrue(),
+		"the shared client no longer dials through an *http.Transport, so nothing pins the dial guard")
+	g.Expect(transport.DialContext).ToNot(BeNil(),
+		"the shared client dials with the default dialer, which carries no Control")
+
+	// Seam or no seam, the metadata service is refused BY THE GUARD.
+	_, err := transport.DialContext(context.Background(), "tcp", "169.254.169.254:80")
+	g.Expect(err).To(HaveOccurred(), "the metadata service was dialled")
+	g.Expect(err.Error()).To(ContainSubstring("link-local addresses are not allowed"),
+		"the dial failed, but not because of the guard — the Control is not wired into the client")
+
+	// And with the seam off, so is loopback: no Salesforce org is ever there, so a
+	// *.salesforce.com name that resolves to it is rebinding or misconfiguration.
+	salesforceOptionsHostOverride = ""
+	_, err = transport.DialContext(context.Background(), "tcp", "127.0.0.1:9")
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("loopback addresses are not allowed"))
+	salesforceOptionsHostOverride = "http://169.254.169.254"
+
+	// End to end the operator still gets a sentence, never dial detail.
 	r := setupSalesforceRouter(&Service{})
 	body, code := getSalesforceOptions(r, "salesforce-users", sfAuth(nil))
 	g.Expect(code).To(Equal(http.StatusOK))
 	g.Expect(sfError(body)).To(ContainSubstring("Could not reach Salesforce"))
+	g.Expect(sfError(body)).ToNot(ContainSubstring("169.254.169.254"))
 }
 
 // A 302 must never carry the bearer token to another host.
@@ -2108,6 +2591,22 @@ func TestSalesforceMarkersBakeUsableParameters(t *testing.T) {
 		if filter := values.Get("filter"); filter != "" {
 			_, known := salesforceFieldFilters[filter]
 			g.Expect(known).To(BeTrue(), "%s bakes an unknown field filter %q", key, filter)
+		}
+
+		// And the filter has to MATCH what the input does with the field. A Sort By
+		// filled from every field offers rows Salesforce answers with
+		// MALFORMED_QUERY; a Filter Field / Look Up By likewise with INVALID_FIELD.
+		// The SELECT-list inputs are the ones that legitimately take everything.
+		if slug == "salesforce-fields" {
+			input := key[strings.LastIndex(key, "#")+1:]
+			switch input {
+			case "order_by":
+				g.Expect(values.Get("filter")).To(Equal("sortable"),
+					"%s: a Sort By list must only offer fields Salesforce can sort on", key)
+			case "filter_field", "match_field":
+				g.Expect(values.Get("filter")).To(Equal("filterable"),
+					"%s: a filter list must only offer fields Salesforce can filter on", key)
+			}
 		}
 
 		// The picklist picker needs BOTH halves of the (object, field) pair, and

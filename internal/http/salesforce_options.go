@@ -6,17 +6,18 @@ package http
 // name or a date; Salesforce inputs are RECORD IDS (0015f00000AbCdEAAV) and
 // PICKLIST API NAMES that must match the org's setup exactly. A receptionist or
 // sales admin — the person these flows are built for — cannot be asked to go and
-// look either of those up. Eleven proxies back all 429 markers registered from
+// look either of those up. Twelve proxies back all 429 markers registered from
 // salesforce_options_markers.go:
 //
 //	/salesforce-objects                 the global describe (all / custom only)
-//	/salesforce-fields                  one object's fields (all|createable|updateable|picklist)
+//	/salesforce-fields                  one object's fields (all|createable|updateable|picklist|filterable|sortable)
 //	/salesforce-picklist                one field's picklist values — EVERY picklist input
 //	/salesforce-external-id-fields      fields usable as an upsert key
 //	/salesforce-record-types            one object's active record types
 //	/salesforce-lookup                  searchable record picker (one or more objects)
-//	/salesforce-users                   active users
+//	/salesforce-users                   active users (?owner=true: only those that can own a record)
 //	/salesforce-owners                  users AND queues for one object
+//	/salesforce-lead-converted-statuses the lead statuses that actually convert
 //	/salesforce-campaign-member-status  one campaign's member statuses (two-hop)
 //	/salesforce-list-views              one object's list views
 //	/salesforce-reports                 reports, or the distinct report folders
@@ -30,9 +31,12 @@ package http
 //     org and a needless load on the customer's API limits. /salesforce-lookup
 //     issues ONE server-side-filtered, ORDER BY'd, LIMIT 100 SOQL query.
 //
-//  2. It filters picklist values on active == true. n8n returns every entry
-//     describe hands back, including values retired in Setup, so the dropdown
-//     offers choices Salesforce then rejects on write.
+//  2. It never offers a choice the org would reject. Picklist values are filtered
+//     on active == true (n8n returns entries retired in Setup); Sort By lists only
+//     sortable fields and Filter Field only filterable ones (Salesforce answers
+//     ORDER BY Description with MALFORMED_QUERY); Converted Status lists only the
+//     statuses marked Converted, not the whole Lead.Status picklist; and the owner
+//     pickers drop the user types Salesforce refuses to make an owner.
 //
 //  3. /salesforce-users defaults to IsActive = true. n8n lists deactivated users;
 //     assigning one comes back as INVALID_CROSS_REFERENCE_KEY, which reads to the
@@ -72,6 +76,7 @@ package http
 // inline and the input falls back to manual entry.
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -227,8 +232,12 @@ var salesforceOptionsHTTPClient = &gohttp.Client{
 			Timeout: 5 * time.Second,
 			Control: salesforceOptionsDialControl,
 		}).DialContext,
-		MaxIdleConns:        20,
-		MaxIdleConnsPerHost: 4,
+		MaxIdleConns: 20,
+		// One polymorphic picker now fans out over up to salesforceMaxLookupObjects
+		// objects at once, and each object is a describe followed by a query. At the
+		// old cap of 4 the fifth connection of every burst was closed rather than
+		// pooled, so the query round paid a fresh TLS handshake for it.
+		MaxIdleConnsPerHost: salesforceMaxLookupObjects + 1,
 		IdleConnTimeout:     90 * time.Second,
 	},
 }
@@ -526,6 +535,12 @@ func salesforceDecodeError(body []byte) (string, string) {
 // person reading it, and the whole point of the picker is that they should not
 // have to know Salesforce's vocabulary.
 func salesforceErrorMessage(err error, what string) string {
+	var noLabel *salesforceNoLabelFieldError
+	if errors.As(err, &noLabel) {
+		return fmt.Sprintf(
+			"Salesforce doesn't publish a name for %s records, so they can't be listed here — type the record ID in",
+			noLabel.object)
+	}
 	var statusErr *salesforceStatusError
 	if errors.As(err, &statusErr) {
 		// The org's own errorCode is matched FIRST, and the HTTP status only as a
@@ -746,6 +761,60 @@ func salesforceCachePut(key string, value any) {
 	salesforceCache[key] = salesforceCacheEntry{value: value, expires: time.Now().Add(salesforceCacheTTL)}
 }
 
+// The in-flight table. The cache alone does not stop duplicate work: an entry is
+// only written once a describe has COME BACK, so nothing prevents N goroutines
+// being partway through the same describe at once — and that is the normal case,
+// not a rare race. The editor fetches every dynamic option on mount, so opening
+// one Salesforce node fires all of its pickers simultaneously; task_update alone
+// describes Task eight times over, ~120 KB each, and every one of them counts
+// against the customer's daily API allowance.
+type salesforceInFlight struct {
+	done  chan struct{}
+	value any
+	err   error
+}
+
+var (
+	salesforceInFlightMu    sync.Mutex
+	salesforceInFlightCalls = map[string]*salesforceInFlight{}
+)
+
+// salesforceFetchOnce collapses concurrent misses on one cache key into a single
+// upstream call.
+//
+// A follower NEVER inherits the leader's error. Every outbound call is bound to
+// its own request's context, so the leader failing may mean nothing worse than
+// "that operator closed the config panel" — sharing that failure would blank
+// six other perfectly live dropdowns. On failure each waiter simply does the
+// work itself, which is exactly the behaviour that existed before this function.
+func salesforceFetchOnce(ctx context.Context, key string, fetch func() (any, error)) (any, error) {
+	salesforceInFlightMu.Lock()
+	if call, waiting := salesforceInFlightCalls[key]; waiting {
+		salesforceInFlightMu.Unlock()
+		select {
+		case <-call.done:
+			if call.err == nil {
+				return call.value, nil
+			}
+			return fetch()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	call := &salesforceInFlight{done: make(chan struct{})}
+	salesforceInFlightCalls[key] = call
+	salesforceInFlightMu.Unlock()
+
+	call.value, call.err = fetch()
+
+	salesforceInFlightMu.Lock()
+	delete(salesforceInFlightCalls, key)
+	salesforceInFlightMu.Unlock()
+	close(call.done)
+
+	return call.value, call.err
+}
+
 // salesforceDescribeObject fetches (or serves from cache) one object's describe.
 func salesforceDescribeObject(c *gin.Context, conn salesforceProxyConn, object string) (*salesforceDescribe, error) {
 	key := "sobject\x00" + conn.Fingerprint + "\x00" + object
@@ -755,6 +824,22 @@ func salesforceDescribeObject(c *gin.Context, conn salesforceProxyConn, object s
 		}
 	}
 
+	value, err := salesforceFetchOnce(c.Request.Context(), key, func() (any, error) {
+		return salesforceFetchDescribe(c, conn, object, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	describe, ok := value.(*salesforceDescribe)
+	if !ok {
+		return nil, fmt.Errorf("salesforce describe of %s returned an unexpected shape", object)
+	}
+	return describe, nil
+}
+
+// salesforceFetchDescribe is the uncached describe. It is only ever entered
+// through salesforceFetchOnce.
+func salesforceFetchDescribe(c *gin.Context, conn salesforceProxyConn, object, key string) (*salesforceDescribe, error) {
 	body, err := salesforceGet(c, conn, "/sobjects/"+url.PathEscape(object)+"/describe")
 	if err != nil {
 		return nil, err
@@ -835,6 +920,22 @@ func salesforceDescribeGlobal(c *gin.Context, conn salesforceProxyConn) ([]sales
 		}
 	}
 
+	value, err := salesforceFetchOnce(c.Request.Context(), key, func() (any, error) {
+		return salesforceFetchGlobalDescribe(c, conn, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	objects, ok := value.([]salesforceGlobalObject)
+	if !ok {
+		return nil, errors.New("salesforce global describe returned an unexpected shape")
+	}
+	return objects, nil
+}
+
+// salesforceFetchGlobalDescribe is the uncached global describe. It is only ever
+// entered through salesforceFetchOnce.
+func salesforceFetchGlobalDescribe(c *gin.Context, conn salesforceProxyConn, key string) ([]salesforceGlobalObject, error) {
 	body, err := salesforceGet(c, conn, "/sobjects/")
 	if err != nil {
 		return nil, err
@@ -852,12 +953,20 @@ func salesforceDescribeGlobal(c *gin.Context, conn salesforceProxyConn) ([]sales
 		return nil, err
 	}
 
+	// The parent set is built from EVERY name the describe returned, not just the
+	// queryable ones, so a shadow table whose parent the user cannot query is
+	// still recognised as a shadow table.
+	known := make(map[string]bool, len(raw.SObjects))
+	for _, o := range raw.SObjects {
+		known[o.Name] = true
+	}
+
 	objects := make([]salesforceGlobalObject, 0, len(raw.SObjects))
 	for _, o := range raw.SObjects {
 		if !o.Queryable || o.DeprecatedAndHidden {
 			continue
 		}
-		if salesforceIsSystemObject(o.Name, o.Custom) {
+		if salesforceIsSystemObject(o.Name, o.Custom, known) {
 			continue
 		}
 		objects = append(objects, salesforceGlobalObject{Name: o.Name, Label: o.Label, Custom: o.Custom})
@@ -869,17 +978,43 @@ func salesforceDescribeGlobal(c *gin.Context, conn salesforceProxyConn) ([]sales
 
 // salesforceIsSystemObject hides the shadow objects every org carries — the
 // per-object Share / History / Feed / Tag / ChangeEvent tables. They are a third
-// of the global describe and none of them is ever what an operator meant. The
-// bare (un-prefixed) suffixes are only applied to standard objects so a genuine
-// custom "TimeShare__c" survives.
-func salesforceIsSystemObject(name string, custom bool) bool {
+// of the global describe and none of them is ever what an operator meant.
+//
+// The bare (un-prefixed) suffixes need two extra tests, because on their own they
+// also hide real standard objects:
+//
+//   - Custom objects are exempt, so a genuine "TimeShare__c" survives.
+//   - A shadow table is always named <Parent><Suffix> for a <Parent> the same
+//     global describe lists, so the bare suffixes only bite when that parent is
+//     really there. LoginHistory ("Login History") and VerificationHistory
+//     ("Identity Verification History") are queryable, non-deprecated standard
+//     objects with no Login or Verification object behind them — verified live —
+//     and a bare "History" rule drops both, leaving an operator who wants login
+//     history to conclude Flomation cannot read it.
+//
+// The one shadow family that does NOT trim to its parent is field history:
+// OpportunityFieldHistory trims to "OpportunityField", which is not an object.
+// It is matched by name instead, or the parent test would surface it.
+//
+// known is the set of names in the same global describe; a nil set means "no
+// parent information", which errs towards showing the object.
+func salesforceIsSystemObject(name string, custom bool, known map[string]bool) bool {
 	for _, suffix := range salesforceSystemObjectSuffixes {
-		if !strings.HasPrefix(suffix, "__") && custom {
+		if !strings.HasSuffix(name, suffix) || len(name) <= len(suffix) {
 			continue
 		}
-		if strings.HasSuffix(name, suffix) && len(name) > len(suffix) {
+		// Namespaced shadow tables (Invoice__c__History) and change events are
+		// unambiguous — nothing else is named that way.
+		if strings.HasPrefix(suffix, "__") || suffix == "ChangeEvent" {
 			return true
 		}
+		if custom {
+			continue
+		}
+		if strings.HasSuffix(name, "FieldHistory") && len(name) > len("FieldHistory") {
+			return true
+		}
+		return known[strings.TrimSuffix(name, suffix)]
 	}
 	return false
 }
@@ -965,10 +1100,28 @@ func (s *Service) getSalesforceObjects(c *gin.Context) {
 // operator — so anything outside this set is a bug or a hand-crafted request.
 var salesforceFieldFilters = map[string]struct{}{
 	"all": {}, "createable": {}, "updateable": {}, "picklist": {},
+	"filterable": {}, "sortable": {},
+}
+
+// salesforceDistanceOnlyTypes are the compound types whose describe reports
+// filterable:true and whose SOQL then refuses an ordinary comparison —
+// "Address fields can only be filtered using Distance expressions" (verified
+// live on Account.BillingAddress). The Filterable flag alone is therefore not a
+// sufficient test for the Filter Field / Look Up By pickers.
+var salesforceDistanceOnlyTypes = map[string]struct{}{
+	"address":  {},
+	"location": {}, // geolocation compound fields have the same DISTANCE-only rule
 }
 
 // getSalesforceFields serves one object's fields for the Fields / Filter Field /
 // Sort By / Field to Set / Look Up By / Dropdown Field inputs.
+//
+// The filter is not cosmetic. Salesforce refuses to filter or sort on some of
+// the fields its own describe returns — ORDER BY Description is MALFORMED_QUERY
+// "field 'Description' can not be sorted in a query call", WHERE Description is
+// INVALID_FIELD — so a Sort By list built from every field offers choices that
+// are always an error, with nothing on the option to say which ones. That is the
+// same defect as the retired picklist value, one endpoint along.
 func (s *Service) getSalesforceFields(c *gin.Context) {
 	filter := strings.TrimSpace(c.Query("filter"))
 	if filter == "" {
@@ -1009,6 +1162,17 @@ func (s *Service) getSalesforceFields(c *gin.Context) {
 			}
 		case "picklist":
 			if f.Type != "picklist" && f.Type != "multipicklist" && f.Type != "combobox" {
+				continue
+			}
+		case "filterable":
+			if !f.Filterable {
+				continue
+			}
+			if _, distanceOnly := salesforceDistanceOnlyTypes[f.Type]; distanceOnly {
+				continue
+			}
+		case "sortable":
+			if !f.Sortable {
 				continue
 			}
 		}
@@ -1218,18 +1382,40 @@ func (s *Service) getSalesforceLookup(c *gin.Context) {
 		search = ""
 	}
 
+	// The objects are searched CONCURRENTLY. Each one costs a describe plus a
+	// query, and email_send's related_record_id names five — ten round trips one
+	// after another, measured at 2.7 s cold against a bare Developer Edition org
+	// and worse on a real one. The loop body was already independent and already
+	// tolerated a per-object failure, so the only thing sequence bought was
+	// latency. Results are collected per index rather than appended, so the
+	// output does not depend on which object answered first.
+	type lookupResult struct {
+		rows []api.InputOption
+		err  error
+	}
+	results := make([]lookupResult, len(objects))
+	var wg sync.WaitGroup
+	for i, object := range objects {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rows, err := salesforceLookupOne(c, conn, object, search, len(objects) > 1)
+			results[i] = lookupResult{rows: rows, err: err}
+		}()
+	}
+	wg.Wait()
+
 	options := make([]api.InputOption, 0, salesforceLookupLimit)
 	var lastErr error
-	for _, object := range objects {
-		rows, err := salesforceLookupOne(c, conn, object, search, len(objects) > 1)
-		if err != nil {
+	for i, res := range results {
+		if res.err != nil {
 			// One object of a polymorphic set failing (a Lead the user cannot see,
 			// say) must not blank the whole picker.
-			lastErr = err
-			log.WithFields(log.Fields{"error": err, "object": object}).Warn("unable to search Salesforce records")
+			lastErr = res.err
+			log.WithFields(log.Fields{"error": res.err, "object": objects[i]}).Warn("unable to search Salesforce records")
 			continue
 		}
-		options = append(options, rows...)
+		options = append(options, res.rows...)
 	}
 	if len(options) == 0 && lastErr != nil {
 		salesforceRespond(c, nil, salesforceErrorMessage(lastErr, "list of records"))
@@ -1246,13 +1432,24 @@ func salesforceLookupOne(c *gin.Context, conn salesforceProxyConn, object, searc
 		return nil, err
 	}
 
-	// Find the object's own name field. Salesforce flags exactly one field with
-	// nameField; the fallbacks cover the handful of objects that flag none.
+	// Find the object's own name field. The override comes first, then the
+	// describe's own nameField flag (Salesforce flags exactly one), then the
+	// fallbacks that cover the handful of objects flagging none.
 	var nameField *salesforceDescribeField
-	for i := range describe.Fields {
-		if describe.Fields[i].NameField {
-			nameField = &describe.Fields[i]
-			break
+	if candidate, overridden := salesforceLookupNameField[object]; overridden {
+		for i := range describe.Fields {
+			if strings.EqualFold(describe.Fields[i].Name, candidate) {
+				nameField = &describe.Fields[i]
+				break
+			}
+		}
+	}
+	if nameField == nil {
+		for i := range describe.Fields {
+			if describe.Fields[i].NameField {
+				nameField = &describe.Fields[i]
+				break
+			}
 		}
 	}
 	if nameField == nil {
@@ -1269,10 +1466,11 @@ func salesforceLookupOne(c *gin.Context, conn salesforceProxyConn, object, searc
 		}
 	}
 	if nameField == nil {
-		return nil, &salesforceStatusError{
-			status: gohttp.StatusBadRequest, code: "INVALID_FIELD",
-			message: object + " has no name field",
-		}
+		// Not INVALID_FIELD: nothing is wrong with the operator's field, the
+		// object simply has no column worth showing, and telling them "Salesforce
+		// doesn't have that field on this object" sends them looking for a
+		// mistake they did not make.
+		return nil, &salesforceNoLabelFieldError{object: object}
 	}
 
 	// A second column is selected when the name alone does not identify the
@@ -1335,10 +1533,35 @@ func salesforceLookupOne(c *gin.Context, conn salesforceProxyConn, object, searc
 	return options, nil
 }
 
+// salesforceLookupNameField names the label column for the objects whose
+// describe flags NO nameField and carries none of the generic fallbacks either.
+//
+// OrgWideEmailAddress is the one such object any marker points at. Its fields are
+// Id, CreatedById, CreatedDate, LastModifiedDate, LastModifiedById,
+// SystemModstamp, IsVerified, Address, DisplayName, IsAllowAllProfiles and
+// Purpose — standard schema, so this is true of every org, and without the
+// override the "Org-Wide Email Address" picker on email_send can never return a
+// single option no matter how the org is set up.
+var salesforceLookupNameField = map[string]string{
+	"OrgWideEmailAddress": "DisplayName",
+}
+
 // salesforceLookupSecondaryField names a second column worth showing beside the
 // object's name field, for the objects whose name is an opaque reference.
 var salesforceLookupSecondaryField = map[string]string{
-	"Case": "Subject", // CaseNumber alone tells the operator nothing
+	"Case":                "Subject", // CaseNumber alone tells the operator nothing
+	"OrgWideEmailAddress": "Address", // "Support" means nothing without support@acme.com
+}
+
+// salesforceNoLabelFieldError is the one failure salesforceLookupOne raises
+// itself: the object has nothing that can be shown as a label, so there is no
+// picker to build. It is deliberately NOT a salesforceStatusError — Salesforce
+// never said no, and dressing it as INVALID_FIELD tells the operator a field is
+// missing on an input where nothing they can do would ever populate the list.
+type salesforceNoLabelFieldError struct{ object string }
+
+func (e *salesforceNoLabelFieldError) Error() string {
+	return "salesforce object " + e.object + " has no field usable as a label"
 }
 
 // salesforceStringValue coerces a SOQL scalar to display text. Salesforce returns
@@ -1370,14 +1593,21 @@ func salesforceStringValue(v any) string {
 // INVALID_CROSS_REFERENCE_KEY, which reads like a broken integration rather than
 // a stale choice. ?include_inactive=true is available for the rare case a flow
 // really does need one.
+//
+// ?owner=true narrows it further to the users that can actually OWN a record.
+// It is set on the owner_id markers only: user_id on user_get / user_update /
+// user_deactivate legitimately names a Chatter Free user, and hiding those would
+// be the same defect the other way round.
 func (s *Service) getSalesforceUsers(c *gin.Context) {
 	conn, ok := s.salesforceConn(c)
 	if !ok {
 		return
 	}
 
-	options, err := salesforceFetchUsers(c, conn,
-		strings.EqualFold(strings.TrimSpace(c.Query("include_inactive")), "true"), "")
+	options, err := salesforceFetchUsers(c, conn, salesforceUserQuery{
+		IncludeInactive: strings.EqualFold(strings.TrimSpace(c.Query("include_inactive")), "true"),
+		OwnersOnly:      strings.EqualFold(strings.TrimSpace(c.Query("owner")), "true"),
+	})
 	if err != nil {
 		log.WithField("error", err).Warn("unable to list Salesforce users")
 		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of users"))
@@ -1387,12 +1617,49 @@ func (s *Service) getSalesforceUsers(c *gin.Context) {
 	salesforceRespond(c, options, "")
 }
 
-// salesforceFetchUsers runs the bounded user query. prefix, when set, is put in
-// front of every label (the owners picker labels its user group).
-func salesforceFetchUsers(c *gin.Context, conn salesforceProxyConn, includeInactive bool, prefix string) ([]api.InputOption, error) {
+// salesforceNonOwnerUserTypes are the user types Salesforce refuses as an
+// OwnerId. A Chatter Free (CsnOnly) or Chatter External (CsnExternal) user has
+// no record-ownership licence, so the insert comes back
+// OP_WITH_INVALID_USER_TYPE_EXCEPTION "Operation not valid for this user type" —
+// verified live on Lead, Task and Event. Every org ships one of these (the stock
+// "Chatter Expert"), so without this predicate EVERY customer's owner picker
+// carries at least one row that is guaranteed to fail.
+//
+// This is an exclude list and not a `UserType = 'Standard'` whitelist on
+// purpose. AutomatedProcess, CloudIntegrationUser and the portal types are all
+// accepted as owners — I probed each one live and Salesforce created the record —
+// and a partner-community user owning a registered deal is ordinary in a PRM
+// org. Whitelisting Standard would turn an over-permissive picker into an
+// under-permissive one, which is the same harm wearing a different hat.
+var salesforceNonOwnerUserTypes = []string{"CsnOnly", "CsnExternal"}
+
+// salesforceUserQuery is how a caller narrows the user list. It is a struct
+// rather than a run of bare booleans so the call sites say which is which.
+type salesforceUserQuery struct {
+	IncludeInactive bool
+	OwnersOnly      bool
+	// Prefix, when set, is put in front of every label (the owners picker labels
+	// its user group).
+	Prefix string
+}
+
+// salesforceFetchUsers runs the bounded user query.
+func salesforceFetchUsers(c *gin.Context, conn salesforceProxyConn, q salesforceUserQuery) ([]api.InputOption, error) {
+	var where []string
+	if !q.IncludeInactive {
+		where = append(where, "IsActive = true")
+	}
+	if q.OwnersOnly {
+		quoted := make([]string, 0, len(salesforceNonOwnerUserTypes))
+		for _, t := range salesforceNonOwnerUserTypes {
+			quoted = append(quoted, "'"+t+"'")
+		}
+		where = append(where, "UserType NOT IN ("+strings.Join(quoted, ",")+")")
+	}
+
 	soql := "SELECT Id, Name, Username FROM User"
-	if !includeInactive {
-		soql += " WHERE IsActive = true"
+	if len(where) > 0 {
+		soql += " WHERE " + strings.Join(where, " AND ")
 	}
 	soql += fmt.Sprintf(" ORDER BY Name LIMIT %d", salesforceListLimit)
 
@@ -1414,7 +1681,7 @@ func salesforceFetchUsers(c *gin.Context, conn salesforceProxyConn, includeInact
 		if username := salesforceStringValue(r["Username"]); username != "" {
 			label += " (" + username + ")"
 		}
-		options = append(options, api.InputOption{Name: prefix + label, Value: id})
+		options = append(options, api.InputOption{Name: q.Prefix + label, Value: id})
 	}
 	return options, nil
 }
@@ -1442,7 +1709,7 @@ func (s *Service) getSalesforceOwners(c *gin.Context) {
 		return
 	}
 
-	users, err := salesforceFetchUsers(c, conn, false, "User: ")
+	users, err := salesforceFetchUsers(c, conn, salesforceUserQuery{OwnersOnly: true, Prefix: "User: "})
 	if err != nil {
 		log.WithField("error", err).Warn("unable to list Salesforce users for owners")
 		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of owners"))
@@ -1483,7 +1750,62 @@ func (s *Service) getSalesforceOwners(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Campaign member statuses (two-hop)
+// 9. Lead statuses that actually convert
+// ---------------------------------------------------------------------------
+
+// getSalesforceLeadConvertedStatuses serves the lead statuses an administrator
+// has ticked "Converted" in Setup — the only values lead_convert accepts.
+//
+// It exists because the obvious endpoint is wrong. The Lead.Status PICKLIST holds
+// every status (in a default org: Open - Not Contacted, Working - Contacted,
+// Closed - Converted, Closed - Not Converted) and three of those four come back
+// from convertLead as INVALID_STATUS "invalid convertedStatus" — verified live.
+// "Closed - Not Converted" is exactly the one an operator recording a dead lead
+// would reach for. Which statuses convert lives on the LeadStatus object, not in
+// the picklist, so only a query can tell them apart. Same reasoning as the
+// per-campaign member statuses below: when the generic picker would offer
+// choices the action rejects, the picker gets built properly instead.
+func (s *Service) getSalesforceLeadConvertedStatuses(c *gin.Context) {
+	conn, ok := s.salesforceConn(c)
+	if !ok {
+		return
+	}
+
+	soql := fmt.Sprintf(
+		"SELECT MasterLabel, IsDefault FROM LeadStatus WHERE IsConverted = true ORDER BY SortOrder LIMIT %d",
+		salesforceListLimit)
+
+	records, err := salesforceQuery(c, conn, soql)
+	if err != nil {
+		log.WithField("error", err).Warn("unable to list Salesforce converted lead statuses")
+		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of converted statuses"))
+		return
+	}
+
+	// convertLead takes the status LABEL, not an id, so the label is both what the
+	// operator sees and what the flow sends.
+	options := make([]api.InputOption, 0, len(records))
+	for _, r := range records {
+		label := salesforceStringValue(r["MasterLabel"])
+		if label == "" {
+			continue
+		}
+		name := label
+		if isDefault, _ := r["IsDefault"].(bool); isDefault {
+			name += " (default)"
+		}
+		options = append(options, api.InputOption{Name: name, Value: label})
+	}
+	if len(options) == 0 {
+		salesforceRespond(c, nil, "No lead status in your org is marked as Converted — ask your Salesforce administrator to tick Converted on one under Setup ▸ Lead Status")
+		return
+	}
+	// NOT sorted: SortOrder is the sequence the org's own setup defines.
+	salesforceRespond(c, options, "")
+}
+
+// ---------------------------------------------------------------------------
+// 10. Campaign member statuses (two-hop)
 // ---------------------------------------------------------------------------
 
 // getSalesforceCampaignMemberStatus serves one campaign's member statuses. It is
@@ -1537,7 +1859,7 @@ func (s *Service) getSalesforceCampaignMemberStatus(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// 10. List views
+// 11. List views
 // ---------------------------------------------------------------------------
 
 // getSalesforceListViews serves one object's list views for the List View input.
@@ -1587,7 +1909,7 @@ func (s *Service) getSalesforceListViews(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// 11. Reports and report folders
+// 12. Reports and report folders
 // ---------------------------------------------------------------------------
 
 // getSalesforceReports serves the org's reports for the Report input, or — with
