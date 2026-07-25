@@ -71,6 +71,22 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"opentofu":   {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and operate your infrastructure — Kubernetes clusters, Helm releases, and infrastructure as code", SubKey: "opentofu", SubName: "OpenTofu", SubIcon: "cubes", SubDescription: "Infrastructure as Code — run OpenTofu plan, apply, and destroy"},
 	"databricks": {Key: "data-warehouse", Name: "Data Warehouse", Icon: "cubes-stacked", Description: "Query and orchestrate data warehouses and lakehouses", SubKey: "databricks", SubName: "Databricks", SubIcon: "database", SubDescription: "Run SQL, jobs, and models against a Databricks lakehouse"},
 	"hubspot":    {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets", SubKey: "hubspot", SubName: "HubSpot", SubIcon: "hubspot", SubDescription: "Manage contacts, companies, deals, and tickets in the HubSpot CRM"},
+	// CRM uses 3-segment action IDs (crm/salesforce/lead_create), so the
+	// sub-group (Salesforce) is resolved from subCategoryMetadata below and no
+	// Sub* fields belong here — getCategoryForAction would overwrite them.
+	//
+	// HubSpot's 2-segment remap entry above duplicates this entry's
+	// Key/Name/Icon/Description verbatim; keep them byte-identical or the CRM
+	// group header changes depending on which action the editor happened to
+	// read first. Same trap as Mailchimp/Marketing and OpenTofu/Infrastructure.
+	//
+	// HubSpot deliberately stays at actions/hubspot/ rather than moving under
+	// actions/crm/: action IDs are derived from the executor directory path, so
+	// relocating it would rename all 28 of its actions, and the api DELETES
+	// actions rows absent from a freshly-ingested manifest — every saved flow
+	// with a HubSpot node would fail to resolve. The remap gets the shared
+	// palette header at none of that cost.
+	"crm": {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets"},
 	// E-Commerce uses 3-segment action IDs (ecommerce/shopify/order_create),
 	// so the sub-group (Shopify) is resolved from subCategoryMetadata below —
 	// no inline Sub* fields here (getCategoryForAction would overwrite them).
@@ -131,39 +147,42 @@ var subCategoryMetadata = map[string]struct {
 	Icon        string
 	Description string
 }{
-	"aws/s3":                         {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
-	"aws/ec2":                        {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
-	"aws/rds":                        {Name: "RDS", Icon: "database", Description: "Relational Database Service operations"},
-	"aws/vpc":                        {Name: "VPC", Icon: "circle-nodes", Description: "Virtual Private Cloud networking — subnets, route tables, gateways, peering and VPN"},
-	"aws/elbv2":                      {Name: "Elastic Load Balancing", Icon: "arrows-split-up-and-left", Description: "Application, Network and Gateway load balancers — target groups, listeners, rules and target health"},
-	"aws/autoscaling":                {Name: "Auto Scaling", Icon: "arrows-up-down", Description: "EC2 Auto Scaling groups — desired capacity, scaling policies, scheduled actions and instance refresh"},
-	"aws/route53":                    {Name: "Route 53", Icon: "globe", Description: "DNS and traffic management — hosted zones, records, health checks and query logging"},
-	"aws/route53domains":             {Name: "Route 53 Domains", Icon: "id-badge", Description: "Domain registration — register, transfer, renew and manage domains, contacts and nameservers"},
-	"aws/cloudwatch":                 {Name: "CloudWatch", Icon: "chart-line", Description: "Metrics, alarms and dashboards — publish metric data, manage alarms and build dashboards"},
-	"aws/cloudwatchlogs":             {Name: "CloudWatch Logs", Icon: "file-lines", Description: "Log groups, streams and events — write and query logs, and manage metric and subscription filters"},
-	"aws/eventbridge":                {Name: "EventBridge", Icon: "bolt", Description: "Event rules and targets — route events with rules, manage targets and publish custom events"},
-	"aws/iam":                        {Name: "IAM", Icon: "shield-halved", Description: "Identity and Access Management — users, groups, roles, policies, access keys and instance profiles"},
-	"aws/kms":                        {Name: "KMS", Icon: "key", Description: "Key Management Service — keys, aliases, encryption, data keys, signing and grants"},
-	"aws/secretsmanager":             {Name: "Secrets Manager", Icon: "lock", Description: "Store, retrieve and rotate secrets — secret values, versions, rotation and resource policies"},
-	"social/linkedin":                {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
-	"social/facebook":                {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
-	"google/drive":                   {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
-	"google/sheets":                  {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
-	"google/docs":                    {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
-	"google/slides":                  {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
-	"microsoft/outlook":              {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
-	"microsoft/teams":                {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
-	"microsoft/calendar":             {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
-	"microsoft/excel":                {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
-	"microsoft/onedrive":             {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
-	"microsoft/sharepoint":           {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
-	"microsoft/word":                 {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
-	"microsoft/powerpoint":           {Name: "PowerPoint", Icon: "display", Description: "Microsoft PowerPoint Online presentation operations"},
-	"google/gmail":                   {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
-	"google/calendar":                {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
-	"messaging/telegram":             {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
-	"messaging/discord":              {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
-	"ecommerce/shopify":              {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	"aws/s3":               {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
+	"aws/ec2":              {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+	"aws/rds":              {Name: "RDS", Icon: "database", Description: "Relational Database Service operations"},
+	"aws/vpc":              {Name: "VPC", Icon: "circle-nodes", Description: "Virtual Private Cloud networking — subnets, route tables, gateways, peering and VPN"},
+	"aws/elbv2":            {Name: "Elastic Load Balancing", Icon: "arrows-split-up-and-left", Description: "Application, Network and Gateway load balancers — target groups, listeners, rules and target health"},
+	"aws/autoscaling":      {Name: "Auto Scaling", Icon: "arrows-up-down", Description: "EC2 Auto Scaling groups — desired capacity, scaling policies, scheduled actions and instance refresh"},
+	"aws/route53":          {Name: "Route 53", Icon: "globe", Description: "DNS and traffic management — hosted zones, records, health checks and query logging"},
+	"aws/route53domains":   {Name: "Route 53 Domains", Icon: "id-badge", Description: "Domain registration — register, transfer, renew and manage domains, contacts and nameservers"},
+	"aws/cloudwatch":       {Name: "CloudWatch", Icon: "chart-line", Description: "Metrics, alarms and dashboards — publish metric data, manage alarms and build dashboards"},
+	"aws/cloudwatchlogs":   {Name: "CloudWatch Logs", Icon: "file-lines", Description: "Log groups, streams and events — write and query logs, and manage metric and subscription filters"},
+	"aws/eventbridge":      {Name: "EventBridge", Icon: "bolt", Description: "Event rules and targets — route events with rules, manage targets and publish custom events"},
+	"aws/iam":              {Name: "IAM", Icon: "shield-halved", Description: "Identity and Access Management — users, groups, roles, policies, access keys and instance profiles"},
+	"aws/kms":              {Name: "KMS", Icon: "key", Description: "Key Management Service — keys, aliases, encryption, data keys, signing and grants"},
+	"aws/secretsmanager":   {Name: "Secrets Manager", Icon: "lock", Description: "Store, retrieve and rotate secrets — secret values, versions, rotation and resource policies"},
+	"social/linkedin":      {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
+	"social/facebook":      {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
+	"google/drive":         {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
+	"google/sheets":        {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
+	"google/docs":          {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
+	"google/slides":        {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
+	"microsoft/outlook":    {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
+	"microsoft/teams":      {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
+	"microsoft/calendar":   {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
+	"microsoft/excel":      {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
+	"microsoft/onedrive":   {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
+	"microsoft/sharepoint": {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
+	"microsoft/word":       {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
+	"microsoft/powerpoint": {Name: "PowerPoint", Icon: "display", Description: "Microsoft PowerPoint Online presentation operations"},
+	"google/gmail":         {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
+	"google/calendar":      {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
+	"messaging/telegram":   {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
+	"messaging/discord":    {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
+	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	// Description must stay byte-identical to CategoryDescription in
+	// executor/actions/crm/salesforce/category.go.
+	"crm/salesforce":                 {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
 	"ecommerce/woocommerce":          {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"cms/wordpress":                  {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":            {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},

@@ -632,6 +632,23 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/azuredevops-pipelines", s.jwtMiddleware, s.getAzureDevOpsPipelines)
 	actions.GET("/options/azuredevops-release-definitions", s.jwtMiddleware, s.getAzureDevOpsReleaseDefinitions)
 	actions.GET("/options/azuredevops-teams", s.jwtMiddleware, s.getAzureDevOpsTeams)
+	// Salesforce pickers. Eleven proxies back all 429 markers registered from
+	// salesforce_options_markers.go — record ids and picklist API names are the
+	// two things a non-technical operator cannot be asked to look up, and they
+	// are most of a Salesforce action's inputs. The org's instance_url is
+	// caller-supplied and becomes the request host, so see salesforce_options.go
+	// for the Salesforce-suffix validation, dial guard and SOQL escaping.
+	actions.GET("/options/salesforce-objects", s.jwtMiddleware, s.getSalesforceObjects)
+	actions.GET("/options/salesforce-fields", s.jwtMiddleware, s.getSalesforceFields)
+	actions.GET("/options/salesforce-picklist", s.jwtMiddleware, s.getSalesforcePicklistValues)
+	actions.GET("/options/salesforce-external-id-fields", s.jwtMiddleware, s.getSalesforceExternalIDFields)
+	actions.GET("/options/salesforce-record-types", s.jwtMiddleware, s.getSalesforceRecordTypes)
+	actions.GET("/options/salesforce-lookup", s.jwtMiddleware, s.getSalesforceLookup)
+	actions.GET("/options/salesforce-users", s.jwtMiddleware, s.getSalesforceUsers)
+	actions.GET("/options/salesforce-owners", s.jwtMiddleware, s.getSalesforceOwners)
+	actions.GET("/options/salesforce-campaign-member-status", s.jwtMiddleware, s.getSalesforceCampaignMemberStatus)
+	actions.GET("/options/salesforce-list-views", s.jwtMiddleware, s.getSalesforceListViews)
+	actions.GET("/options/salesforce-reports", s.jwtMiddleware, s.getSalesforceReports)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
