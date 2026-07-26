@@ -2,7 +2,7 @@ package http
 
 // Dynamic-options markers for the CRM ▸ Salesforce actions.
 //
-// 429 markers over 140 actions, registered from a table in init() rather than
+// 565 markers over 177 actions, registered from a table in init() rather than
 // spelled out as literals in action.go. action.go sanctions exactly this — see
 // the comment above dynamicOptionsMetadata — and kubernetes_options.go (~120
 // markers) and pgvector_options.go (~50) do the same. Package-level variables
@@ -20,7 +20,9 @@ package http
 //     instead, and the endpoint carries no object.
 //   - extraParams are the sibling inputs the editor forwards on top of the auth
 //     pair — "object" / "custom_object" / "link_to_object" for the generic
-//     actions, "campaign_id" for the two-hop member-status picker.
+//     actions, "campaign_id" for the two-hop member-status picker, and
+//     "quote_id" / "order_id" / "opportunity_id" / "product_id" for the two-hop
+//     price book entry picker.
 //   - actions are the action ids under crm/salesforce/.
 //
 // EVERY marker's Params carry access_token, instance_url AND environment.
@@ -50,6 +52,36 @@ package http
 //     have no name field, so a picker could only list opaque ids.
 //   - record_undelete#record_id — it names a record already in the recycle bin,
 //     which an ordinary query does not return.
+//
+// And from the commerce actions, each for a reason that was checked rather than
+// assumed:
+//
+//   - quote_create / quote_update#quote_status and order_create /
+//     order_update#order_status — the ACTIONS validate these against a closed list
+//     and refuse anything else outright ("is not a Salesforce quote status"), so a
+//     live picklist would offer an org's own added statuses and the action would
+//     then reject every one. Same reason as email_message_create#status.
+//   - product_*#product_type — a curated Base / Bundle / Set. Product2.Type is an
+//     UNRESTRICTED picklist that ships with no active values in some orgs, so a
+//     live picker there would replace three choices Salesforce accepts with "there
+//     are no set choices — type the value in". Strictly worse.
+//   - billing_state / shipping_state / state — with the org's State and Country
+//     picklists on, StateCode is a DEPENDENT picklist controlled by CountryCode
+//     (384 values spanning every country, verified live). /salesforce-picklist has
+//     no controlling-field support, so it would offer every state of every country
+//     and the operator would have to find theirs in the middle of it.
+//   - billing_country / shipping_country / country — the actions write the NAME
+//     field (BillingCountry), which Salesforce validates against the picklist's
+//     integration values, while the describe's picklist is on the CODE field and
+//     carries two-letter codes. A picker here would commit "GB" into a field that
+//     wants "United Kingdom".
+//   - price_book_entry_get_all#product_code, asset_*#serial_number,
+//     product_upsert#match_value — filter VALUES typed by the operator, not record
+//     names or picklists. Nothing enumerates them.
+//   - filter_operator — the closed set of SOQL comparison operators, which is our
+//     vocabulary and not the org's.
+//   - additional_fields, filter_conditions — JSON payloads, same as
+//     record_upsert#fields.
 //
 // Note on the multi-value inputs (`fields`, `objects`): the editor renders
 // dynamic options as a SINGLE select, so choosing an option replaces a
@@ -226,7 +258,9 @@ var salesforcePickerGroups = []salesforcePickerGroup{
 	{"user_role_id", "salesforce-lookup?object=UserRole", nil, []string{"user_create", "user_update"}},
 	{"pricebook_id", "salesforce-lookup?object=Pricebook2", nil, []string{"opportunity_create", "opportunity_update", "opportunity_upsert"}},
 	{"product_id", "salesforce-lookup?object=Product2", nil, []string{"opportunity_line_item_create"}},
-	{"pricebook_entry_id", "salesforce-lookup?object=PricebookEntry", nil, []string{"opportunity_line_item_create"}},
+	// pricebook_entry_id is NOT here — see the commerce section's
+	// /salesforce-price-book-entries group for why the generic lookup cannot
+	// label a price book entry.
 	{"org_wide_email_address_id", "salesforce-lookup?object=OrgWideEmailAddress", nil, []string{"email_send"}},
 	{"email_template_id", "salesforce-lookup?object=EmailTemplate", nil, []string{"email_send"}},
 	{"parent_id", "salesforce-lookup", []string{"object"}, []string{"attachment_create", "note_create"}},
@@ -261,6 +295,160 @@ var salesforcePickerGroups = []salesforcePickerGroup{
 	{"list_view_id", "salesforce-list-views", []string{"object"}, []string{"list_view_run"}},
 	{"report_id", "salesforce-reports", nil, []string{"report_run"}},
 	{"folder", "salesforce-reports?folders=true", nil, []string{"report_get_all"}},
+
+	// ═══════════════════════════════════════════════════════════════════════════
+	// COMMERCE (v2) — products, price books, quotes, orders, contracts, assets
+	// ═══════════════════════════════════════════════════════════════════════════
+	//
+	// 37 actions, and the pickers matter MORE here than anywhere else in the node:
+	// a commerce flow is a chain of ids nobody has. Adding a product to a quote
+	// needs a quote id, a product id and a price book ENTRY id, and the operator
+	// building the flow has a product name and a price list, which is three
+	// lookups away from what the API wants.
+	//
+	// Everything below reuses the v1 proxies except two inputs no existing proxy
+	// can serve honestly — the price book ENTRY (see the group at the end) and two
+	// of the four Contract Status inputs, where the org's own picklist contains
+	// values that defeat the action (see the picklist group below).
+	//
+	// Two mappings were checked against the LIVE org rather than assumed, and both
+	// came out against the obvious answer:
+	//
+	//   - owner_id is NOT one picker. Quote.OwnerId and Order.OwnerId describe
+	//     referenceTo ["Group","User"] — a queue can own them, so they get
+	//     /salesforce-owners. Contract.OwnerId and Asset.OwnerId describe
+	//     referenceTo ["User"] — a queue CANNOT, and offering one would be a row
+	//     that always fails, so they get /salesforce-users?owner=true. Copying
+	//     either answer across all four would have been wrong for two of them.
+	//   - product_upsert's match key is NOT an external-id field picker. On a stock
+	//     Product2 the only externalId/idLookup fields are Id and Name (verified
+	//     live), so /salesforce-external-id-fields would offer exactly two rows and
+	//     hide ProductCode and StockKeepingUnit — the keys a spreadsheet or ERP
+	//     sync actually has, and which the action supports through its own
+	//     match-then-write fallback. It gets the filterable-fields picker instead,
+	//     the same one record_find#match_field uses.
+
+	// Record references. Every commerce object labels usefully through the generic
+	// lookup: Product2 / Pricebook2 / Quote / Asset flag a real Name, and Order and
+	// Contract flag an auto-number that salesforceLookupSecondaryField now widens
+	// with the customer's name.
+	{"product_id", "salesforce-lookup?object=Product2", nil, []string{"asset_create", "asset_get_all", "asset_update", "order_item_create", "price_book_entry_create", "price_book_entry_get_all", "product_delete", "product_get", "product_update", "quote_line_item_create"}},
+	{"pricebook_id", "salesforce-lookup?object=Pricebook2", nil, []string{"contract_create", "contract_update", "order_create", "order_update", "price_book_entry_create", "price_book_entry_get_all", "quote_create", "quote_update"}},
+	{"quote_id", "salesforce-lookup?object=Quote", nil, []string{"quote_delete", "quote_get", "quote_line_item_create", "quote_line_item_get_all", "quote_sync_to_opportunity", "quote_update"}},
+	{"order_id", "salesforce-lookup?object=Order", nil, []string{"order_activate", "order_delete", "order_get", "order_item_create", "order_item_get_all", "order_update"}},
+	{"contract_id", "salesforce-lookup?object=Contract", nil, []string{"contract_activate", "contract_delete", "contract_get", "contract_update", "order_create", "order_update", "quote_create", "quote_update"}},
+	{"asset_id", "salesforce-lookup?object=Asset", nil, []string{"asset_delete", "asset_get", "asset_update"}},
+	// An asset's parent is another asset — a bundle's components hang off it.
+	{"parent_id", "salesforce-lookup?object=Asset", nil, []string{"asset_create", "asset_update"}},
+	{"opportunity_line_item_id", "salesforce-lookup?object=OpportunityLineItem", nil, []string{"quote_line_item_create"}},
+	// quote_update is deliberately absent: Update Quote has no account input at all
+	// (Quote's account comes from QuoteAccountId, which only Create Quote exposes),
+	// and a marker on an input the action does not declare renders nothing.
+	{"account_id", "salesforce-lookup?object=Account", nil, []string{"asset_create", "asset_get_all", "asset_update", "contract_create", "contract_get_all", "contract_update", "order_create", "order_update", "quote_create"}},
+	{"contact_id", "salesforce-lookup?object=Contact", nil, []string{"asset_create", "asset_get_all", "asset_update", "quote_create", "quote_update"}},
+	{"bill_to_contact_id", "salesforce-lookup?object=Contact", nil, []string{"order_create", "order_update"}},
+	{"ship_to_contact_id", "salesforce-lookup?object=Contact", nil, []string{"order_create", "order_update"}},
+	// Contract.CustomerSignedId is a CONTACT (the customer's signatory) while
+	// CompanySignedId is a USER (yours) — describe confirms referenceTo Contact and
+	// User respectively, so they are two different pickers on adjacent inputs.
+	{"customer_signed_id", "salesforce-lookup?object=Contact", nil, []string{"contract_create", "contract_update"}},
+	{"asset_provided_by_id", "salesforce-lookup?object=Account", nil, []string{"asset_create", "asset_update"}},
+	{"asset_serviced_by_id", "salesforce-lookup?object=Account", nil, []string{"asset_create", "asset_update"}},
+	{"opportunity_id", "salesforce-lookup?object=Opportunity", nil, []string{"quote_create", "quote_sync_to_opportunity", "quote_update"}},
+
+	// Owners. Split by what the object's OwnerId can actually hold — see the note
+	// at the top of this section.
+	{"owner_id", "salesforce-owners?object=Quote", nil, []string{"quote_create", "quote_update"}},
+	{"owner_id", "salesforce-owners?object=Order", nil, []string{"order_create", "order_update"}},
+	{"owner_id", "salesforce-users?owner=true", nil, []string{"asset_create", "asset_update", "contract_create", "contract_get_all", "contract_update"}},
+	// The unfiltered user list, like manager_id: this input NAMES a user rather
+	// than making them an owner, so a Chatter Free signatory is legitimate.
+	{"company_signed_id", "salesforce-users", nil, []string{"contract_create", "contract_update"}},
+
+	// Picklists. Every one of these is a field whose values the org sets up and the
+	// action passes straight through, which is exactly what /salesforce-picklist
+	// is for. Verified live: Product2.Family and QuantityUnitOfMeasure are real
+	// picklists (the placeholders warn that Salesforce stores anything typed
+	// without complaining, which is the harm a picker removes), Contract.Status is
+	// restricted to the org's three, Asset.Status to five, and
+	// Contract.OwnerExpirationNotice to a day count.
+	{"family", "salesforce-picklist?object=Product2&field=Family", nil, []string{"product_create", "product_get_all", "product_update", "product_upsert"}},
+	{"quantity_unit_of_measure", "salesforce-picklist?object=Product2&field=QuantityUnitOfMeasure", nil, []string{"product_create", "product_update", "product_upsert"}},
+	// Order.Type ships with NO active values in a stock org, and the picker then
+	// says so and lets the operator type — which is the honest answer, because the
+	// field is unrestricted. Orgs that do configure order types get their own list.
+	{"order_type", "salesforce-picklist?object=Order&field=Type", nil, []string{"order_create", "order_update"}},
+	// Contract.Status is the one commerce picklist that is NOT one list for all
+	// four actions, and the split is not cosmetic — see salesforce_options.go § 14.
+	// Changing a contract's status and filtering a report by it can legitimately
+	// name any of the org's statuses, so those two keep the picklist. The other two
+	// accept exactly one StatusCode category and the other rows are traps:
+	// activating with "Draft" is a 204 that leaves the contract a draft while the
+	// action reports it activated, and creating with anything but the draft status
+	// is 400 FAILED_ACTIVATION every time. Both verified live.
+	{"contract_status", "salesforce-picklist?object=Contract&field=Status", nil, []string{"contract_get_all", "contract_update"}},
+	{"contract_status", "salesforce-contract-statuses?status_code=Activated", nil, []string{"contract_activate"}},
+	{"contract_status", "salesforce-contract-statuses?status_code=Draft", nil, []string{"contract_create"}},
+	{"owner_expiration_notice", "salesforce-picklist?object=Contract&field=OwnerExpirationNotice", nil, []string{"contract_create", "contract_update"}},
+	{"asset_status", "salesforce-picklist?object=Asset&field=Status", nil, []string{"asset_create", "asset_get_all", "asset_update"}},
+
+	// Record types. Both objects support them; neither has any configured in a
+	// stock org, where the picker answers "your org doesn't use record types on
+	// Contract — leave this blank" rather than an empty box.
+	{"record_type_id", "salesforce-record-types?object=Contract", nil, []string{"contract_create"}},
+	{"record_type_id", "salesforce-record-types?object=Asset", nil, []string{"asset_create"}},
+
+	// Field pickers. Same three filters as v1: everything for a SELECT list, only
+	// filterable fields for a filter, only sortable ones for a sort.
+	{"fields", "salesforce-fields?filter=all&object=Product2", nil, []string{"product_get", "product_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=Pricebook2", nil, []string{"price_book_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=PricebookEntry", nil, []string{"price_book_entry_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=Quote", nil, []string{"quote_get", "quote_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=QuoteLineItem", nil, []string{"quote_line_item_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=Order", nil, []string{"order_get", "order_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=OrderItem", nil, []string{"order_item_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=Contract", nil, []string{"contract_get", "contract_get_all"}},
+	{"fields", "salesforce-fields?filter=all&object=Asset", nil, []string{"asset_get", "asset_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=Product2", nil, []string{"product_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=Pricebook2", nil, []string{"price_book_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=PricebookEntry", nil, []string{"price_book_entry_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=Quote", nil, []string{"quote_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=Order", nil, []string{"order_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=Contract", nil, []string{"contract_get_all"}},
+	{"filter_field", "salesforce-fields?filter=filterable&object=Asset", nil, []string{"asset_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=Product2", nil, []string{"product_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=Pricebook2", nil, []string{"price_book_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=PricebookEntry", nil, []string{"price_book_entry_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=Quote", nil, []string{"quote_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=QuoteLineItem", nil, []string{"quote_line_item_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=Order", nil, []string{"order_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=OrderItem", nil, []string{"order_item_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=Contract", nil, []string{"contract_get_all"}},
+	{"order_by", "salesforce-fields?filter=sortable&object=Asset", nil, []string{"asset_get_all"}},
+	// Create or Update Product matches on a field, and the action supports any
+	// filterable one — Salesforce's own atomic upsert when it is a real External
+	// Id, a look-up-then-write when it is not. Same picker as record_find.
+	{"match_field", "salesforce-fields?filter=filterable&object=Product2", nil, []string{"product_upsert"}},
+
+	// The one input no existing proxy can serve: a price book ENTRY.
+	//
+	// /salesforce-lookup?object=PricebookEntry labels rows from the object's own
+	// name field, which for PricebookEntry is the PRODUCT's name repeated once per
+	// book — verified against the live org, "GenWatt Diesel 1000kW" twice with
+	// nothing to tell the two apart. So a dedicated proxy labels book + product +
+	// price, and where the action has a parent to go on it scopes the list to the
+	// only book Salesforce will accept a line item from (the same sibling-forwarding
+	// shape as campaign_member_status). See salesforce_options.go § 13.
+	{"pricebook_entry_id", "salesforce-price-book-entries?scope=quote", []string{"quote_id", "product_id"}, []string{"quote_line_item_create"}},
+	{"pricebook_entry_id", "salesforce-price-book-entries?scope=order", []string{"order_id", "product_id"}, []string{"order_item_create"}},
+	// v1's opportunity line item moves onto the same picker: it had the identical
+	// ambiguous-label defect, and Opportunity carries a Pricebook2Id to scope by.
+	{"pricebook_entry_id", "salesforce-price-book-entries?scope=opportunity", []string{"opportunity_id", "product_id"}, []string{"opportunity_line_item_create"}},
+	// Change Product Price has NO sibling to scope by — its only other inputs are
+	// the price and the tick box — so this one lists every book, and keeps the
+	// retired entries in because reactivating one is exactly what the action's
+	// Ready To Sell box is for.
+	{"pricebook_entry_id", "salesforce-price-book-entries?include_inactive=true", nil, []string{"price_book_entry_update"}},
 }
 
 // init registers every Salesforce marker into the shared dynamicOptionsMetadata

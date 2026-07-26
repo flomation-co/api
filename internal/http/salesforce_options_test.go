@@ -64,9 +64,11 @@ var salesforceProxySlugs = []string{
 	"salesforce-users",
 	"salesforce-owners",
 	"salesforce-lead-converted-statuses",
+	"salesforce-contract-statuses",
 	"salesforce-campaign-member-status",
 	"salesforce-list-views",
 	"salesforce-reports",
+	"salesforce-price-book-entries",
 }
 
 // salesforceObjectScopedSlugs are the proxies that cannot answer without an
@@ -97,9 +99,11 @@ func setupSalesforceRouter(svc *Service) *gin.Engine {
 	r.GET("/api/v1/action/options/salesforce-users", svc.getSalesforceUsers)
 	r.GET("/api/v1/action/options/salesforce-owners", svc.getSalesforceOwners)
 	r.GET("/api/v1/action/options/salesforce-lead-converted-statuses", svc.getSalesforceLeadConvertedStatuses)
+	r.GET("/api/v1/action/options/salesforce-contract-statuses", svc.getSalesforceContractStatuses)
 	r.GET("/api/v1/action/options/salesforce-campaign-member-status", svc.getSalesforceCampaignMemberStatus)
 	r.GET("/api/v1/action/options/salesforce-list-views", svc.getSalesforceListViews)
 	r.GET("/api/v1/action/options/salesforce-reports", svc.getSalesforceReports)
+	r.GET("/api/v1/action/options/salesforce-price-book-entries", svc.getSalesforcePriceBookEntries)
 	return r
 }
 
@@ -323,6 +327,10 @@ func sfRequiredExtras(slug string) map[string]string {
 		return map[string]string{"object": "Lead"}
 	case "salesforce-campaign-member-status":
 		return map[string]string{"campaign_id": "7015f000000abcdAAA"}
+	case "salesforce-contract-statuses":
+		// OUR parameter, baked into the marker endpoint — the handler refuses an
+		// unknown category before it looks at the connection at all.
+		return map[string]string{"status_code": "Activated"}
 	default:
 		return map[string]string{}
 	}
@@ -2267,6 +2275,7 @@ func TestSalesforceEmptyResultsAreAnEmptyListNotAnError(t *testing.T) {
 	for _, slug := range []string{
 		"salesforce-objects", "salesforce-lookup", "salesforce-users",
 		"salesforce-list-views", "salesforce-reports", "salesforce-campaign-member-status",
+		"salesforce-price-book-entries",
 	} {
 		params := sfAuth(sfRequiredExtras(slug))
 		body, code := getSalesforceOptions(r, slug, params)
@@ -2463,6 +2472,613 @@ func TestSalesforceCrossHostRedirectCannotCarryTheToken(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// 11b. The relationship-traversed secondary label
+// ---------------------------------------------------------------------------
+
+// sfContractDescribe is a Contract describe: an auto-number name field and an
+// Account lookup, which is the shape that makes the traversal necessary.
+const sfContractDescribe = `{"fields":[
+  {"name":"ContractNumber","label":"Contract Number","type":"string","nameField":true,"filterable":true,"sortable":true},
+  {"name":"AccountId","label":"Account ID","type":"reference","relationshipName":"Account","filterable":true,"sortable":true},
+  {"name":"Status","label":"Status","type":"picklist"}
+]}`
+
+// Contract's name field is an AUTO-NUMBER — ContractNumber, "00000109" — so a
+// picker built from it alone asks a receptionist to choose between six-digit
+// numbers with nothing to tell them apart. The customer's name is the only thing
+// that identifies a contract and it lives one relationship away, so the secondary
+// label column has to be able to traverse.
+func TestSalesforceLookupLabelsAnAutoNumberWithTheParentsName(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/describe") {
+			_, _ = w.Write([]byte(sfContractDescribe))
+			return true
+		}
+		_, _ = w.Write([]byte(`{"records":[
+          {"Id":"800aj000039Qi57AAC","ContractNumber":"00000109","Account":{"Name":"Burlington Textiles"}},
+          {"Id":"800aj000039Qi58AAC","ContractNumber":"00000110","Account":null}
+        ]}`))
+		return true
+	}
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-lookup", sfAuth(map[string]string{"object": "Contract"}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(BeEmpty())
+	// The traversal is in the SELECT list, and only because the describe confirmed
+	// the relationship.
+	g.Expect(stub.soql()).To(HaveLen(1))
+	g.Expect(stub.soql()[0]).To(ContainSubstring("SELECT Id, ContractNumber, Account.Name FROM Contract"))
+	// Salesforce returns a traversed column NESTED, so a flat record["Account.Name"]
+	// read would silently produce a list of bare numbers.
+	g.Expect(sfOptionNames(body)).To(ConsistOf("00000109 — Burlington Textiles", "00000110"))
+}
+
+// A null lookup comes back as JSON null rather than an empty object, and an
+// account the org has since deleted must not blank the row.
+func TestSalesforceLookupTraversalIsOnlySelectedWhenTheDescribeConfirmsIt(t *testing.T) {
+	g := NewWithT(t)
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/describe") {
+			// No AccountId at all — a user whose field-level security hides it, which
+			// is exactly when an unguarded SELECT would become INVALID_FIELD on every
+			// dropdown open.
+			_, _ = w.Write([]byte(`{"fields":[{"name":"ContractNumber","label":"Number","type":"string","nameField":true,"filterable":true,"sortable":true}]}`))
+			return true
+		}
+		_, _ = w.Write([]byte(`{"records":[{"Id":"800aj000039Qi57AAC","ContractNumber":"00000109"}]}`))
+		return true
+	}
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-lookup", sfAuth(map[string]string{"object": "Contract"}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("Account.Name"))
+	g.Expect(sfOptionNames(body)).To(ConsistOf("00000109"))
+}
+
+// The resolver is the only thing standing between a table entry and a SELECT
+// list, so its refusals are pinned directly.
+func TestSalesforceSecondaryLabelResolverRefusesWhatItCannotConfirm(t *testing.T) {
+	g := NewWithT(t)
+	describe := &salesforceDescribe{Fields: []salesforceDescribeField{
+		{Name: "ContractNumber"},
+		{Name: "AccountId", RelationshipName: "Account"},
+	}}
+
+	g.Expect(salesforceResolveSecondaryLabel(describe, "ContractNumber").Path).To(Equal("ContractNumber"))
+
+	traversed := salesforceResolveSecondaryLabel(describe, "Account.Name")
+	g.Expect(traversed.Path).To(Equal("Account.Name"))
+	g.Expect(traversed.Relationship).To(Equal("Account"))
+	g.Expect(traversed.Leaf).To(Equal("Name"))
+
+	for _, candidate := range []string{
+		"",                     // nothing asked for
+		"Owner.Name",           // relationship the describe does not carry
+		"Missing",              // field the describe does not carry
+		"Account.Owner.Name",   // more than one hop
+		"Account.Name, Secret", // not an identifier
+		"Account.Name'--",
+	} {
+		g.Expect(salesforceResolveSecondaryLabel(describe, candidate).Path).
+			To(BeEmpty(), "resolved %q, which would go straight into a SELECT list", candidate)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 11c. Price book entries (two-hop)
+// ---------------------------------------------------------------------------
+
+// A price book ENTRY is the id nobody has: it is the join between a price book
+// and a product, and Salesforce demands it before a product can go on a quote,
+// an order or an opportunity. The generic lookup cannot label one — PricebookEntry
+// flags the PRODUCT's name as its name field, so a product priced in two books is
+// two rows reading identically. These tests pin the three things that make the
+// dedicated picker worth having: the parent hop, the scoping, and the labels.
+
+// sfPricebookEntryDescribe is a single-currency org's PricebookEntry. Selecting
+// CurrencyIsoCode against one of these is a hard INVALID_FIELD (verified live:
+// "No such column 'CurrencyIsoCode' on entity 'PricebookEntry'").
+const sfPricebookEntryDescribe = `{"fields":[
+  {"name":"Id","type":"id"},
+  {"name":"Name","label":"Product Name","type":"string","nameField":true,"filterable":true,"sortable":true},
+  {"name":"UnitPrice","label":"List Price","type":"currency"},
+  {"name":"IsActive","label":"Active","type":"boolean"}
+]}`
+
+// sfPriceBookEntryStub answers the describe and then hands each /query the next
+// canned body in turn, so a test can assert the ORDER of the two hops.
+func sfPriceBookEntryStub(t *testing.T, describe string, bodies ...string) *salesforceStub {
+	t.Helper()
+	stub := newSalesforceStub(t)
+	var calls int
+	var mu sync.Mutex
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/describe") {
+			_, _ = w.Write([]byte(describe))
+			return true
+		}
+		mu.Lock()
+		n := calls
+		calls++
+		mu.Unlock()
+		if n < len(bodies) {
+			_, _ = w.Write([]byte(bodies[n]))
+			return true
+		}
+		_, _ = w.Write([]byte(`{"records":[]}`))
+		return true
+	}
+	return stub
+}
+
+const sfTwoEntriesOneBook = `{"records":[
+  {"Id":"01uaj000008Qi5mAAC","Name":"GenWatt Diesel 1000kW","UnitPrice":100000.0,"IsActive":true,
+   "Pricebook2":{"Name":"Standard"},"Product2":{"Name":"GenWatt Diesel 1000kW","ProductCode":"GC1060"}},
+  {"Id":"01uaj000008Qi5fAAC","Name":"GenWatt Diesel 10kW","UnitPrice":5000.0,"IsActive":true,
+   "Pricebook2":{"Name":"Standard"},"Product2":{"Name":"GenWatt Diesel 10kW","ProductCode":"GC1020"}}
+]}`
+
+// The whole point of the picker: the operator has chosen a quote, and the products
+// they may add are the ones priced on THAT quote's price book. Anything else is a
+// row Salesforce refuses, so the parent's book is read first and the entry query
+// is scoped to it.
+func TestSalesforcePriceBookEntriesScopeToTheParentsPriceBook(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe,
+		`{"records":[{"Pricebook2Id":"01saj00000LXMP3AAP"}]}`,
+		sfTwoEntriesOneBook)
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"scope": "quote", "quote_id": "0Q0aj000002vHcTCAU",
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(BeEmpty())
+
+	soql := stub.soql()
+	g.Expect(soql).To(HaveLen(2))
+	// Hop one: the quote names its book. The object comes from the closed scope
+	// table, never from the request.
+	g.Expect(soql[0]).To(Equal("SELECT Pricebook2Id FROM Quote WHERE Id = '0Q0aj000002vHcTCAU' LIMIT 1"))
+	// Hop two: bounded, active-only, and pinned to the book hop one returned.
+	g.Expect(soql[1]).To(ContainSubstring("FROM PricebookEntry"))
+	g.Expect(soql[1]).To(ContainSubstring("IsActive = true"))
+	g.Expect(soql[1]).To(ContainSubstring("Pricebook2Id = '01saj00000LXMP3AAP'"))
+	g.Expect(soql[1]).To(ContainSubstring("LIMIT 100"))
+	// Single-currency org: CurrencyIsoCode is not on the object, so asking for it
+	// would fail the whole query.
+	g.Expect(soql[1]).ToNot(ContainSubstring("CurrencyIsoCode"))
+
+	// Labelled by product, code and price. The book is NOT repeated on every row
+	// when the whole list is one book.
+	g.Expect(sfOptionNames(body)).To(ConsistOf(
+		"GenWatt Diesel 1000kW (GC1060) — 100000",
+		"GenWatt Diesel 10kW (GC1020) — 5000",
+	))
+	g.Expect(sfOptionValues(body)).To(ConsistOf("01uaj000008Qi5mAAC", "01uaj000008Qi5fAAC"))
+}
+
+// Unscoped — Change Product Price has no sibling to go on — the list spans every
+// book, so each row has to say which one it is from. This is the exact defect the
+// generic lookup has: without the prefix these two rows read identically.
+func TestSalesforcePriceBookEntriesNameTheBookWhenTheListSpansSeveral(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, `{"records":[
+      {"Id":"01uaj000008Qi5mAAC","Name":"GenWatt Diesel 1000kW","UnitPrice":100000.0,"IsActive":true,
+       "Pricebook2":{"Name":"Standard"},"Product2":{"Name":"GenWatt Diesel 1000kW","ProductCode":"GC1060"}},
+      {"Id":"01uaj000008Qi63AAC","Name":"GenWatt Diesel 1000kW","UnitPrice":95000.0,"IsActive":false,
+       "Pricebook2":{"Name":"Reseller"},"Product2":{"Name":"GenWatt Diesel 1000kW","ProductCode":"GC1060"}}
+    ]}`)
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"include_inactive": "true",
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	// No parent to resolve, so there is exactly one query.
+	g.Expect(stub.soql()).To(HaveLen(1))
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("IsActive = true"))
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("Pricebook2Id ="))
+	g.Expect(sfOptionNames(body)).To(ConsistOf(
+		"Standard: GenWatt Diesel 1000kW (GC1060) — 100000",
+		// Retired prices are kept here — reactivating one is what the action is for —
+		// and marked, or the operator cannot tell which row is which.
+		"Reseller: GenWatt Diesel 1000kW (GC1060) — 95000 (inactive)",
+	))
+}
+
+// An inactive entry is offered by Salesforce and then refused on write, the same
+// defect as a retired picklist value or a deactivated user. It is dropped
+// everywhere except the one action that exists to bring it back.
+func TestSalesforcePriceBookEntriesDropRetiredPricesByDefault(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, `{"records":[]}`)
+
+	r := setupSalesforceRouter(&Service{})
+	_, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(nil))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).To(ContainSubstring("WHERE IsActive = true"))
+}
+
+// A multi-currency org's "100000" beside a product does not say which currency it
+// is in, so the code is shown — but ONLY where the object really has one.
+func TestSalesforcePriceBookEntriesShowTheCurrencyWhenTheOrgHasOne(t *testing.T) {
+	g := NewWithT(t)
+	describe := `{"fields":[
+      {"name":"Name","type":"string","nameField":true},
+      {"name":"UnitPrice","type":"currency"},
+      {"name":"CurrencyIsoCode","label":"Currency","type":"picklist"}
+    ]}`
+	stub := sfPriceBookEntryStub(t, describe, `{"records":[
+      {"Id":"01uaj000008Qi5mAAC","UnitPrice":100000.0,"IsActive":true,"CurrencyIsoCode":"GBP",
+       "Pricebook2":{"Name":"Standard"},"Product2":{"Name":"GenWatt Diesel 1000kW"}}
+    ]}`)
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(nil))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).To(ContainSubstring("CurrencyIsoCode"))
+	g.Expect(sfOptionNames(body)).To(ConsistOf("Standard: GenWatt Diesel 1000kW — 100000 GBP"))
+}
+
+// Until the operator has chosen the quote there is nothing to scope by, and
+// guessing is worse than asking: the org is never called at all.
+func TestSalesforcePriceBookEntriesAskForTheParentBeforeCallingTheOrg(t *testing.T) {
+	g := NewWithT(t)
+
+	for _, params := range []map[string]string{
+		{"scope": "quote"}, // not chosen yet
+		{"scope": "quote", "quote_id": "${node.abc.output.id}"}, // an unresolved binding
+		{"scope": "order", "order_id": ""},                      // cleared
+		{"scope": "opportunity", "opportunity_id": "   "},
+	} {
+		stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
+		r := setupSalesforceRouter(&Service{})
+		body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(params))
+
+		g.Expect(code).To(Equal(http.StatusOK), "%v", params)
+		g.Expect(sfError(body)).To(ContainSubstring("its price book"), "%v", params)
+		g.Expect(body).ToNot(HaveKey("options"), "%v", params)
+		g.Expect(stub.soql()).To(BeEmpty(), "%v: the org was called before the parent was known", params)
+	}
+}
+
+// The parent id lands in a SOQL literal, so it is matched against the record-id
+// pattern before it gets anywhere near one — the same guard the campaign
+// member-status picker applies.
+func TestSalesforcePriceBookEntriesRejectACraftedParentID(t *testing.T) {
+	g := NewWithT(t)
+
+	for _, crafted := range []string{
+		"0Q0aj000002vHcT' OR Id != '",
+		"0Q0aj000002vHcTCAU OR 1=1",
+		"short",
+		"0Q0aj000002vHcTCAU-toolong",
+	} {
+		stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
+		r := setupSalesforceRouter(&Service{})
+		body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+			"scope": "quote", "quote_id": crafted,
+		}))
+
+		g.Expect(code).To(Equal(http.StatusOK), crafted)
+		g.Expect(sfError(body)).To(ContainSubstring("doesn't look like a Salesforce record ID"), crafted)
+		g.Expect(stub.soql()).To(BeEmpty(), "%q reached the org", crafted)
+	}
+}
+
+// The scope is OUR parameter, baked into the marker endpoint and never typed by an
+// operator, so anything outside the closed set is refused before a connection is
+// even resolved.
+func TestSalesforcePriceBookEntriesRefuseAnUnknownScope(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"scope": "Contract WHERE Id != null", "quote_id": "0Q0aj000002vHcTCAU",
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(Equal("Unknown price book scope"))
+	g.Expect(stub.soql()).To(BeEmpty())
+}
+
+// Salesforce sets a quote's or order's price book FROM its first line item, so a
+// parent that has not got one yet is a legitimate state and every active entry is
+// a legal choice. Refusing to load would strand the operator on the first line of
+// every new quote.
+func TestSalesforcePriceBookEntriesWidenWhenTheParentHasNoBookYet(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe,
+		`{"records":[{"Pricebook2Id":null}]}`,
+		sfTwoEntriesOneBook)
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"scope": "order", "order_id": "801aj00003DvQhVAAV",
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(BeEmpty())
+	g.Expect(stub.soql()[1]).ToNot(ContainSubstring("Pricebook2Id ="))
+	// And with no single book pinned, every row says which book it is from.
+	g.Expect(sfOptionNames(body)).To(ContainElement(HavePrefix("Standard: ")))
+}
+
+// A parent the org no longer has is the operator's problem to fix, not a spinning
+// dropdown.
+func TestSalesforcePriceBookEntriesExplainAVanishedParent(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, `{"records":[]}`)
+
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"scope": "quote", "quote_id": "0Q0aj000002vHcTCAU",
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(ContainSubstring("isn't in Salesforce any more"))
+	// Refused after the parent hop and before the entry query.
+	g.Expect(stub.soql()).To(HaveLen(1))
+}
+
+// The product is an OPTIONAL narrowing on the line-item actions. An operator who
+// has not filled it in yet — or whose binding has not resolved — must still get a
+// list, because blanking the picker over an optional filter is the worse failure.
+func TestSalesforcePriceBookEntriesNarrowByProductAndIgnoreAnUnresolvedOne(t *testing.T) {
+	g := NewWithT(t)
+
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
+	r := setupSalesforceRouter(&Service{})
+	body, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"product_id": "01taj00000UI9YDAA1",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).To(ContainSubstring("Product2Id = '01taj00000UI9YDAA1'"))
+	// Narrowing must still RETURN the prices, not just ask the right question.
+	g.Expect(sfError(body)).To(BeEmpty())
+	g.Expect(sfOptionValues(body)).To(HaveLen(2))
+
+	stub = sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
+	r = setupSalesforceRouter(&Service{})
+	body, code = getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"product_id": "${node.abc.output.id}",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(BeEmpty())
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("Product2Id"))
+	g.Expect(stub.soql()[0]).ToNot(ContainSubstring("${"))
+	g.Expect(sfOptionValues(body)).To(HaveLen(2))
+}
+
+// The search box is the only free-text value in this statement, and it goes into a
+// LIKE across a RELATIONSHIP (Product2.Name — the words the operator is typing).
+// SOQL has no bind variables, so the escaping is asserted on the query actually
+// sent.
+func TestSalesforcePriceBookEntriesSearchCannotEscapeTheLikeLiteral(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
+
+	r := setupSalesforceRouter(&Service{})
+	_, code := getSalesforceOptions(r, "salesforce-price-book-entries", sfAuth(map[string]string{
+		"search": `50% off' OR Id != null OR Name LIKE '`,
+	}))
+
+	g.Expect(code).To(Equal(http.StatusOK))
+	soql := stub.soql()[0]
+	g.Expect(soql).To(ContainSubstring("Product2.Name LIKE '"))
+	// Exactly one literal survives: two unescaped quotes, no more. The crafted OR
+	// is still in the string — it just cannot get OUT of the literal, which is the
+	// property that matters.
+	g.Expect(sfUnescapedQuotes(soql)).To(Equal(2))
+	g.Expect(soql).To(ContainSubstring(`\' OR Id != null`))
+	// And the wildcard in "50%" stays literal rather than matching everything.
+	g.Expect(soql).To(ContainSubstring(`50\%`))
+}
+
+// ---------------------------------------------------------------------------
+// 11d. Contract statuses, by what the status actually does
+// ---------------------------------------------------------------------------
+
+// Contract.Status is a restricted picklist of three in a stock org, and two of
+// this node's four contract actions accept exactly ONE of them:
+//
+//   - Activate Contract: PATCHing Status "Draft" or "In Approval Process" onto a
+//     draft contract answers 204 and leaves ActivatedDate null (verified live), so
+//     the action reports "Activated contract …" over a contract that is still a
+//     draft and every downstream step takes the success branch.
+//   - Create Contract: POSTing anything but the draft status is 400
+//     FAILED_ACTIVATION every single time (verified live).
+//
+// Which status does which is not in the field describe — it is the StatusCode on
+// the ContractStatus object — so these two inputs get a picker built from that,
+// the same way Convert Lead's does.
+
+const sfContractStatusDescribe = `{"fields":[
+  {"name":"Id","type":"id"},
+  {"name":"ContractNumber","label":"Contract Number","type":"string","nameField":true,"filterable":true,"sortable":true},
+  {"name":"Status","label":"Status","type":"picklist","createable":true,"updateable":true,
+   "filterable":true,"sortable":true,
+   "picklistValues":[
+     {"active":true,"label":"In Approval Process","value":"In Approval Process"},
+     {"active":true,"label":"Activated","value":"Activated"},
+     {"active":true,"label":"Draft","value":"Draft"}
+   ]}
+]}`
+
+// sfContractStatusStub answers the Contract describe and every /query with one
+// canned body each.
+func sfContractStatusStub(t *testing.T, describe, query string) *salesforceStub {
+	t.Helper()
+	stub := newSalesforceStub(t)
+	stub.handler = func(w http.ResponseWriter, r *http.Request) bool {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/describe") {
+			_, _ = w.Write([]byte(describe))
+			return true
+		}
+		_, _ = w.Write([]byte(query))
+		return true
+	}
+	return stub
+}
+
+func TestSalesforceActivateContractOnlyOffersAStatusThatActivates(t *testing.T) {
+	g := NewWithT(t)
+	// A real org answers the WHERE; the stub returns the activating row, so the
+	// assertion below is about the STATEMENT, which is what does the filtering.
+	stub := sfContractStatusStub(t, sfContractStatusDescribe,
+		`{"records":[{"MasterLabel":"Activated","ApiName":"Activated","IsDefault":false}]}`)
+	r := setupSalesforceRouter(&Service{})
+
+	body, code := getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+		"status_code": "Activated",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(BeEmpty())
+	g.Expect(stub.soql()).To(HaveLen(1))
+	g.Expect(stub.soql()[0]).To(Equal(
+		"SELECT MasterLabel, ApiName, IsDefault FROM ContractStatus WHERE StatusCode = 'Activated' ORDER BY SortOrder LIMIT 200"))
+	// Contract.Status takes the picklist VALUE, and only the activating one is here —
+	// the other two rows of the same picklist are what the old marker offered.
+	g.Expect(sfOptionValues(body)).To(Equal([]string{"Activated"}))
+	g.Expect(sfOptionValues(body)).ToNot(ContainElement("Draft"))
+	g.Expect(sfOptionValues(body)).ToNot(ContainElement("In Approval Process"))
+
+	// The marker has to point here and not at the picklist, or this endpoint is dead
+	// code and the dropdown on a step called "Activate Contract" still offers Draft.
+	marker, registered := dynamicOptionsMetadata["crm/salesforce/contract_activate#contract_status"]
+	g.Expect(registered).To(BeTrue())
+	g.Expect(marker.Endpoint).To(Equal("/api/v1/action/options/salesforce-contract-statuses?status_code=Activated"))
+
+	// And the two actions that legitimately name ANY status keep the full picklist:
+	// moving a contract to In Approval Process and reporting on drafts are both real
+	// things to do, so narrowing those would be the opposite defect.
+	for _, action := range []string{"contract_update", "contract_get_all"} {
+		marker, registered = dynamicOptionsMetadata["crm/salesforce/"+action+"#contract_status"]
+		g.Expect(registered).To(BeTrue(), action)
+		g.Expect(marker.Endpoint).To(Equal(
+			"/api/v1/action/options/salesforce-picklist?object=Contract&field=Status"), action)
+	}
+}
+
+func TestSalesforceCreateContractOnlyOffersTheStatusItCanBeCreatedIn(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfContractStatusStub(t, sfContractStatusDescribe,
+		`{"records":[{"MasterLabel":"Draft","ApiName":"Draft","IsDefault":true}]}`)
+	r := setupSalesforceRouter(&Service{})
+
+	body, code := getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+		"status_code": "Draft",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(stub.soql()[0]).To(ContainSubstring("WHERE StatusCode = 'Draft'"))
+	g.Expect(sfOptionValues(body)).To(Equal([]string{"Draft"}))
+	// The status a new contract lands in unless it is told otherwise, so saying so
+	// is the difference between one row and one row that explains itself.
+	g.Expect(sfOptionNames(body)).To(Equal([]string{"Draft (default)"}))
+
+	marker, registered := dynamicOptionsMetadata["crm/salesforce/contract_create#contract_status"]
+	g.Expect(registered).To(BeTrue())
+	g.Expect(marker.Endpoint).To(Equal("/api/v1/action/options/salesforce-contract-statuses?status_code=Draft"))
+}
+
+// The case both inputs exist for: an administrator has RENAMED the live status.
+// The org then has a MasterLabel that is not the string the restricted picklist
+// accepts, and committing the label would be INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST.
+// So the row is CHOSEN from ContractStatus and its value comes from the describe.
+func TestSalesforceContractStatusesSendTheValueNotTheRenamedLabel(t *testing.T) {
+	g := NewWithT(t)
+	sfContractStatusStub(t, `{"fields":[
+	  {"name":"Status","label":"Status","type":"picklist",
+	   "picklistValues":[
+	     {"active":true,"label":"Live","value":"Activated"},
+	     {"active":true,"label":"Draft","value":"Draft"}
+	   ]}
+	]}`, `{"records":[{"MasterLabel":"Live","ApiName":"Activated","IsDefault":false}]}`)
+	r := setupSalesforceRouter(&Service{})
+
+	body, _ := getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+		"status_code": "Activated",
+	}))
+	g.Expect(sfOptionNames(body)).To(Equal([]string{"Live"}), "the operator reads their org's own wording")
+	g.Expect(sfOptionValues(body)).To(Equal([]string{"Activated"}), "the flow sends what the field accepts")
+}
+
+// A status retired in Setup is still a ContractStatus row, but it is no longer an
+// active picklist value and writing it is refused — the same rule as the retired
+// picklist value and the deactivated user. The describe is what decides.
+func TestSalesforceContractStatusesDropAStatusRetiredInSetup(t *testing.T) {
+	g := NewWithT(t)
+	sfContractStatusStub(t, sfContractStatusDescribe, `{"records":[
+	  {"MasterLabel":"Retired Activated","ApiName":"Retired Activated","IsDefault":false},
+	  {"MasterLabel":"Activated","ApiName":"Activated","IsDefault":false}
+	]}`)
+	r := setupSalesforceRouter(&Service{})
+
+	body, _ := getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+		"status_code": "Activated",
+	}))
+	g.Expect(sfOptionValues(body)).To(Equal([]string{"Activated"}))
+}
+
+// An org whose Contract Status list has nothing in the category gets told what to
+// change and where, not an empty box.
+func TestSalesforceContractStatusesExplainAnEmptyCategory(t *testing.T) {
+	g := NewWithT(t)
+	sfContractStatusStub(t, sfContractStatusDescribe, `{"records":[]}`)
+	r := setupSalesforceRouter(&Service{})
+
+	body, code := getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+		"status_code": "Activated",
+	}))
+	g.Expect(code).To(Equal(http.StatusOK))
+	g.Expect(sfError(body)).To(ContainSubstring("Setup ▸ Contract Status"))
+	g.Expect(sfError(body)).To(ContainSubstring("activates a contract"))
+
+	// The other category says its own thing rather than the wrong org's fix.
+	body, _ = getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+		"status_code": "Draft",
+	}))
+	g.Expect(sfError(body)).To(ContainSubstring("start a new contract"))
+}
+
+// ?status_code= is OUR parameter, baked into the marker endpoint. Anything outside
+// the closed set is a bug or a hand-crafted request, and either way it must not
+// reach the org — a category nobody validated is how a picker starts offering
+// statuses the action cannot use again.
+func TestSalesforceContractStatusesRefuseAnUnknownCategory(t *testing.T) {
+	g := NewWithT(t)
+	stub := sfContractStatusStub(t, sfContractStatusDescribe, `{"records":[]}`)
+	r := setupSalesforceRouter(&Service{})
+
+	for _, bad := range []string{"", "Terminated", "activated", "Activated' OR StatusCode != null--"} {
+		stub.reset()
+		body, code := getSalesforceOptions(r, "salesforce-contract-statuses", sfAuth(map[string]string{
+			"status_code": bad,
+		}))
+		g.Expect(code).To(Equal(http.StatusOK), bad)
+		g.Expect(sfError(body)).ToNot(BeEmpty(), bad)
+		g.Expect(stub.soql()).To(BeEmpty(), "%q reached the org", bad)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // 12. Marker integrity
 // ---------------------------------------------------------------------------
 
@@ -2516,7 +3132,7 @@ func TestSalesforceMarkersCarryTheFullAuthTrio(t *testing.T) {
 	g := NewWithT(t)
 
 	markers := salesforceMarkers()
-	g.Expect(markers).To(HaveLen(429), "marker count changed — check the table in salesforce_options_markers.go")
+	g.Expect(markers).To(HaveLen(565), "marker count changed — check the table in salesforce_options_markers.go")
 
 	for key, marker := range markers {
 		g.Expect(marker.Endpoint).To(HavePrefix("/api/v1/action/options/salesforce-"), key)
@@ -2621,6 +3237,29 @@ func TestSalesforceMarkersBakeUsableParameters(t *testing.T) {
 			g.Expect(marker.Params).To(ContainElement("campaign_id"), key)
 		}
 
+		// The contract status picker's category is a closed set too, and a marker
+		// that bakes none of it can only ever answer "Unknown contract status
+		// category" — a dropdown that never loads however the panel is filled in.
+		if slug == "salesforce-contract-statuses" {
+			code := values.Get("status_code")
+			_, known := salesforceContractStatusCodes[code]
+			g.Expect(known).To(BeTrue(), "%s bakes an unknown contract status category %q", key, code)
+		}
+
+		// The price book entry picker's scope is a closed set, and a scoped marker
+		// that does NOT forward its parent's id can only ever answer "choose the
+		// quote first" — a dropdown that never loads however the operator fills the
+		// panel in.
+		if slug == "salesforce-price-book-entries" {
+			scopeName := values.Get("scope")
+			if scopeName != "" {
+				scope, known := salesforcePriceBookEntryScopes[scopeName]
+				g.Expect(known).To(BeTrue(), "%s bakes an unknown price book scope %q", key, scopeName)
+				g.Expect(marker.Params).To(ContainElement(scope.Param),
+					"%s scopes by %s but never forwards %s", key, scopeName, scope.Param)
+			}
+		}
+
 		// Every object-scoped picker either bakes an object or forwards the
 		// action's own object input — otherwise it can only error.
 		if needsObject[slug] && values.Get("object") == "" {
@@ -2637,7 +3276,10 @@ func TestSalesforceMarkersBakeUsableParameters(t *testing.T) {
 		for _, p := range marker.Params {
 			switch p {
 			case "access_token", "instance_url", "environment",
-				"object", "custom_object", "link_to_object", "campaign_id":
+				"object", "custom_object", "link_to_object", "campaign_id",
+				// The two-hop price book entry picker's parent scopes, plus the
+				// optional product narrowing.
+				"quote_id", "order_id", "opportunity_id", "product_id":
 			default:
 				t.Errorf("%s forwards %q, which no Salesforce proxy reads", key, p)
 			}
