@@ -39,12 +39,22 @@ var xeroConnectionsURL = "https://api.xero.com/connections"
 // Capture failure is logged but NOT fatal — the tokens are already stored, and
 // the user can re-authorise; failing the callback here would strand a valid
 // token behind an error page.
-// NOTE ON `existing`: it is a SNAPSHOT taken when the callback loaded the
-// credential, not a fresh read. Anything written to this credential's metadata
-// between that load and this call is clobbered when the merge saves. A PKCE
-// verifier cleared earlier in the callback was resurrected exactly this way.
-// Writers must therefore run AFTER this function, and re-read.
-func (s *Service) captureProviderTenant(c *gin.Context, credID, providerSlug string, existing *json.RawMessage, tokenResp *oauthTokenResponse) {
+// The metadata it merges into is RE-READ here rather than accepted from the
+// caller. It used to take the caller's snapshot — loaded at the top of the OAuth
+// callback — which meant anything written to the credential between that load
+// and this merge was silently clobbered. A PKCE verifier cleared earlier in the
+// same callback was resurrected exactly that way: the clear ran, this function
+// then wrote back the pre-clear blob, and the spent secret stayed at rest.
+//
+// The ordering contract that used to fix it ("writers must run after this
+// function") lived only in the callers' heads and in a comment. Re-reading makes
+// the invariant LOCAL: this function is now correct regardless of what any caller
+// did first, which matters because the same path serves quickbooks and xero and
+// the next person adding a provider has no reason to know the rule existed.
+//
+// Cost is one extra read on the OAuth callback — not a hot path, once per
+// connect.
+func (s *Service) captureProviderTenant(c *gin.Context, credID, providerSlug string, tokenResp *oauthTokenResponse) {
 	var kv map[string]interface{}
 	accessToken := tokenResp.AccessToken
 
@@ -97,7 +107,22 @@ func (s *Service) captureProviderTenant(c *gin.Context, credID, providerSlug str
 		return
 	}
 
-	merged, err := api.MergeMetadata(existing, kv)
+	// Fresh read, deliberately AFTER the provider switch above: doing it here
+	// means the extra query only happens for providers that actually have
+	// something to store, and it is as late as possible before the write.
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Error("unable to re-read the credential before storing its tenant metadata")
+		return
+	}
+	if cred == nil {
+		log.WithField("credential_id", credID).
+			Warn("credential vanished before its tenant metadata could be stored")
+		return
+	}
+
+	merged, err := api.MergeMetadata(cred.Metadata, kv)
 	if err != nil {
 		log.WithFields(log.Fields{"credential_id": credID, "error": err}).Error("unable to build credential metadata")
 		return
