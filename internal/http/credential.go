@@ -403,7 +403,10 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 
 	// Exchange code for tokens
 	callbackURL := s.credentialCallbackURL()
-	tokenResp, err := exchangeOAuthCode(tokenURL, code, *clientID, *clientSecret, callbackURL, cred.ProviderSlug)
+	// The verifier was stashed on the credential when the authorize URL was built;
+	// the callback shares nothing else with that request.
+	codeVerifier := api.PKCEVerifierFromMetadata(cred.Metadata)
+	tokenResp, err := exchangeOAuthCode(tokenURL, code, *clientID, *clientSecret, callbackURL, cred.ProviderSlug, codeVerifier)
 	if err != nil {
 		log.WithError(err).Error("OAuth token exchange failed")
 		errMsg := err.Error()
@@ -412,11 +415,34 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	// Calculate expiry
+	// A single-use verifier that has now been used.
+	if codeVerifier != "" {
+		s.clearPKCEVerifier(stateData.CredentialID)
+	}
+
+	// Calculate expiry.
+	//
+	// Salesforce never sends expires_in — it sends issued_at instead — and a nil
+	// expiry is stored as NULL, which GetCredentialsNeedingRefresh filters OUT.
+	// The credential was therefore never refreshed: it connected cleanly, showed
+	// "active", and then every call began failing with INVALID_SESSION_ID at the
+	// org's session timeout with last_error still NULL. A provider-level fallback
+	// lifetime keeps such a credential inside the refresh pool.
+	//
+	// Providers with NO declared fallback still store NULL, because for them a
+	// missing expires_in genuinely means the token does not expire (Shopify).
 	var expiresAt *time.Time
-	if tokenResp.ExpiresIn > 0 {
+	switch {
+	case tokenResp.ExpiresIn > 0:
 		t := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 		expiresAt = &t
+	case tokenResp.RefreshToken != "":
+		if ttl, ok := api.DefaultTokenLifetime(cred.ProviderSlug); ok {
+			t := time.Now().Add(ttl)
+			expiresAt = &t
+			log.WithFields(log.Fields{"provider": cred.ProviderSlug, "ttl": ttl}).
+				Debug("token response omitted expires_in; applying the provider's fallback lifetime")
+		}
 	}
 
 	// Store tokens (also persist client credentials so the refresh poller can use them)
@@ -483,7 +509,30 @@ func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialPr
 		params.Set("scope", *scopes)
 	}
 
-	// Twitter uses PKCE
+	// PKCE, S256. Providers that require it are listed in the api package rather
+	// than branched on here — the previous slug equality check is how Salesforce
+	// came to be DOCUMENTED as PKCE-enabled (migration 138 tells the operator to
+	// register the app that way) while sending no challenge whatsoever, which
+	// rejects every authorization request.
+	//
+	// The verifier has to survive until the callback, which shares nothing with
+	// this request except the credential id carried in `state`, so it is persisted
+	// on the credential and cleared once exchanged.
+	if api.ProviderUsesPKCE(provider.Slug) {
+		verifier := generateCodeVerifier()
+		if err := s.storePKCEVerifier(credID, verifier); err != nil {
+			// Continuing would send a challenge whose verifier is lost, so the
+			// exchange would fail with an opaque provider error. Better to refuse
+			// here, where the reason can still be stated.
+			return "", fmt.Errorf("unable to start the secure handshake for %s: %w", provider.Name, err)
+		}
+		params.Set("code_challenge", api.PKCEChallenge(verifier))
+		params.Set("code_challenge_method", "S256")
+	}
+
+	// Twitter's older plain-method path, left as found. It is NOT the model to
+	// copy: it sends the raw verifier as the challenge and never persists it, so
+	// the exchange cannot present one.
 	if provider.Slug == "twitter" {
 		verifier := generateCodeVerifier()
 		params.Set("code_challenge", verifier)
@@ -491,6 +540,42 @@ func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialPr
 	}
 
 	return authURL + "?" + params.Encode(), nil
+}
+
+// storePKCEVerifier persists the code_verifier on the credential so the callback
+// can present it at the token exchange.
+func (s *Service) storePKCEVerifier(credID, verifier string) error {
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil {
+		return err
+	}
+	var existing *json.RawMessage
+	if cred != nil {
+		existing = cred.Metadata
+	}
+	merged, err := api.MergeMetadata(existing, map[string]interface{}{"pkce_verifier": verifier})
+	if err != nil {
+		return err
+	}
+	return s.persistence.UpdateCredentialMetadata(credID, merged)
+}
+
+// clearPKCEVerifier removes a used verifier. A code_verifier is single-use by
+// design, so leaving it on the credential would keep a spent secret at rest for
+// no benefit.
+func (s *Service) clearPKCEVerifier(credID string) {
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil || cred == nil {
+		return
+	}
+	merged, err := api.MergeMetadata(cred.Metadata, map[string]interface{}{"pkce_verifier": ""})
+	if err != nil {
+		return
+	}
+	if err := s.persistence.UpdateCredentialMetadata(credID, merged); err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Warn("unable to clear the used PKCE verifier")
+	}
 }
 
 func (s *Service) credentialCallbackURL() string {
@@ -537,11 +622,19 @@ type oauthTokenResponse struct {
 	InstanceURL string `json:"instance_url"`
 }
 
-func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, providerSlug string) (*oauthTokenResponse, error) {
+func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, providerSlug, codeVerifier string) (*oauthTokenResponse, error) {
 	data := url.Values{
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
 		"redirect_uri": {redirectURI},
+	}
+
+	// PKCE: the provider hashed our challenge at authorize time and will only
+	// honour this code if the matching verifier comes back. Sending a challenge
+	// without ever sending the verifier fails the exchange, so the two legs are
+	// deliberately driven by the same ProviderUsesPKCE table.
+	if codeVerifier != "" {
+		data.Set("code_verifier", codeVerifier)
 	}
 
 	// Intuit (and Xero) require the client credentials via HTTP Basic auth and

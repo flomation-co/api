@@ -154,10 +154,22 @@ func (rp *CredentialRefreshPoller) refreshToken(row persistence.CredentialRefres
 		return &refreshError{Body: "empty access_token in response"}
 	}
 
+	// Same fallback as the initial exchange, and required for the same reason.
+	// Salesforce omits expires_in on REFRESH responses too, so without this the
+	// credential would be renewed exactly ONCE and then written back with a NULL
+	// expiry — which GetCredentialsNeedingRefresh filters out, dropping it from
+	// the pool for good. Fixing only the connect leg would turn "never refreshes"
+	// into "refreshes once", which is harder to diagnose, not easier.
 	var expiresAt *time.Time
-	if tokenResp.ExpiresIn > 0 {
+	switch {
+	case tokenResp.ExpiresIn > 0:
 		t := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 		expiresAt = &t
+	default:
+		if ttl, ok := api.DefaultTokenLifetime(row.ProviderSlug); ok {
+			t := time.Now().Add(ttl)
+			expiresAt = &t
+		}
 	}
 
 	// Use the new refresh token if provided, otherwise keep the existing one
