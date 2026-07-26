@@ -68,7 +68,7 @@ func ProviderUsesPKCE(slug string) bool {
 // two hours, and the refresh poller's lookahead means a credential is renewed
 // well before the stamp. Refreshing earlier than strictly necessary costs one
 // call; refreshing too late costs the customer a dead flow.
-// Dan's note, and worth stating rather than leaving implicit: an org that has
+// A real limit worth stating rather than leaving implicit: an org that has
 // SHORTENED its session timeout below this can still expire before the poller
 // renews. One hour suits the default two-hour timeout; an org set to 30 minutes
 // would see failures between the real expiry and our assumed one. The proper fix
