@@ -415,11 +415,6 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	// A single-use verifier that has now been used.
-	if codeVerifier != "" {
-		s.clearPKCEVerifier(stateData.CredentialID)
-	}
-
 	// Calculate expiry.
 	//
 	// Salesforce never sends expires_in — it sends issued_at instead — and a nil
@@ -460,6 +455,18 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 	// (QuickBooks realmId / Xero tenantId) into the credential metadata. No-op
 	// for every other provider. Non-fatal — see captureProviderTenant.
 	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, cred.Metadata, tokenResp)
+
+	// Clear the spent verifier LAST, and deliberately so.
+	//
+	// captureProviderTenant merges into `cred.Metadata` — the snapshot loaded at
+	// the TOP of this handler — so any metadata written between that load and this
+	// point is silently overwritten when it saves. Clearing before it therefore
+	// did nothing at all: verified live, the verifier was still sitting in the
+	// credential after a successful connect. clearPKCEVerifier re-reads, so
+	// running it after the last writer is what actually removes it.
+	if codeVerifier != "" {
+		s.clearPKCEVerifier(stateData.CredentialID)
+	}
 
 	log.WithFields(log.Fields{
 		"credential_id": stateData.CredentialID,

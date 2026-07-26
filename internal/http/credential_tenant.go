@@ -39,6 +39,11 @@ var xeroConnectionsURL = "https://api.xero.com/connections"
 // Capture failure is logged but NOT fatal — the tokens are already stored, and
 // the user can re-authorise; failing the callback here would strand a valid
 // token behind an error page.
+// NOTE ON `existing`: it is a SNAPSHOT taken when the callback loaded the
+// credential, not a fresh read. Anything written to this credential's metadata
+// between that load and this call is clobbered when the merge saves. A PKCE
+// verifier cleared earlier in the callback was resurrected exactly this way.
+// Writers must therefore run AFTER this function, and re-read.
 func (s *Service) captureProviderTenant(c *gin.Context, credID, providerSlug string, existing *json.RawMessage, tokenResp *oauthTokenResponse) {
 	var kv map[string]interface{}
 	accessToken := tokenResp.AccessToken
