@@ -2850,6 +2850,9 @@ func TestSalesforcePriceBookEntriesNarrowByProductAndIgnoreAnUnresolvedOne(t *te
 	}))
 	g.Expect(code).To(Equal(http.StatusOK))
 	g.Expect(stub.soql()[0]).To(ContainSubstring("Product2Id = '01taj00000UI9YDAA1'"))
+	// Narrowing must still RETURN the prices, not just ask the right question.
+	g.Expect(sfError(body)).To(BeEmpty())
+	g.Expect(sfOptionValues(body)).To(HaveLen(2))
 
 	stub = sfPriceBookEntryStub(t, sfPricebookEntryDescribe, sfTwoEntriesOneBook)
 	r = setupSalesforceRouter(&Service{})
