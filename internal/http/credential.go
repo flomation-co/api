@@ -433,7 +433,7 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 	// Capture the per-account identifier that's only knowable after auth
 	// (QuickBooks realmId / Xero tenantId) into the credential metadata. No-op
 	// for every other provider. Non-fatal — see captureProviderTenant.
-	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, cred.Metadata, tokenResp.AccessToken)
+	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, cred.Metadata, tokenResp)
 
 	log.WithFields(log.Fields{
 		"credential_id": stateData.CredentialID,
@@ -529,6 +529,12 @@ type oauthTokenResponse struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	TokenType    string `json:"token_type"`
 	Scope        string `json:"scope"`
+	// InstanceURL is Salesforce's per-org API host, returned only on the token
+	// response and available nowhere else on the callback. It is per-org and
+	// changes on My Domain setup, sandbox refresh or org migration, so it
+	// cannot be derived from the login host the user authorised against.
+	// captureProviderTenant stores it on the credential.
+	InstanceURL string `json:"instance_url"`
 }
 
 func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, providerSlug string) (*oauthTokenResponse, error) {
