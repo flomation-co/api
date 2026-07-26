@@ -3304,3 +3304,88 @@ func TestSalesforceMarkerKeysAreUniquePerActionInput(t *testing.T) {
 	}
 	g.Expect(seen).To(HaveLen(len(salesforceMarkers())))
 }
+
+// The auto-fill leaves the Instance URL box BLANK in the editor — the value is
+// only synthesised at run time, in the executor. So the picker request arrives
+// with instance_url empty, and all 566 dropdowns depend on the proxy deriving it
+// from the credential instead. A broken dropdown looks like an org with no
+// records in it, not like a bug, so this is the failure that would not announce
+// itself.
+//
+// These call resolveSalesforceConn DIRECTLY and clear salesforceOptionsHostOverride
+// first. Going through getSalesforceOptions would have proved nothing: the stub
+// sets that override, and line 411 replaces `base` with it regardless of what the
+// instance URL resolved to — so the assertions passed even with the fallback
+// deleted. Verified by mutation; the earlier version of these tests was worthless.
+func sfConnForTest(t *testing.T, mock *sfMockPersistence, params map[string]string) (salesforceProxyConn, string, bool) {
+	t.Helper()
+	prev := salesforceOptionsHostOverride
+	salesforceOptionsHostOverride = "" // real validation, no test seam
+	t.Cleanup(func() { salesforceOptionsHostOverride = prev })
+
+	q := url.Values{}
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/options?"+q.Encode(), nil)
+	c.Set("account_id", "user-1") // same injection setupSalesforceRouter uses
+
+	s := &Service{persistence: mock}
+	return s.resolveSalesforceConn(c)
+}
+
+func TestSalesforceBlankInstanceURLFallsBackToTheCredential(t *testing.T) {
+	g := NewWithT(t)
+	mock := newSFMockPersistence()
+	mock.credName = "SALESFORCE_PROD"
+	mock.credToken = "managed-access-token"
+	mock.credMeta = `{"instance_url":"https://acme.my.salesforce.com"}`
+
+	conn, msg, ok := sfConnForTest(t, mock, map[string]string{
+		"access_token": "${credentials.SALESFORCE_PROD}",
+		"instance_url": "", // left blank by the operator — the whole point
+		"environment":  sfEnvID,
+	})
+
+	g.Expect(msg).To(BeEmpty(), "a blank Instance URL with a connected credential must resolve, not error")
+	g.Expect(ok).To(BeTrue())
+	g.Expect(conn.BaseURL).To(Equal("https://acme.my.salesforce.com"),
+		"the host must come from the credential's captured instance_url")
+	g.Expect(conn.Token).To(Equal("managed-access-token"))
+}
+
+// The parameter absent entirely, rather than present-and-empty.
+func TestSalesforceAbsentInstanceURLFallsBackToTheCredential(t *testing.T) {
+	g := NewWithT(t)
+	mock := newSFMockPersistence()
+	mock.credName = "SALESFORCE_PROD"
+	mock.credToken = "managed-access-token"
+	mock.credMeta = `{"instance_url":"https://acme.my.salesforce.com"}`
+
+	conn, msg, ok := sfConnForTest(t, mock, map[string]string{
+		"access_token": "${credentials.SALESFORCE_PROD}",
+		"environment":  sfEnvID,
+	})
+
+	g.Expect(msg).To(BeEmpty())
+	g.Expect(ok).To(BeTrue())
+	g.Expect(conn.BaseURL).To(Equal("https://acme.my.salesforce.com"))
+}
+
+// The bring-your-own-token path has no credential to derive from, so a blank
+// Instance URL must still be refused with a message rather than a dead dropdown.
+// Auto-fill must not weaken this.
+func TestSalesforceBlankInstanceURLWithAPastedTokenIsStillRefused(t *testing.T) {
+	g := NewWithT(t)
+
+	_, msg, ok := sfConnForTest(t, newSFMockPersistence(), map[string]string{
+		"access_token": "raw-pasted-token",
+		"instance_url": "",
+		"environment":  sfEnvID,
+	})
+
+	g.Expect(ok).To(BeFalse())
+	g.Expect(msg).To(ContainSubstring("Instance URL"),
+		"with nothing to derive from, the operator must be told which field to fill in")
+}
