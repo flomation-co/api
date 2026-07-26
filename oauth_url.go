@@ -1,10 +1,13 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // basicAuthTokenProviders lists providers whose OAuth token endpoint expects
@@ -23,6 +26,59 @@ var basicAuthTokenProviders = map[string]bool{
 // client credentials via HTTP Basic auth instead of in the request body.
 func ProviderUsesBasicAuth(slug string) bool {
 	return basicAuthTokenProviders[slug]
+}
+
+// pkceS256Providers lists providers whose authorization-code flow must carry a
+// PKCE challenge using the S256 method, with the matching code_verifier on the
+// exchange.
+//
+// Salesforce is here because its External Client Apps ship with "Require Proof
+// Key for Code Exchange (PKCE) Extension for Supported Authorization Flows"
+// switched ON by default, and only S256 is accepted — the "plain" method used by
+// the older Twitter path is rejected. Without a challenge the authorization
+// request is refused outright, so every managed connect would die on the first
+// click.
+//
+// Deliberately a capability table rather than a slug equality check in the URL
+// builder: the previous `if provider.Slug == "twitter"` meant adding a provider
+// required editing control flow, which is exactly how Salesforce ended up
+// documented as PKCE-enabled while sending no challenge at all.
+var pkceS256Providers = map[string]bool{
+	"salesforce": true,
+}
+
+// ProviderUsesPKCE reports whether the provider requires an S256 PKCE challenge
+// on authorize and the matching verifier on the token exchange.
+func ProviderUsesPKCE(slug string) bool {
+	return pkceS256Providers[slug]
+}
+
+// defaultTokenLifetimes gives a fallback access-token lifetime for providers
+// whose token response omits expires_in.
+//
+// Salesforce never returns expires_in — it returns issued_at instead — so
+// token_expires_at was written as NULL, and GetCredentialsNeedingRefresh filters
+// on `token_expires_at IS NOT NULL`. The credential was therefore NEVER selected
+// for refresh: it connected cleanly, reported "active", and then every call
+// started failing with INVALID_SESSION_ID at the org's session timeout while the
+// credential still displayed as healthy with no last_error. That is precisely the
+// failure managed auth exists to prevent.
+//
+// One hour is deliberately conservative: the common Salesforce session timeout is
+// two hours, and the refresh poller's lookahead means a credential is renewed
+// well before the stamp. Refreshing earlier than strictly necessary costs one
+// call; refreshing too late costs the customer a dead flow.
+var defaultTokenLifetimes = map[string]time.Duration{
+	"salesforce": time.Hour,
+}
+
+// DefaultTokenLifetime returns the fallback lifetime for a provider that omits
+// expires_in, and false when the provider has none — in which case a missing
+// expires_in genuinely means "does not expire" (Shopify's permanent tokens) and
+// must keep storing NULL.
+func DefaultTokenLifetime(slug string) (time.Duration, bool) {
+	d, ok := defaultTokenLifetimes[slug]
+	return d, ok
 }
 
 // URLVariable describes a per-credential value substituted into a provider's
@@ -155,4 +211,30 @@ func MetadataWithURLVars(vars map[string]string) (*json.RawMessage, error) {
 	}
 	raw := json.RawMessage(b)
 	return &raw, nil
+}
+
+// PKCEVerifierFromMetadata reads the stored code_verifier back off a credential
+// at exchange time. It lives in metadata alongside url_vars rather than in a
+// separate table because the authorize leg and the callback share nothing else —
+// the callback's only handle on the flow is the credential id carried in `state`.
+func PKCEVerifierFromMetadata(metadata *json.RawMessage) string {
+	if metadata == nil {
+		return ""
+	}
+	var m struct {
+		PKCEVerifier string `json:"pkce_verifier"`
+	}
+	if err := json.Unmarshal(*metadata, &m); err != nil {
+		return ""
+	}
+	return m.PKCEVerifier
+}
+
+// PKCEChallenge derives the S256 challenge from a verifier:
+// BASE64URL(SHA256(verifier)), unpadded, per RFC 7636. Salesforce accepts only
+// this method — sending the verifier itself as the challenge ("plain") is
+// rejected.
+func PKCEChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }

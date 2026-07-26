@@ -51,7 +51,11 @@ func TestSalesforceMarkersMatchTheExecutorManifest(t *testing.T) {
 	var badAction, badInput []string
 	checked := 0
 	for key := range dynamicOptionsMetadata {
-		if !strings.HasPrefix(key, "crm/salesforce/") {
+		// The poll trigger's picker lives under trigger/, not crm/salesforce/, and
+		// is the one Salesforce marker outside that prefix. Checking only the prefix
+		// would silently exempt the newest and least-proven marker from the very
+		// check that exists to catch a marker naming an input that does not exist.
+		if !strings.HasPrefix(key, "crm/salesforce/") && !strings.HasPrefix(key, "trigger/salesforce_") {
 			continue
 		}
 		action, input, ok := strings.Cut(key, "#")
