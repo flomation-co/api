@@ -454,16 +454,12 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 	// Capture the per-account identifier that's only knowable after auth
 	// (QuickBooks realmId / Xero tenantId) into the credential metadata. No-op
 	// for every other provider. Non-fatal — see captureProviderTenant.
-	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, cred.Metadata, tokenResp)
+	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, tokenResp)
 
-	// Clear the spent verifier LAST, and deliberately so.
-	//
-	// captureProviderTenant merges into `cred.Metadata` — the snapshot loaded at
-	// the TOP of this handler — so any metadata written between that load and this
-	// point is silently overwritten when it saves. Clearing before it therefore
-	// did nothing at all: verified live, the verifier was still sitting in the
-	// credential after a successful connect. clearPKCEVerifier re-reads, so
-	// running it after the last writer is what actually removes it.
+	// Clear the spent verifier. Both this and captureProviderTenant now RE-READ
+	// before writing, so neither can clobber the other and the ordering between
+	// them no longer carries meaning — which is the point: the previous version
+	// was correct only because it ran last, and nothing enforced that.
 	if codeVerifier != "" {
 		s.clearPKCEVerifier(stateData.CredentialID)
 	}
