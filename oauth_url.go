@@ -68,6 +68,14 @@ func ProviderUsesPKCE(slug string) bool {
 // two hours, and the refresh poller's lookahead means a credential is renewed
 // well before the stamp. Refreshing earlier than strictly necessary costs one
 // call; refreshing too late costs the customer a dead flow.
+// A real limit worth stating rather than leaving implicit: an org that has
+// SHORTENED its session timeout below this can still expire before the poller
+// renews. One hour suits the default two-hour timeout; an org set to 30 minutes
+// would see failures between the real expiry and our assumed one. The proper fix
+// is to read issued_at and the org's own session policy, which Salesforce does
+// not expose on the token response — so this is a floor, not a guarantee, and
+// the symptom would be intermittent INVALID_SESSION_ID on a credential that
+// still reads "active".
 var defaultTokenLifetimes = map[string]time.Duration{
 	"salesforce": time.Hour,
 }
@@ -237,4 +245,31 @@ func PKCEVerifierFromMetadata(metadata *json.RawMessage) string {
 func PKCEChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// MetadataWithout returns a credential's metadata with the named keys REMOVED,
+// rather than blanked.
+//
+// MergeMetadata can only add or overwrite, so clearing a key by setting it to ""
+// leaves it present and empty. For a spent secret that is a poor result: the key
+// lingers in the record, and anyone auditing "does this credential still hold a
+// verifier" gets a misleading yes. Removing it is what "cleared" should mean.
+func MetadataWithout(existing *json.RawMessage, keys ...string) (*json.RawMessage, error) {
+	merged := map[string]interface{}{}
+	if existing != nil && len(*existing) > 0 {
+		if err := json.Unmarshal(*existing, &merged); err != nil {
+			// Matching MergeMetadata: a malformed blob starts clean rather than
+			// failing the caller.
+			merged = map[string]interface{}{}
+		}
+	}
+	for _, k := range keys {
+		delete(merged, k)
+	}
+	b, err := json.Marshal(merged)
+	if err != nil {
+		return nil, err
+	}
+	raw := json.RawMessage(b)
+	return &raw, nil
 }
