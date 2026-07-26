@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
 	api "flomation.app/automate/api"
+	"flomation.app/automate/api/internal/config"
 )
 
 func TestFetchXeroConnections(t *testing.T) {
@@ -87,7 +89,7 @@ func TestCaptureProviderTenantDoesNotResurrectMetadataWrittenAfterTheCallerLoade
 	s := &Service{persistence: m}
 
 	s.captureProviderTenant(
-		ginCtxForTest(),
+		ginCtxForTest(nil),
 		"cred-1", "salesforce",
 		&oauthTokenResponse{AccessToken: "tok", InstanceURL: "https://x.my.salesforce.com"},
 	)
@@ -115,10 +117,63 @@ func TestCaptureProviderTenantDoesNotResurrectMetadataWrittenAfterTheCallerLoade
 	}
 }
 
-// ginCtxForTest builds a throwaway gin context; captureProviderTenant only reads
-// query params from it, and the salesforce path reads none.
-func ginCtxForTest() *gin.Context {
+// ginCtxForTest builds a throwaway gin context carrying the given query params.
+//
+// It TAKES params rather than hardcoding an empty query on purpose: the
+// quickbooks branch reads realmId via c.Query, and a helper that always produced
+// an empty query would hand that branch "" — sending it down the early-return
+// path while the test still passed, testing nothing. The salesforce branch reads
+// no params, so it passes nil.
+func ginCtxForTest(params map[string]string) *gin.Context {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodGet, "/callback", nil)
+	q := url.Values{}
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	target := "/callback"
+	if len(q) > 0 {
+		target += "?" + q.Encode()
+	}
+	c.Request = httptest.NewRequest(http.MethodGet, target, nil)
 	return c
+}
+
+// The same regression on a SECOND provider, which is the point of fixing the
+// class rather than ordering one caller's write: quickbooks reaches this function
+// by a different route and must be equally safe.
+//
+// It also exercises ginCtxForTest with a real query param. The quickbooks branch
+// reads realmId via c.Query, so a helper that always produced an empty query
+// would send this straight down the early-return path and the test would pass
+// having asserted nothing.
+func TestCaptureProviderTenantReReadsForQuickBooksToo(t *testing.T) {
+	fresh := json.RawMessage(`{"url_vars":{"env":"production"}}`)
+	m := &tenantMockPersistence{current: &api.EnvironmentCredential{Metadata: &fresh}}
+	// The quickbooks branch also consults providerIsSandbox, which dereferences
+	// s.config — a dependency the salesforce branch does not have. A bare Service
+	// panics here, which is itself worth knowing about this path.
+	s := &Service{persistence: m, config: &config.Config{}}
+
+	s.captureProviderTenant(
+		ginCtxForTest(map[string]string{"realmId": "1234567890"}),
+		"cred-qb", "quickbooks",
+		&oauthTokenResponse{AccessToken: "tok"},
+	)
+
+	if m.written == nil {
+		t.Fatal("nothing was written — realmId almost certainly did not reach the handler")
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(*m.written, &got); err != nil {
+		t.Fatalf("written metadata is not valid JSON: %v", err)
+	}
+	if got["realm_id"] != "1234567890" {
+		t.Errorf("realm_id was not captured from the query string: %s", *m.written)
+	}
+	if _, resurrected := got["pkce_verifier"]; resurrected {
+		t.Errorf("a key absent from the current metadata was resurrected: %s", *m.written)
+	}
+	if _, ok := got["url_vars"]; !ok {
+		t.Errorf("existing metadata was dropped: %s", *m.written)
+	}
 }
