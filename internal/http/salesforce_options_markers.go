@@ -472,4 +472,24 @@ func init() {
 			}
 		}
 	}
+	// The poll trigger lives under trigger/, not crm/salesforce/, so it cannot ride
+	// the table above — the loop hardcodes that prefix. It reuses the same object
+	// picker: "which object do you want to watch" is the same question as "which
+	// object do you want to read".
+	//
+	// This is the FIRST trigger node in the platform to carry a dynamic picker —
+	// every other marker targets an action. Dynamic options are generic (keyed on
+	// action id plus input name, and a trigger IS an action in the manifest), so it
+	// should work, but "should" is not "verified" and this needs browser
+	// confirmation. The failure mode if triggers turn out not to render pickers is
+	// benign: the marker is inert and the input stays a plain text box, which is
+	// exactly what it would have been anyway.
+	const pollTriggerObject = "trigger/salesforce_poll#object"
+	if _, dup := dynamicOptionsMetadata[pollTriggerObject]; dup {
+		panic("salesforce options: duplicate marker " + pollTriggerObject)
+	}
+	dynamicOptionsMetadata[pollTriggerObject] = api.InputDynamicOptions{
+		Endpoint: "/api/v1/action/options/salesforce-objects",
+		Params:   salesforceAuthParams,
+	}
 }
