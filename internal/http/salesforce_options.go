@@ -6,7 +6,7 @@ package http
 // name or a date; Salesforce inputs are RECORD IDS (0015f00000AbCdEAAV) and
 // PICKLIST API NAMES that must match the org's setup exactly. A receptionist or
 // sales admin — the person these flows are built for — cannot be asked to go and
-// look either of those up. Twelve proxies back all 429 markers registered from
+// look either of those up. Fourteen proxies back all 565 markers registered from
 // salesforce_options_markers.go:
 //
 //	/salesforce-objects                 the global describe (all / custom only)
@@ -18,9 +18,13 @@ package http
 //	/salesforce-users                   active users (?owner=true: only those that can own a record)
 //	/salesforce-owners                  users AND queues for one object
 //	/salesforce-lead-converted-statuses the lead statuses that actually convert
+//	/salesforce-contract-statuses       the contract statuses in one StatusCode
+//	                                    category — the ones that actually activate,
+//	                                    or the one a new contract can start in
 //	/salesforce-campaign-member-status  one campaign's member statuses (two-hop)
 //	/salesforce-list-views              one object's list views
 //	/salesforce-reports                 reports, or the distinct report folders
+//	/salesforce-price-book-entries      a price book's priced products (two-hop)
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // THE FOUR THINGS THIS FILE DOES THAT THE EQUIVALENT n8n NODE GETS WRONG
@@ -35,8 +39,10 @@ package http
 //     on active == true (n8n returns entries retired in Setup); Sort By lists only
 //     sortable fields and Filter Field only filterable ones (Salesforce answers
 //     ORDER BY Description with MALFORMED_QUERY); Converted Status lists only the
-//     statuses marked Converted, not the whole Lead.Status picklist; and the owner
-//     pickers drop the user types Salesforce refuses to make an owner.
+//     statuses marked Converted, not the whole Lead.Status picklist; Activate
+//     Contract lists only the statuses that ACTIVATE and Create Contract only the
+//     one a contract can be created in, not all three of Contract.Status; and the
+//     owner pickers drop the user types Salesforce refuses to make an owner.
 //
 //  3. /salesforce-users defaults to IsActive = true. n8n lists deactivated users;
 //     assigning one comes back as INVALID_CROSS_REFERENCE_KEY, which reads to the
@@ -667,17 +673,22 @@ func salesforceQueryObject(c *gin.Context) string {
 // hundreds of KB, almost all of it layout and relationship detail no dropdown
 // reads.
 type salesforceDescribeField struct {
-	Name           string
-	Label          string
-	Type           string
-	Createable     bool
-	Updateable     bool
-	Filterable     bool
-	Sortable       bool
-	ExternalID     bool
-	IDLookup       bool
-	NameField      bool
-	PicklistValues []api.InputOption
+	Name  string
+	Label string
+	Type  string
+	// RelationshipName is the name a SOQL parent traversal uses — AccountId's is
+	// "Account", so "Account.Name" reaches the parent's name. It is captured only
+	// so a traversed secondary label column can be CONFIRMED against the describe
+	// before it goes into a SELECT (see salesforceResolveSecondaryLabel).
+	RelationshipName string
+	Createable       bool
+	Updateable       bool
+	Filterable       bool
+	Sortable         bool
+	ExternalID       bool
+	IDLookup         bool
+	NameField        bool
+	PicklistValues   []api.InputOption
 }
 
 // salesforceDescribeRecordType is one active record type.
@@ -847,17 +858,18 @@ func salesforceFetchDescribe(c *gin.Context, conn salesforceProxyConn, object, k
 
 	var raw struct {
 		Fields []struct {
-			Name           string `json:"name"`
-			Label          string `json:"label"`
-			Type           string `json:"type"`
-			Createable     bool   `json:"createable"`
-			Updateable     bool   `json:"updateable"`
-			Filterable     bool   `json:"filterable"`
-			Sortable       bool   `json:"sortable"`
-			ExternalID     bool   `json:"externalId"`
-			IDLookup       bool   `json:"idLookup"`
-			NameField      bool   `json:"nameField"`
-			PicklistValues []struct {
+			Name             string `json:"name"`
+			Label            string `json:"label"`
+			Type             string `json:"type"`
+			RelationshipName string `json:"relationshipName"`
+			Createable       bool   `json:"createable"`
+			Updateable       bool   `json:"updateable"`
+			Filterable       bool   `json:"filterable"`
+			Sortable         bool   `json:"sortable"`
+			ExternalID       bool   `json:"externalId"`
+			IDLookup         bool   `json:"idLookup"`
+			NameField        bool   `json:"nameField"`
+			PicklistValues   []struct {
 				Active bool   `json:"active"`
 				Label  string `json:"label"`
 				Value  string `json:"value"`
@@ -879,7 +891,8 @@ func salesforceFetchDescribe(c *gin.Context, conn salesforceProxyConn, object, k
 	for _, f := range raw.Fields {
 		field := salesforceDescribeField{
 			Name: f.Name, Label: f.Label, Type: f.Type,
-			Createable: f.Createable, Updateable: f.Updateable,
+			RelationshipName: f.RelationshipName,
+			Createable:       f.Createable, Updateable: f.Updateable,
 			Filterable: f.Filterable, Sortable: f.Sortable,
 			ExternalID: f.ExternalID, IDLookup: f.IDLookup, NameField: f.NameField,
 		}
@@ -1474,21 +1487,17 @@ func salesforceLookupOne(c *gin.Context, conn salesforceProxyConn, object, searc
 	}
 
 	// A second column is selected when the name alone does not identify the
-	// record — a Case's number means nothing without its subject. Only ever a
-	// field the describe actually reports, so this cannot produce INVALID_FIELD.
-	secondary := ""
+	// record — a Case's number means nothing without its subject, and a Contract's
+	// nothing without the customer's name. Only ever a column the describe
+	// actually reports, so this cannot produce INVALID_FIELD.
+	var secondary salesforceSecondaryLabel
 	if candidate, wanted := salesforceLookupSecondaryField[object]; wanted {
-		for _, f := range describe.Fields {
-			if strings.EqualFold(f.Name, candidate) {
-				secondary = f.Name
-				break
-			}
-		}
+		secondary = salesforceResolveSecondaryLabel(describe, candidate)
 	}
 
 	selectList := "Id, " + nameField.Name
-	if secondary != "" {
-		selectList += ", " + secondary
+	if secondary.Path != "" {
+		selectList += ", " + secondary.Path
 	}
 	soql := "SELECT " + selectList + " FROM " + object
 	// The search term is the ONLY caller-supplied value in this statement, and it
@@ -1513,8 +1522,8 @@ func salesforceLookupOne(c *gin.Context, conn salesforceProxyConn, object, searc
 			continue
 		}
 		label := salesforceStringValue(r[nameField.Name])
-		if secondary != "" {
-			if extra := salesforceStringValue(r[secondary]); extra != "" {
+		if secondary.Path != "" {
+			if extra := secondary.value(r); extra != "" {
 				if label == "" {
 					label = extra
 				} else {
@@ -1547,10 +1556,95 @@ var salesforceLookupNameField = map[string]string{
 }
 
 // salesforceLookupSecondaryField names a second column worth showing beside the
-// object's name field, for the objects whose name is an opaque reference.
+// object's name field, for the objects whose name is an opaque reference. A value
+// containing a dot is ONE parent traversal (see salesforceResolveSecondaryLabel).
 var salesforceLookupSecondaryField = map[string]string{
 	"Case":                "Subject", // CaseNumber alone tells the operator nothing
 	"OrgWideEmailAddress": "Address", // "Support" means nothing without support@acme.com
+	// Contract and Order have NOTHING on themselves worth showing: their name
+	// field is an auto-number — verified live, Contract's is ContractNumber
+	// ("00000109") and Order's is OrderNumber ("00000114") — so a picker built
+	// from it alone asks a receptionist to choose between six-digit numbers. The
+	// customer is the only thing that identifies either record and it lives one
+	// relationship away. Contract.AccountId is not even nillable, so the traversal
+	// always resolves; Order's is, and an order with no account simply shows its
+	// number, which is what it had before.
+	"Contract": "Account.Name",
+	"Order":    "Account.Name",
+	// Assets repeat by design — forty "Dell Latitude 5540" rows under different
+	// customers — and the serial number is what tells them apart. Same-object, and
+	// only appended when the asset actually carries one.
+	"Asset": "SerialNumber",
+}
+
+// salesforceSecondaryLabel is a resolved secondary label column: the SELECT path,
+// plus what it takes to read the value back out of a record.
+type salesforceSecondaryLabel struct {
+	// Path is what goes in the SELECT list ("Subject", or "Account.Name").
+	Path string
+	// Relationship and Leaf are set only for a traversal. Salesforce returns a
+	// traversed column NESTED — {"Account": {"Name": "Acme Ltd"}} — so the flat
+	// record[Path] lookup a same-object column uses finds nothing.
+	Relationship string
+	Leaf         string
+}
+
+// value reads the column out of one SOQL record.
+func (s salesforceSecondaryLabel) value(record map[string]any) string {
+	if s.Relationship == "" {
+		return salesforceStringValue(record[s.Path])
+	}
+	nested, isMap := record[s.Relationship].(map[string]any)
+	if !isMap {
+		// A null lookup comes back as JSON null, not an empty object.
+		return ""
+	}
+	return salesforceStringValue(nested[s.Leaf])
+}
+
+// salesforceResolveSecondaryLabel resolves a salesforceLookupSecondaryField entry
+// against the object's describe. Two forms are accepted:
+//
+//   - "Subject"      — a field on the object itself.
+//   - "Account.Name" — one hop across a lookup, for the objects whose own name
+//     field is an auto-number.
+//
+// NOTHING is returned unless the describe confirms the field, or the
+// relationship, so a stale entry in the table degrades to "no second column"
+// rather than to an INVALID_FIELD on every dropdown open. The traversal is capped
+// at one hop deliberately: two hops is a different query-planning risk and no
+// picker needs it.
+func salesforceResolveSecondaryLabel(describe *salesforceDescribe, candidate string) salesforceSecondaryLabel {
+	candidate = strings.TrimSpace(candidate)
+	// The table is ours and compile-time, but it feeds a SELECT list that cannot
+	// quote an identifier, so it is whitelisted like every other identifier here.
+	if candidate == "" || !salesforceFieldPattern.MatchString(candidate) {
+		return salesforceSecondaryLabel{}
+	}
+	relationship, leaf, traversed := strings.Cut(candidate, ".")
+	if !traversed {
+		for _, f := range describe.Fields {
+			if strings.EqualFold(f.Name, candidate) {
+				return salesforceSecondaryLabel{Path: f.Name}
+			}
+		}
+		return salesforceSecondaryLabel{}
+	}
+	if strings.Contains(leaf, ".") {
+		return salesforceSecondaryLabel{} // more than one hop
+	}
+	for _, f := range describe.Fields {
+		if f.RelationshipName != "" && strings.EqualFold(f.RelationshipName, relationship) {
+			// The describe's own casing, so the nested key the response comes back
+			// under matches what is read out of it.
+			return salesforceSecondaryLabel{
+				Path:         f.RelationshipName + "." + leaf,
+				Relationship: f.RelationshipName,
+				Leaf:         leaf,
+			}
+		}
+	}
+	return salesforceSecondaryLabel{}
 }
 
 // salesforceNoLabelFieldError is the one failure salesforceLookupOne raises
@@ -1973,4 +2067,413 @@ func (s *Service) getSalesforceReports(c *gin.Context) {
 	}
 	salesforceSortOptions(options)
 	salesforceRespond(c, options, "")
+}
+
+// ---------------------------------------------------------------------------
+// 13. Price book entries (two-hop)
+// ---------------------------------------------------------------------------
+
+// A price book ENTRY is the one commerce id an operator has no way to reach. It
+// is the join between a price book and a product — "GenWatt Diesel 200kW costs
+// £25,000 on the Standard book" — and it is what Salesforce demands before a
+// product can go on a quote, an order or an opportunity. The operator has the
+// price book and the product in front of them and neither is the id the API wants.
+//
+// The generic /salesforce-lookup CANNOT do this job, and the reason is concrete
+// rather than theoretical. PricebookEntry's describe flags Name as its name field,
+// and that Name is the PRODUCT's name, repeated once per book the product is
+// priced in. Verified against the live org (17 products, 2 price books,
+// 34 entries), SELECT Id, Name FROM PricebookEntry ORDER BY Name returns:
+//
+//	01uaj000008Qi5mAAC  GenWatt Diesel 1000kW
+//	01uaj000008Qi63AAC  GenWatt Diesel 1000kW
+//	01uaj000008Qi5fAAC  GenWatt Diesel 10kW
+//	01uaj000008Qi5wAAC  GenWatt Diesel 10kW
+//
+// — every row twice, with nothing on the option to say which book it belongs to.
+// A picker that offers the same words twice and rejects one of them is worse than
+// no picker at all.
+//
+// So this endpoint labels an entry with all three facts the operator recognises
+// (book, product, price) and, where the action gives it something to go on, scopes
+// the list to the ONE book that can legally be used:
+//
+//	?scope=quote        + quote_id        → the quote's price book
+//	?scope=order        + order_id        → the order's price book
+//	?scope=opportunity  + opportunity_id  → the opportunity's price book
+//	(no scope)                            → every book, each row prefixed
+//
+// The scope is the same shape as the campaign-member-status picker: a sibling
+// input the editor forwards, one extra query to resolve it, and a plain sentence
+// asking for it when it is not there yet. It matters more here than as a nicety —
+// a line item's PricebookEntry MUST belong to its parent's price book, so an
+// unscoped list on a quote would be mostly rows Salesforce refuses.
+//
+// ?include_inactive=true keeps the retired entries in, which the Change Product
+// Price action needs: an operator reactivating a discontinued price cannot pick
+// the row if the picker has filtered it out. Everywhere else they are dropped —
+// adding an inactive entry to a quote is refused.
+
+// salesforcePriceBookEntryScope is one parent record a price book entry list can
+// be scoped by: the sibling input carrying its id, the object to read, and the
+// word to use when asking the operator for it.
+type salesforcePriceBookEntryScope struct {
+	Param  string
+	Object string
+	What   string
+}
+
+// salesforcePriceBookEntryScopes is the closed set of ?scope= values. Like
+// ?filter= on the fields picker, the scope is OUR parameter — baked into the
+// marker endpoint, never typed by an operator — so anything outside this set is a
+// bug or a hand-crafted request.
+var salesforcePriceBookEntryScopes = map[string]salesforcePriceBookEntryScope{
+	"quote":       {Param: "quote_id", Object: "Quote", What: "quote"},
+	"order":       {Param: "order_id", Object: "Order", What: "order"},
+	"opportunity": {Param: "opportunity_id", Object: "Opportunity", What: "opportunity"},
+}
+
+// getSalesforcePriceBookEntries serves the priced products of a price book.
+func (s *Service) getSalesforcePriceBookEntries(c *gin.Context) {
+	scopeName := strings.TrimSpace(c.Query("scope"))
+	scope, scoped := salesforcePriceBookEntryScopes[scopeName]
+	if scopeName != "" && !scoped {
+		salesforceRespond(c, nil, "Unknown price book scope")
+		return
+	}
+
+	conn, ok := s.salesforceConn(c)
+	if !ok {
+		return
+	}
+
+	// Hop one: the parent record names the only price book that can be used.
+	pricebookID := ""
+	if scoped {
+		parentID := strings.TrimSpace(c.Query(scope.Param))
+		if parentID == "" || strings.HasPrefix(parentID, "${") {
+			salesforceRespond(c, nil, fmt.Sprintf(
+				"Choose the %s first — the products you can add come from its price book", scope.What))
+			return
+		}
+		if !salesforceIDPattern.MatchString(parentID) {
+			salesforceRespond(c, nil, fmt.Sprintf(
+				"That %s ID doesn't look like a Salesforce record ID — choose the %s from the list", scope.What, scope.What))
+			return
+		}
+		resolved, errMsg := salesforceParentPriceBook(c, conn, scope, parentID)
+		if errMsg != "" {
+			salesforceRespond(c, nil, errMsg)
+			return
+		}
+		// A parent with no price book yet is not an error: Salesforce sets the
+		// quote's or order's book FROM its first line item, so at that moment every
+		// active entry is a legal choice. The list widens to all books and each row
+		// says which book it is from, rather than the picker refusing to load.
+		pricebookID = resolved
+	}
+	// An explicit price book narrows the list on its own, and also takes over when
+	// the parent has not settled on one.
+	if pricebookID == "" {
+		if raw := strings.TrimSpace(c.Query("pricebook_id")); raw != "" && !strings.HasPrefix(raw, "${") &&
+			salesforceIDPattern.MatchString(raw) {
+			pricebookID = raw
+		}
+	}
+
+	// Hop two: the entries themselves. The describe is needed for one thing only —
+	// whether this org has currencies at all. CurrencyIsoCode does not exist on a
+	// single-currency org and selecting it is a hard INVALID_FIELD (verified live:
+	// "No such column 'CurrencyIsoCode' on entity 'PricebookEntry'"), while in a
+	// multi-currency org a bare "100000" beside a product does not say which
+	// currency it is in.
+	describe, err := salesforceDescribeObject(c, conn, "PricebookEntry")
+	if err != nil {
+		log.WithField("error", err).Warn("unable to describe PricebookEntry for the price book entry picker")
+		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of priced products"))
+		return
+	}
+	currencyField := ""
+	for _, f := range describe.Fields {
+		if strings.EqualFold(f.Name, "CurrencyIsoCode") {
+			currencyField = f.Name
+			break
+		}
+	}
+
+	selectList := "Id, Name, UnitPrice, IsActive, Pricebook2.Name, Product2.Name, Product2.ProductCode"
+	if currencyField != "" {
+		selectList += ", " + currencyField
+	}
+
+	var where []string
+	if !strings.EqualFold(strings.TrimSpace(c.Query("include_inactive")), "true") {
+		// The same rule as the retired picklist value and the deactivated user: an
+		// inactive entry is offered by Salesforce and then refused on write.
+		where = append(where, "IsActive = true")
+	}
+	if pricebookID != "" {
+		where = append(where, "Pricebook2Id = '"+salesforceLiteralEscaper.Replace(pricebookID)+"'")
+	}
+	// A product narrows the list to the same product's price in each book, which is
+	// what "Add Product to Quote" wants once the product is chosen. An unresolved
+	// binding is IGNORED rather than refused — it is an optional narrowing, and
+	// blanking the whole picker over it would be the worse failure.
+	if raw := strings.TrimSpace(c.Query("product_id")); raw != "" && !strings.HasPrefix(raw, "${") &&
+		salesforceIDPattern.MatchString(raw) {
+		where = append(where, "Product2Id = '"+salesforceLiteralEscaper.Replace(raw)+"'")
+	}
+	// The search term is the only free-text value in this statement. It goes inside
+	// a quoted LIKE literal with the wildcards escaped, against the PRODUCT's name
+	// — the words the operator is actually typing (verified live against the org).
+	if search := strings.TrimSpace(c.Query("search")); search != "" && !strings.HasPrefix(search, "${") {
+		where = append(where, "Product2.Name LIKE '%"+salesforceLikeEscaper.Replace(search)+"%'")
+	}
+
+	soql := "SELECT " + selectList + " FROM PricebookEntry"
+	if len(where) > 0 {
+		soql += " WHERE " + strings.Join(where, " AND ")
+	}
+	// Book then product, which is the order the labels read in, and bounded like
+	// every other record picker here.
+	soql += fmt.Sprintf(" ORDER BY Pricebook2.Name, Name LIMIT %d", salesforceLookupLimit)
+
+	records, err := salesforceQuery(c, conn, soql)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "pricebook": pricebookID}).
+			Warn("unable to list Salesforce price book entries")
+		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of priced products"))
+		return
+	}
+
+	// The book is named on every row unless the list is already ONE book, where
+	// repeating it on all hundred rows is just noise.
+	prefixBook := pricebookID == ""
+
+	options := make([]api.InputOption, 0, len(records))
+	for _, r := range records {
+		id, _ := r["Id"].(string)
+		if id == "" {
+			continue
+		}
+		product, code := "", ""
+		if nested, isMap := r["Product2"].(map[string]any); isMap {
+			product = salesforceStringValue(nested["Name"])
+			code = salesforceStringValue(nested["ProductCode"])
+		}
+		if product == "" {
+			// PricebookEntry.Name mirrors the product's name, so it is the same
+			// string by another route when the traversal came back empty.
+			product = salesforceStringValue(r["Name"])
+		}
+		if product == "" {
+			product = id
+		}
+		label := product
+		if code != "" {
+			label += " (" + code + ")"
+		}
+		if price := salesforceStringValue(r["UnitPrice"]); price != "" {
+			if currencyField != "" {
+				if currency := salesforceStringValue(r[currencyField]); currency != "" {
+					price += " " + currency
+				}
+			}
+			label += " — " + price
+		}
+		if active, isBool := r["IsActive"].(bool); isBool && !active {
+			// Only reachable with ?include_inactive=true, and the operator reaching
+			// for a retired price needs to see which rows those are.
+			label += " (inactive)"
+		}
+		if prefixBook {
+			book := ""
+			if nested, isMap := r["Pricebook2"].(map[string]any); isMap {
+				book = salesforceStringValue(nested["Name"])
+			}
+			if book != "" {
+				label = book + ": " + label
+			}
+		}
+		options = append(options, api.InputOption{Name: label, Value: id})
+	}
+	// NOT re-sorted: the ORDER BY already delivers book-then-product, and sorting
+	// the composite label instead would put "£100" before "£25" by spelling.
+	salesforceRespond(c, options, "")
+}
+
+// salesforceParentPriceBook reads the price book off the quote / order /
+// opportunity a line-item action is adding to. An empty id with an empty message
+// means the parent simply has no price book yet, which is a legitimate state.
+func salesforceParentPriceBook(c *gin.Context, conn salesforceProxyConn, scope salesforcePriceBookEntryScope, parentID string) (string, string) {
+	// The object comes from OUR closed scope table, never from the request, and the
+	// id has already been matched against the record-id pattern — so the only
+	// caller-influenced value here is an 18-character alphanumeric, escaped anyway.
+	soql := "SELECT Pricebook2Id FROM " + scope.Object + " WHERE Id = '" +
+		salesforceLiteralEscaper.Replace(parentID) + "' LIMIT 1"
+
+	records, err := salesforceQuery(c, conn, soql)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "object": scope.Object, "record": parentID}).
+			Warn("unable to read the parent price book for the price book entry picker")
+		return "", salesforceErrorMessage(err, "price book for that "+scope.What)
+	}
+	if len(records) == 0 {
+		return "", fmt.Sprintf(
+			"That %s isn't in Salesforce any more — choose it again to list the products you can add", scope.What)
+	}
+	return salesforceStringValue(records[0]["Pricebook2Id"]), ""
+}
+
+// ---------------------------------------------------------------------------
+// 14. Contract statuses, by what the status actually DOES
+// ---------------------------------------------------------------------------
+
+// Contract.Status is a restricted picklist of labels an administrator can rename,
+// and behind each label sits a StatusCode — the category Salesforce itself acts
+// on. Two contract actions accept exactly one category, and the generic picklist
+// offers all three of them:
+//
+//   - Activate Contract writes the status that makes a contract live. Verified
+//     live: PATCHing Status "Draft" or "In Approval Process" onto a draft
+//     contract answers 204 and leaves ActivatedDate null. Salesforce takes the
+//     write; the contract is simply not activated. Offering those two rows on a
+//     step called Activate Contract is a one-click way to have a flow report an
+//     activation that never happened and carry on down its success branch.
+//   - Create Contract can only insert a DRAFT. Verified live: POSTing Status
+//     "In Approval Process" or "Activated" is 400 FAILED_ACTIVATION ("Choose a
+//     valid contract status and save your changes"), so two of the three rows the
+//     generic picklist offers fail every single time.
+//
+// Update Contract and Get Many Contracts keep the full picklist: every status is
+// a legitimate thing to move a contract TO (verified live, Draft → In Approval
+// Process → Activated all answer 204) and every status is a legitimate thing to
+// filter a report BY.
+//
+// Which category a label belongs to is NOT in the field describe — it is on the
+// ContractStatus object — so, exactly as with the converted lead statuses above,
+// the picker gets built properly rather than pointed at the picklist. Same rule:
+// when the generic picker would offer choices the action rejects, or quietly
+// fails to honour, it is the wrong picker.
+//
+// The VALUE served still comes from the field describe rather than from
+// ContractStatus. The write lands on Contract.Status, which is restricted, so the
+// only string guaranteed to be accepted is that picklist's own value — and in an
+// org that has RENAMED a status (the case these inputs exist for) the label and
+// the API name are no longer the same string. So ContractStatus decides which
+// rows are offered and the describe decides what each row sends. A status retired
+// in Setup drops out for free: it is still a ContractStatus row but no longer an
+// active picklist value.
+
+// salesforceContractStatusCode is one StatusCode category a marker can ask for.
+type salesforceContractStatusCode struct {
+	// Code is the SOQL literal. It comes from this table's key and never from the
+	// request, which is what keeps it out of the escaping question.
+	Code string
+	// Empty is what the operator reads when the org has no live status in this
+	// category. Naming the Setup page is the whole value of the message: nothing
+	// they can do in the flow will populate the list.
+	Empty string
+}
+
+// salesforceContractStatusCodes is the closed set of ?status_code= values. Like
+// ?filter= and ?scope=, it is OUR parameter — baked into the marker endpoint,
+// never typed by an operator — so anything outside this set is a bug or a
+// hand-crafted request.
+var salesforceContractStatusCodes = map[string]salesforceContractStatusCode{
+	"Activated": {
+		Code:  "Activated",
+		Empty: "No status in your org's Contract Status list activates a contract — ask your Salesforce administrator which status under Setup ▸ Contract Status has the Activated code, then type it here",
+	},
+	"Draft": {
+		Code:  "Draft",
+		Empty: "No status in your org's Contract Status list can start a new contract — ask your Salesforce administrator which status under Setup ▸ Contract Status has the Draft code, then type it here",
+	},
+}
+
+// getSalesforceContractStatuses serves the contract statuses in one StatusCode
+// category: the only values Activate Contract and Create Contract can be given
+// and still do what their names say.
+func (s *Service) getSalesforceContractStatuses(c *gin.Context) {
+	requested := strings.TrimSpace(c.Query("status_code"))
+	wanted, known := salesforceContractStatusCodes[requested]
+	if !known {
+		salesforceRespond(c, nil, "Unknown contract status category")
+		return
+	}
+
+	conn, ok := s.salesforceConn(c)
+	if !ok {
+		return
+	}
+
+	// ApiName as well as MasterLabel: a renamed status has one of each, and either
+	// may be the string the field's picklist carries.
+	soql := fmt.Sprintf(
+		"SELECT MasterLabel, ApiName, IsDefault FROM ContractStatus WHERE StatusCode = '%s' ORDER BY SortOrder LIMIT %d",
+		wanted.Code, salesforceListLimit)
+
+	records, err := salesforceQuery(c, conn, soql)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "status_code": wanted.Code}).
+			Warn("unable to list Salesforce contract statuses")
+		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of contract statuses"))
+		return
+	}
+
+	// The describe is the authority on what Contract.Status will accept, and it has
+	// already dropped the values retired in Setup.
+	describe, err := salesforceDescribeObject(c, conn, "Contract")
+	if err != nil {
+		log.WithField("error", err).Warn("unable to describe Contract for the contract status picker")
+		salesforceRespond(c, nil, salesforceErrorMessage(err, "list of contract statuses"))
+		return
+	}
+	var picklist []api.InputOption
+	for _, f := range describe.Fields {
+		if strings.EqualFold(f.Name, "Status") {
+			picklist = f.PicklistValues
+			break
+		}
+	}
+
+	options := make([]api.InputOption, 0, len(records))
+	for _, r := range records {
+		value, matched := salesforceMatchPicklistValue(picklist,
+			salesforceStringValue(r["ApiName"]), salesforceStringValue(r["MasterLabel"]))
+		if !matched {
+			continue
+		}
+		if isDefault, _ := r["IsDefault"].(bool); isDefault {
+			value.Name += " (default)"
+		}
+		options = append(options, value)
+	}
+	if len(options) == 0 {
+		salesforceRespond(c, nil, wanted.Empty)
+		return
+	}
+	// NOT sorted: SortOrder is the sequence the org's own setup defines, and these
+	// lists are one or two rows anyway.
+	salesforceRespond(c, options, "")
+}
+
+// salesforceMatchPicklistValue finds the picklist value one of a set of candidate
+// strings names, and returns it as the option to serve — label from the describe,
+// value from the describe. Candidates are tried in order and each is matched
+// against both sides, because a renamed status has a MasterLabel that matches the
+// picklist's LABEL and an ApiName that matches its VALUE, and which of the two a
+// given org kept unchanged is not knowable here.
+func salesforceMatchPicklistValue(values []api.InputOption, candidates ...string) (api.InputOption, bool) {
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		for _, v := range values {
+			if strings.EqualFold(v.Value, candidate) || strings.EqualFold(v.Name, candidate) {
+				return v, true
+			}
+		}
+	}
+	return api.InputOption{}, false
 }

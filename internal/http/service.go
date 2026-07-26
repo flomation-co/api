@@ -632,7 +632,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/azuredevops-pipelines", s.jwtMiddleware, s.getAzureDevOpsPipelines)
 	actions.GET("/options/azuredevops-release-definitions", s.jwtMiddleware, s.getAzureDevOpsReleaseDefinitions)
 	actions.GET("/options/azuredevops-teams", s.jwtMiddleware, s.getAzureDevOpsTeams)
-	// Salesforce pickers. Eleven proxies back all 429 markers registered from
+	// Salesforce pickers. Fourteen proxies back all 565 markers registered from
 	// salesforce_options_markers.go — record ids and picklist API names are the
 	// two things a non-technical operator cannot be asked to look up, and they
 	// are most of a Salesforce action's inputs. The org's instance_url is
@@ -647,9 +647,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/salesforce-users", s.jwtMiddleware, s.getSalesforceUsers)
 	actions.GET("/options/salesforce-owners", s.jwtMiddleware, s.getSalesforceOwners)
 	actions.GET("/options/salesforce-lead-converted-statuses", s.jwtMiddleware, s.getSalesforceLeadConvertedStatuses)
+	actions.GET("/options/salesforce-contract-statuses", s.jwtMiddleware, s.getSalesforceContractStatuses)
 	actions.GET("/options/salesforce-campaign-member-status", s.jwtMiddleware, s.getSalesforceCampaignMemberStatus)
 	actions.GET("/options/salesforce-list-views", s.jwtMiddleware, s.getSalesforceListViews)
 	actions.GET("/options/salesforce-reports", s.jwtMiddleware, s.getSalesforceReports)
+	actions.GET("/options/salesforce-price-book-entries", s.jwtMiddleware, s.getSalesforcePriceBookEntries)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
