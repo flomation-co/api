@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -82,4 +83,39 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// Clearing a spent secret must REMOVE the key, not blank it. A present-but-empty
+// pkce_verifier reads as "this credential still has a verifier" to anyone
+// auditing the record, which is the opposite of what clearing should convey.
+func TestMetadataWithoutRemovesTheKeyEntirely(t *testing.T) {
+	existing := json.RawMessage(`{"instance_url":"https://x.my.salesforce.com","pkce_verifier":"spent"}`)
+	got, err := MetadataWithout(&existing, "pkce_verifier")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(*got, &m); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	if _, present := m["pkce_verifier"]; present {
+		t.Errorf("the key must be absent, not blank: %s", *got)
+	}
+	if m["instance_url"] != "https://x.my.salesforce.com" {
+		t.Errorf("removing one key must not disturb the others: %s", *got)
+	}
+}
+
+func TestMetadataWithoutToleratesAbsentAndMalformedInput(t *testing.T) {
+	if got, err := MetadataWithout(nil, "pkce_verifier"); err != nil || string(*got) != "{}" {
+		t.Errorf("nil metadata should yield an empty object, got %v %v", got, err)
+	}
+	bad := json.RawMessage(`not json`)
+	got, err := MetadataWithout(&bad, "pkce_verifier")
+	if err != nil {
+		t.Fatalf("a malformed blob must not fail the caller: %v", err)
+	}
+	if string(*got) != "{}" {
+		t.Errorf("a malformed blob should start clean, got %s", *got)
+	}
 }

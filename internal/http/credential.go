@@ -571,12 +571,28 @@ func (s *Service) storePKCEVerifier(credID, verifier string) error {
 // design, so leaving it on the credential would keep a spent secret at rest for
 // no benefit.
 func (s *Service) clearPKCEVerifier(credID string) {
+	// Every exit here is logged. This is the one path where silence hides a
+	// secret NOT being removed, and the connect has already succeeded by now, so
+	// nothing downstream will notice on its own.
 	cred, err := s.persistence.GetCredentialByID(credID)
-	if err != nil || cred == nil {
+	if err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Warn("unable to read the credential to clear its used PKCE verifier — the spent verifier remains at rest")
 		return
 	}
-	merged, err := api.MergeMetadata(cred.Metadata, map[string]interface{}{"pkce_verifier": ""})
+	if cred == nil {
+		log.WithField("credential_id", credID).
+			Warn("credential vanished before its used PKCE verifier could be cleared")
+		return
+	}
+	// REMOVE the key rather than blank it: MergeMetadata can only add or
+	// overwrite, so setting "" would leave pkce_verifier present-and-empty, and
+	// anyone auditing "does this credential still hold a verifier" would read a
+	// misleading yes.
+	merged, err := api.MetadataWithout(cred.Metadata, "pkce_verifier")
 	if err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Warn("unable to rebuild credential metadata without the used PKCE verifier")
 		return
 	}
 	if err := s.persistence.UpdateCredentialMetadata(credID, merged); err != nil {
