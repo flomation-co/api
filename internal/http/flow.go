@@ -442,16 +442,10 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			// Store the flow node ID so the executor can be started from the correct entry node
 			triggerData["__node_id"] = node.ID
 
-			// For form triggers, extract and parse form_definition as the root trigger data
+			// For form triggers, the form_definition becomes the root trigger data
+			// (with __node_id preserved for routing).
 			if typeName == "form" {
-				if fd, ok := triggerData["form_definition"]; ok {
-					if fdStr, ok := fd.(string); ok && fdStr != "" {
-						var formDef map[string]interface{}
-						if err := json.Unmarshal([]byte(fdStr), &formDef); err == nil {
-							triggerData = formDef
-						}
-					}
-				}
+				triggerData = formTriggerData(triggerData, node.ID)
 			}
 		}
 
