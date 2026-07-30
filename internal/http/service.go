@@ -665,6 +665,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	flos.POST("/export", s.jwtMiddleware, s.exportFlos)
 	flos.POST("/import", s.jwtMiddleware, s.importFlo)
+	flos.POST("/move", s.jwtMiddleware, s.moveFlosToProject)
 	flos.POST("/:FloID/revision", s.jwtMiddleware, s.createFloRevision)
 
 	flos.POST("/:FloID/execute", s.flexAuthMiddleware, s.executeFlo)
@@ -736,6 +737,12 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// lands on the mTLS-only engine when enabled. Registering it here too
 	// duplicates the route on the main engine and panics gin at startup when
 	// mTLS is disabled (internalRouter == v1).
+
+	project := v1.Group("project")
+	project.GET("", s.jwtMiddleware, s.getProjects)
+	project.POST("", s.jwtMiddleware, s.createProject)
+	project.PATCH("/:id", s.jwtMiddleware, s.updateProject)
+	project.DELETE("/:id", s.jwtMiddleware, s.deleteProject)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)

@@ -25,6 +25,10 @@ const (
 	EmbedView          Permission = "embed.view"
 	GatewayManage      Permission = "gateway.manage"
 	GatewayView        Permission = "gateway.view"
+	ProjectView        Permission = "project.view"
+	ProjectCreate      Permission = "project.create"
+	ProjectEdit        Permission = "project.edit"
+	ProjectManage      Permission = "project.manage"
 )
 
 // ValidPermissions is the canonical list of all supported permissions.
@@ -50,6 +54,10 @@ var ValidPermissions = []Permission{
 	EmbedView,
 	GatewayManage,
 	GatewayView,
+	ProjectView,
+	ProjectCreate,
+	ProjectEdit,
+	ProjectManage,
 }
 
 // DefaultMemberPermissions are granted when an org has no groups configured.
@@ -63,6 +71,8 @@ var DefaultMemberPermissions = []string{
 	string(AgentView),
 	string(EmbedView),
 	string(GatewayView),
+	string(ProjectView),
+	string(ProjectCreate),
 }
 
 // AllPermissions returns all permission strings (used for admin users).

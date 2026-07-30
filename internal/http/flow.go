@@ -87,7 +87,26 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		orgID = user.Organisations[0].ID
 	}
 
-	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
+	var (
+		flos  []*api.Flo
+		count int64
+	)
+	// The Flows-page grouped view fetches flows one project at a time via
+	// ?project_id=<id> (or ?project_id=none for ungrouped). Absent → the flat
+	// list, unchanged.
+	if projectFilter, ok := c.GetQuery("project_id"); ok {
+		var pid *string
+		if projectFilter != "" && projectFilter != "none" {
+			pid = &projectFilter
+		}
+		var org *string
+		if orgID != "" {
+			org = &orgID
+		}
+		flos, count, err = s.persistence.GetProjectFlos(user.ID, org, pid, offset, limit, searchQuery)
+	} else {
+		flos, count, err = s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,

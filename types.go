@@ -139,6 +139,26 @@ type Flo struct {
 	SystemFlow              bool              `json:"system_flow" db:"system_flow"`
 	SystemFlowPurpose       *string           `json:"system_flow_purpose,omitempty" db:"system_flow_purpose"`
 	MaxConcurrentExecutions *int              `json:"max_concurrent_executions,omitempty" db:"max_concurrent_executions"`
+	ProjectID               *string           `json:"project_id,omitempty" db:"project_id"`
+}
+
+// Project is a nested grouping of flows. Phase 1 treats every project as
+// org-wide visible (open); Phase 2 adds per-project ACLs via project_group.
+// Children/FlowCount/EffectiveRole/Restricted are computed for the tree
+// response and are not stored columns.
+type Project struct {
+	ID             string     `json:"id" db:"id"`
+	Name           string     `json:"name" db:"name"`
+	Description    *string    `json:"description,omitempty" db:"description"`
+	ParentID       *string    `json:"parent_id,omitempty" db:"parent_id"`
+	OrganisationID *string    `json:"organisation_id,omitempty" db:"organisation_id"`
+	OwnerID        *string    `json:"owner_id,omitempty" db:"owner_id"`
+	CreatedAt      *time.Time `json:"created_at" db:"created_at"`
+	FlowCount      int64      `json:"flow_count" db:"flow_count"`
+	Children       []*Project `json:"children,omitempty"`
+	// Phase 2 fields — zero-valued (open / full role) until ACLs land.
+	Restricted    bool   `json:"restricted"`
+	EffectiveRole string `json:"effective_role,omitempty"`
 }
 
 type ExecutionStatus struct {
