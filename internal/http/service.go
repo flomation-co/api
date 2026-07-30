@@ -743,6 +743,8 @@ func (s *Service) registerRoutes(config *config.Config) {
 	project.POST("", s.jwtMiddleware, s.createProject)
 	project.PATCH("/:id", s.jwtMiddleware, s.updateProject)
 	project.DELETE("/:id", s.jwtMiddleware, s.deleteProject)
+	project.GET("/:id/acl", s.jwtMiddleware, s.getProjectACL)
+	project.PUT("/:id/acl", s.jwtMiddleware, s.setProjectACL)
 
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)

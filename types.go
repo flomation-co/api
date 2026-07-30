@@ -161,6 +161,14 @@ type Project struct {
 	EffectiveRole string `json:"effective_role,omitempty"`
 }
 
+// ProjectGrant is one entry in a project's access-control list: a Team
+// (organisation_group) and the role it is granted. Used by the Access dialog.
+type ProjectGrant struct {
+	GroupID   string `json:"group_id" db:"group_id"`
+	GroupName string `json:"group_name" db:"group_name"`
+	Role      string `json:"role" db:"role"`
+}
+
 type ExecutionStatus struct {
 	ID               string `json:"id" db:"id"`
 	ExecutionStatus  string `json:"execution_status" db:"execution_status"`
