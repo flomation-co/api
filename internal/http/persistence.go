@@ -56,6 +56,18 @@ type Persistence interface {
 	GetFloByID(floID string) (*api.Flo, error)
 	GetLatestRevisionByFloID(ID string) (*api.Revision, error)
 	GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error)
+	GetProjects(ownerID string, organisationID *string, isAdmin bool) ([]*api.Project, error)
+	GetProjectByID(id string) (*api.Project, error)
+	CreateProject(p api.Project) (*string, error)
+	UpdateProject(id, name string, description *string, parentID *string) error
+	ArchiveProject(id string) error
+	GetProjectFlos(userID string, organisationID *string, projectID *string, offset, limit int64, search string) ([]*api.Flo, int64, error)
+	MoveFlosToProject(floIDs []string, projectID *string, ownerID string, organisationID *string) error
+	GetProjectAccess(userID string, organisationID *string, isAdmin bool) (map[string]persistence.ProjectAccess, error)
+	GetProjectACL(projectID string) (direct []api.ProjectGrant, inherited []api.ProjectGrant, err error)
+	SetProjectGroupRole(projectID, groupID, role string) error
+	RemoveProjectGroup(projectID, groupID string) error
+	GetUserGroupIDs(orgID, userID string) ([]string, error)
 	GetMyOrganisations(userID string) ([]*api.Organisation, error)
 	GetOrganisationByID(ID string) (*api.Organisation, error)
 	GetQueueByRegistrationCode(code string) (*api.Queue, error)

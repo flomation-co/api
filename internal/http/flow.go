@@ -87,13 +87,51 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		orgID = user.Organisations[0].ID
 	}
 
-	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
+	var (
+		flos  []*api.Flo
+		count int64
+	)
+	// The Flows-page grouped view fetches flows one project at a time via
+	// ?project_id=<id> (or ?project_id=none for ungrouped). Absent → the flat
+	// list, unchanged.
+	if projectFilter, ok := c.GetQuery("project_id"); ok {
+		var pid *string
+		if projectFilter != "" && projectFilter != "none" {
+			pid = &projectFilter
+		}
+		var org *string
+		if orgID != "" {
+			org = &orgID
+		}
+		flos, count, err = s.persistence.GetProjectFlos(user.ID, org, pid, offset, limit, searchQuery)
+	} else {
+		flos, count, err = s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to get flos")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	// Phase 2: hide flows that live in a restricted project the user can't
+	// access. Covers the flat list AND the per-project fetch (every page flow
+	// shares the requested project, so an inaccessible one yields an empty page).
+	if len(flos) > 0 {
+		var orgPtr *string
+		if orgID != "" {
+			orgPtr = &orgID
+		}
+		if access, aerr := s.persistence.GetProjectAccess(user.ID, orgPtr, s.isOrgAdmin(user)); aerr == nil {
+			visible := flos[:0]
+			for _, f := range flos {
+				if f.ProjectID == nil || access[*f.ProjectID].Accessible {
+					visible = append(visible, f)
+				}
+			}
+			flos = visible
+		}
 	}
 
 	if len(flos) == 0 {
