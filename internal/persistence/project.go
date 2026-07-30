@@ -57,9 +57,11 @@ func (s *Service) GetProjectByID(id string) (*api.Project, error) {
 	return &p, nil
 }
 
-// GetProjects returns every non-archived project in scope, each carrying a
-// direct-flow count. The caller assembles the tree from parent_id.
-func (s *Service) GetProjects(ownerID string, orgID *string) ([]*api.Project, error) {
+// GetProjects returns every non-archived project the user may access, each
+// carrying a direct-flow count and its restricted/effective-role verdict.
+// Restricted projects the user has no grant on (and isn't admin/owner of) are
+// omitted entirely. The caller assembles the tree from parent_id.
+func (s *Service) GetProjects(ownerID string, orgID *string, isAdmin bool) ([]*api.Project, error) {
 	scope, args := projectScope(1, ownerID, orgID)
 	query := `
 		SELECT
@@ -73,7 +75,23 @@ func (s *Service) GetProjects(ownerID string, orgID *string) ([]*api.Project, er
 	if err := s.conn.Select(&results, query, args...); err != nil {
 		return nil, err
 	}
-	return results, nil
+
+	access, err := s.GetProjectAccess(ownerID, orgID, isAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]*api.Project, 0, len(results))
+	for _, p := range results {
+		a := access[p.ID]
+		if !a.Accessible {
+			continue
+		}
+		p.Restricted = a.Restricted
+		p.EffectiveRole = a.Role
+		filtered = append(filtered, p)
+	}
+	return filtered, nil
 }
 
 // projectDescendantIDs returns the id plus all transitive descendant ids of a

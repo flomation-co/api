@@ -389,7 +389,22 @@ func (m *mockPersistence) GetLatestRevisionByFloID(string) (*api.Revision, error
 func (m *mockPersistence) GetMyFlos(string, int64, int64, string, ...string) ([]*api.Flo, int64, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetProjects(string, *string) ([]*api.Project, error) {
+func (m *mockPersistence) GetProjects(string, *string, bool) ([]*api.Project, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetProjectAccess(string, *string, bool) (map[string]persistence.ProjectAccess, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetProjectACL(string) ([]api.ProjectGrant, []api.ProjectGrant, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) SetProjectGroupRole(string, string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) RemoveProjectGroup(string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) GetUserGroupIDs(string, string) ([]string, error) {
 	panic("not implemented")
 }
 func (m *mockPersistence) GetProjectByID(string) (*api.Project, error) {

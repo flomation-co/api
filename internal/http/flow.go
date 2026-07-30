@@ -115,6 +115,25 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		return
 	}
 
+	// Phase 2: hide flows that live in a restricted project the user can't
+	// access. Covers the flat list AND the per-project fetch (every page flow
+	// shares the requested project, so an inaccessible one yields an empty page).
+	if len(flos) > 0 {
+		var orgPtr *string
+		if orgID != "" {
+			orgPtr = &orgID
+		}
+		if access, aerr := s.persistence.GetProjectAccess(user.ID, orgPtr, s.isOrgAdmin(user)); aerr == nil {
+			visible := flos[:0]
+			for _, f := range flos {
+				if f.ProjectID == nil || access[*f.ProjectID].Accessible {
+					visible = append(visible, f)
+				}
+			}
+			flos = visible
+		}
+	}
+
 	if len(flos) == 0 {
 		c.Writer.Header().Set("x-total-items", "0")
 		c.JSON(http.StatusOK, []interface{}{})

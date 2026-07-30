@@ -718,6 +718,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
+		    f.project_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -766,6 +767,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
+		    f.project_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT
 				 COUNT(1)
@@ -854,6 +856,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
+		    f.project_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
 			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
@@ -884,6 +887,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
+		    f.project_id,
 		    (SELECT name FROM environment e WHERE e.id = f.environment_id) AS environment_name,
 			(SELECT COUNT(1) FROM execution e WHERE e.flo_id = f.id) AS execution_count,
 			(SELECT CASE WHEN e.completed_at IS NULL THEN CEIL(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - e.created_at) / 60) ELSE CEIL(EXTRACT(EPOCH FROM e.completed_at - e.created_at) / 60) END FROM execution e WHERE e.flo_id = f.id ORDER BY created_at DESC LIMIT 1) AS duration,
@@ -932,6 +936,7 @@ func NewService(config *config.Config) (*Service, error) {
 		    f.y,
 		    f.environment_id,
 		    f.queue_id,
+		    f.project_id,
 		    f.notify_on_success,
 		    f.notify_on_failure,
 		    f.notification_emails,

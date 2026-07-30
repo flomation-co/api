@@ -33,6 +33,16 @@ func buildProjectTree(flat []*api.Project) []*api.Project {
 	return roots
 }
 
+// isOrgAdmin reports whether the user is an admin of their active org. Admins
+// bypass per-project restrictions (mirrors checkPermission's admin short-circuit).
+func (s *Service) isOrgAdmin(user *api.User) bool {
+	if user == nil || len(user.Organisations) == 0 {
+		return false
+	}
+	role, err := s.persistence.GetUserRoleInOrganisation(user.Organisations[0].ID, user.ID)
+	return err == nil && role != nil && *role == "admin"
+}
+
 func (s *Service) getProjects(c *gin.Context) {
 	if !s.checkPermission(c, rbac.ProjectView) {
 		return
@@ -43,7 +53,7 @@ func (s *Service) getProjects(c *gin.Context) {
 		return
 	}
 
-	flat, err := s.persistence.GetProjects(user.ID, orgForUser(user))
+	flat, err := s.persistence.GetProjects(user.ID, orgForUser(user), s.isOrgAdmin(user))
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("unable to get projects")
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -51,6 +61,110 @@ func (s *Service) getProjects(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, buildProjectTree(flat))
+}
+
+// requireProjectManageAccess enforces per-project access on manage actions: a
+// restricted project may only be managed by a user with the 'manage' effective
+// role on it (owner/admin resolve to 'manage'). Open projects are governed by
+// the org-level ProjectManage permission alone. Returns true when allowed.
+func (s *Service) requireProjectManageAccess(c *gin.Context, user *api.User, projectID string) bool {
+	access, err := s.persistence.GetProjectAccess(user.ID, orgForUser(user), s.isOrgAdmin(user))
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return false
+	}
+	a := access[projectID]
+	if !a.Accessible || (a.Restricted && a.Role != "manage") {
+		c.AbortWithStatus(http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func (s *Service) getProjectACL(c *gin.Context) {
+	if !s.checkPermission(c, rbac.ProjectView) {
+		return
+	}
+	user := s.getUserFromContext(c)
+	id := c.Param("id")
+
+	project, err := s.persistence.GetProjectByID(id)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if project == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if !s.verifyOrgAccess(user, project.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
+	direct, inherited, err := s.persistence.GetProjectACL(id)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("unable to get project acl")
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"direct": direct, "inherited": inherited})
+}
+
+func (s *Service) setProjectACL(c *gin.Context) {
+	if !s.checkPermission(c, rbac.ProjectManage) {
+		return
+	}
+	user := s.getUserFromContext(c)
+	id := c.Param("id")
+
+	project, err := s.persistence.GetProjectByID(id)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if project == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if !s.verifyOrgAccess(user, project.OrganisationID) {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	if !s.requireProjectManageAccess(c, user, id) {
+		return
+	}
+
+	var body struct {
+		GroupID string  `json:"group_id"`
+		Role    *string `json:"role"` // null/"" → remove the grant
+	}
+	if err := c.BindJSON(&body); err != nil || body.GroupID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "group_id is required"})
+		return
+	}
+
+	if body.Role == nil || *body.Role == "" {
+		if err := s.persistence.RemoveProjectGroup(id, body.GroupID); err != nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		c.Status(http.StatusOK)
+		return
+	}
+
+	switch *body.Role {
+	case "view", "edit", "manage":
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role must be view, edit or manage"})
+		return
+	}
+
+	if err := s.persistence.SetProjectGroupRole(id, body.GroupID, *body.Role); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	c.Status(http.StatusOK)
 }
 
 type projectBody struct {
@@ -135,6 +249,9 @@ func (s *Service) updateProject(c *gin.Context) {
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
+	if !s.requireProjectManageAccess(c, user, id) {
+		return
+	}
 
 	var body projectBody
 	if err := c.BindJSON(&body); err != nil {
@@ -191,6 +308,9 @@ func (s *Service) deleteProject(c *gin.Context) {
 	}
 	if !s.verifyOrgAccess(user, existing.OrganisationID) {
 		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	if !s.requireProjectManageAccess(c, user, id) {
 		return
 	}
 
