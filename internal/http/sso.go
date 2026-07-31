@@ -79,6 +79,14 @@ func raw(c *gin.Context, data json.RawMessage, err error) {
 	c.Data(http.StatusOK, "application/json", data)
 }
 
+func (s *Service) getSSORedirectURI(c *gin.Context) {
+	if s.ssoOrgGuard(c) == "" {
+		return
+	}
+	data, err := s.ssoSentinel.RedirectURI()
+	raw(c, data, err)
+}
+
 func (s *Service) listSSOConnections(c *gin.Context) {
 	orgID := s.ssoOrgGuard(c)
 	if orgID == "" {

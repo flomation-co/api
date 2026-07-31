@@ -405,6 +405,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	orgs.GET("/:ID/permissions", s.getMyPermissions)
 
 	// Enterprise SSO config (forwarded to Sentinel's internal admin API).
+	orgs.GET("/:ID/sso/redirect-uri", s.getSSORedirectURI)
 	orgs.GET("/:ID/sso/connection", s.listSSOConnections)
 	orgs.POST("/:ID/sso/connection", s.createSSOConnection)
 	orgs.PUT("/:ID/sso/connection/:connID", s.updateSSOConnection)

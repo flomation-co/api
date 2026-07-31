@@ -62,6 +62,13 @@ func (c *Connector) do(method, path string, body interface{}, out interface{}) e
 	return nil
 }
 
+// RedirectURI returns Sentinel's exact OIDC redirect_uri (for the UI to display).
+func (c *Connector) RedirectURI() (json.RawMessage, error) {
+	var out json.RawMessage
+	err := c.do(http.MethodGet, "/internal/sso/redirect-uri", nil, &out)
+	return out, err
+}
+
 // ── Connections ──────────────────────────────────────────────────────
 
 func (c *Connector) ListConnections(orgID string) (json.RawMessage, error) {
