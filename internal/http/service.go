@@ -368,6 +368,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// v1 Group
 	v1 := a.Group("v1")
 
+	// Service-to-service SSO membership sync (Sentinel → API), token-guarded.
+	v1.POST("/sso/ensure-membership", s.serviceTokenGuardAPI, s.ensureOrgMembershipInternal)
+
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
 	v1.GET("config/platform", s.jwtMiddleware, s.getPlatformConfig)

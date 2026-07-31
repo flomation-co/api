@@ -25,6 +25,46 @@ func (s *Service) ssoOrgGuard(c *gin.Context) string {
 	return orgID
 }
 
+// serviceTokenGuardAPI protects the SSO service-to-service endpoints Sentinel
+// calls after a login (membership sync). Shared secret; refused when unset.
+func (s *Service) serviceTokenGuardAPI(c *gin.Context) {
+	want := s.config.Security.ServiceToken
+	got := c.GetHeader("X-Service-Token")
+	if want == "" || got == "" || got != want {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	c.Next()
+}
+
+// ensureOrgMembershipInternal is called by Sentinel after a successful SSO login
+// to JIT the user into the connection's organisation. It never downgrades an
+// existing role — it only adds the user as a member when they aren't one yet.
+func (s *Service) ensureOrgMembershipInternal(c *gin.Context) {
+	var body struct {
+		UserID         string `json:"user_id"`
+		OrganisationID string `json:"organisation_id"`
+	}
+	if err := c.BindJSON(&body); err != nil || body.UserID == "" || body.OrganisationID == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	role, err := s.persistence.GetUserRoleInOrganisation(body.OrganisationID, body.UserID)
+	if err != nil {
+		log.WithField("error", err).Error("sso ensure-membership: role lookup")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	if role == nil {
+		if err := s.persistence.AddUserToOrganisation(body.OrganisationID, body.UserID, "member"); err != nil {
+			log.WithField("error", err).Error("sso ensure-membership: add member")
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+	}
+	c.Status(http.StatusOK)
+}
+
 // raw forwards a Sentinel admin-API JSON body straight through to the client.
 func raw(c *gin.Context, data json.RawMessage, err error) {
 	if err != nil {
