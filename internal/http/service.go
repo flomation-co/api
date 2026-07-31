@@ -368,8 +368,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// v1 Group
 	v1 := a.Group("v1")
 
-	// Service-to-service SSO membership sync (Sentinel → API), token-guarded.
+	// Service-to-service SSO sync (Sentinel → API), token-guarded.
 	v1.POST("/sso/ensure-membership", s.serviceTokenGuardAPI, s.ensureOrgMembershipInternal)
+	v1.POST("/sso/reconcile", s.serviceTokenGuardAPI, s.reconcileSSOGroupsInternal)
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
@@ -414,6 +415,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	orgs.POST("/:ID/sso/connection/:connID/domain", s.addSSODomain)
 	orgs.POST("/:ID/sso/connection/:connID/domain/:domainID/verify", s.verifySSODomain)
 	orgs.DELETE("/:ID/sso/connection/:connID/domain/:domainID", s.deleteSSODomain)
+	orgs.GET("/:ID/sso/group-mapping", s.listSSOGroupMappings)
+	orgs.POST("/:ID/sso/group-mapping", s.createSSOGroupMapping)
+	orgs.DELETE("/:ID/sso/group-mapping/:mappingID", s.deleteSSOGroupMapping)
 
 	// Invite preview (public, no auth required)
 	v1.GET("invite/:code", s.getInvitePreview)

@@ -68,6 +68,10 @@ type Persistence interface {
 	SetProjectGroupRole(projectID, groupID, role string) error
 	RemoveProjectGroup(projectID, groupID string) error
 	GetUserGroupIDs(orgID, userID string) ([]string, error)
+	GetSSOGroupMappings(orgID string) ([]*api.SSOGroupMapping, error)
+	CreateSSOGroupMapping(orgID, idpGroup, groupID string) error
+	DeleteSSOGroupMapping(id, orgID string) error
+	ReconcileSSOGroups(orgID, userID string, idpGroups []string) error
 	GetMyOrganisations(userID string) ([]*api.Organisation, error)
 	GetOrganisationByID(ID string) (*api.Organisation, error)
 	GetQueueByRegistrationCode(code string) (*api.Queue, error)

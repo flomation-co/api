@@ -169,6 +169,16 @@ type ProjectGrant struct {
 	Role      string `json:"role" db:"role"`
 }
 
+// SSOGroupMapping links an IdP group to a Flomation Team (organisation_group).
+// GroupName is joined in for display.
+type SSOGroupMapping struct {
+	ID                  string `json:"id" db:"id"`
+	OrganisationID      string `json:"organisation_id" db:"organisation_id"`
+	IDPGroup            string `json:"idp_group" db:"idp_group"`
+	OrganisationGroupID string `json:"organisation_group_id" db:"organisation_group_id"`
+	GroupName           string `json:"group_name" db:"group_name"`
+}
+
 type ExecutionStatus struct {
 	ID               string `json:"id" db:"id"`
 	ExecutionStatus  string `json:"execution_status" db:"execution_status"`

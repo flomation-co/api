@@ -9,10 +9,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ssoOrgGuard enforces that the caller is an admin/OrganisationManage of the org
-// named in the route AND that it's their active org, then returns the org id.
+// orgManageGuard enforces that the caller is an admin/OrganisationManage of the
+// org named in the route AND that it's their active org, then returns the org id.
 // Returns "" (and aborts) when not allowed.
-func (s *Service) ssoOrgGuard(c *gin.Context) string {
+func (s *Service) orgManageGuard(c *gin.Context) string {
 	if !s.checkPermission(c, rbac.OrganisationManage) {
 		return ""
 	}
@@ -22,13 +22,89 @@ func (s *Service) ssoOrgGuard(c *gin.Context) string {
 		c.AbortWithStatus(http.StatusForbidden)
 		return ""
 	}
-	// Clear signal when the service-to-service link to Sentinel isn't wired,
-	// rather than a cryptic 502 from the forwarded call.
+	return orgID
+}
+
+// ssoOrgGuard is orgManageGuard plus a check that the Sentinel service link is
+// wired — used by the connection/domain forwards (which call Sentinel). The
+// group-mapping endpoints are API-local and use orgManageGuard directly.
+func (s *Service) ssoOrgGuard(c *gin.Context) string {
+	orgID := s.orgManageGuard(c)
+	if orgID == "" {
+		return ""
+	}
 	if s.config.Security.ServiceToken == "" || s.config.Security.IdentityService == "" {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "SSO is not configured on this server (missing service_token / identity_service link to Sentinel)"})
 		return ""
 	}
 	return orgID
+}
+
+// ── Group → Team mappings (API-local; no Sentinel involved) ──────────
+
+func (s *Service) listSSOGroupMappings(c *gin.Context) {
+	orgID := s.orgManageGuard(c)
+	if orgID == "" {
+		return
+	}
+	m, err := s.persistence.GetSSOGroupMappings(orgID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	c.JSON(http.StatusOK, m)
+}
+
+func (s *Service) createSSOGroupMapping(c *gin.Context) {
+	orgID := s.orgManageGuard(c)
+	if orgID == "" {
+		return
+	}
+	var body struct {
+		IDPGroup            string `json:"idp_group"`
+		OrganisationGroupID string `json:"organisation_group_id"`
+	}
+	if err := c.BindJSON(&body); err != nil || body.IDPGroup == "" || body.OrganisationGroupID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "idp_group and organisation_group_id are required"})
+		return
+	}
+	if err := s.persistence.CreateSSOGroupMapping(orgID, body.IDPGroup, body.OrganisationGroupID); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
+func (s *Service) deleteSSOGroupMapping(c *gin.Context) {
+	orgID := s.orgManageGuard(c)
+	if orgID == "" {
+		return
+	}
+	if err := s.persistence.DeleteSSOGroupMapping(c.Param("mappingID"), orgID); err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+// reconcileSSOGroupsInternal is called by Sentinel after login with the user's
+// resolved IdP groups; token-guarded. Syncs the user's Team memberships.
+func (s *Service) reconcileSSOGroupsInternal(c *gin.Context) {
+	var body struct {
+		UserID         string   `json:"user_id"`
+		OrganisationID string   `json:"organisation_id"`
+		IDPGroups      []string `json:"idp_groups"`
+	}
+	if err := c.BindJSON(&body); err != nil || body.UserID == "" || body.OrganisationID == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if err := s.persistence.ReconcileSSOGroups(body.OrganisationID, body.UserID, body.IDPGroups); err != nil {
+		log.WithField("error", err).Error("sso reconcile groups")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Status(http.StatusOK)
 }
 
 // serviceTokenGuardAPI protects the SSO service-to-service endpoints Sentinel
