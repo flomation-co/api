@@ -22,6 +22,12 @@ func (s *Service) ssoOrgGuard(c *gin.Context) string {
 		c.AbortWithStatus(http.StatusForbidden)
 		return ""
 	}
+	// Clear signal when the service-to-service link to Sentinel isn't wired,
+	// rather than a cryptic 502 from the forwarded call.
+	if s.config.Security.ServiceToken == "" || s.config.Security.IdentityService == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "SSO is not configured on this server (missing service_token / identity_service link to Sentinel)"})
+		return ""
+	}
 	return orgID
 }
 
