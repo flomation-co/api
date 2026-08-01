@@ -371,6 +371,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// Service-to-service SSO sync (Sentinel → API), token-guarded.
 	v1.POST("/sso/ensure-membership", s.serviceTokenGuardAPI, s.ensureOrgMembershipInternal)
 	v1.POST("/sso/reconcile", s.serviceTokenGuardAPI, s.reconcileSSOGroupsInternal)
+	v1.GET("/sso/is-org-admin", s.serviceTokenGuardAPI, s.isOrgAdminInternal)
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)

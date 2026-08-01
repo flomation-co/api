@@ -87,6 +87,21 @@ func (s *Service) deleteSSOGroupMapping(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+// isOrgAdminInternal answers Sentinel's HRD break-glass check: is this user an
+// admin of the given org? (Org admins keep password login even on an SSO
+// domain.) Token-guarded.
+func (s *Service) isOrgAdminInternal(c *gin.Context) {
+	userID := c.Query("user_id")
+	orgID := c.Query("organisation_id")
+	if userID == "" || orgID == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	role, err := s.persistence.GetUserRoleInOrganisation(orgID, userID)
+	admin := err == nil && role != nil && *role == "admin"
+	c.JSON(http.StatusOK, gin.H{"admin": admin})
+}
+
 // reconcileSSOGroupsInternal is called by Sentinel after login with the user's
 // resolved IdP groups; token-guarded. Syncs the user's Team memberships.
 func (s *Service) reconcileSSOGroupsInternal(c *gin.Context) {
