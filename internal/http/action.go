@@ -288,6 +288,7 @@ var subSubCategoryMetadata = map[string]struct {
 	"crm/apollo/accounts":   {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
 	"crm/apollo/deals":      {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
 	"crm/apollo/sequences":  {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
+	"crm/apollo/emailer":    {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
