@@ -367,6 +367,12 @@ type ActionCategory struct {
 	SubName        string `json:"sub_name,omitempty"`
 	SubIcon        string `json:"sub_icon,omitempty"`
 	SubDescription string `json:"sub_description,omitempty"`
+	// Sub-sub-category: a third grouping level for 4-segment action IDs
+	// (e.g. crm/apollo/enrichment/people_match → CRM ▸ Apollo ▸ Enrichment).
+	SubSubKey         string `json:"sub_sub_key,omitempty"`
+	SubSubName        string `json:"sub_sub_name,omitempty"`
+	SubSubIcon        string `json:"sub_sub_icon,omitempty"`
+	SubSubDescription string `json:"sub_sub_description,omitempty"`
 }
 
 type Action struct {

@@ -183,6 +183,7 @@ var subCategoryMetadata = map[string]struct {
 	// Description must stay byte-identical to CategoryDescription in
 	// executor/actions/crm/salesforce/category.go.
 	"crm/salesforce":                 {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
+	"crm/apollo":                     {Name: "Apollo", Icon: "apollo", Description: "Enrich, search and manage Apollo.io contacts, accounts, deals and sequences"},
 	"ecommerce/woocommerce":          {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"cms/wordpress":                  {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":            {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
@@ -272,6 +273,23 @@ var subCategoryMetadata = map[string]struct {
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
+// subSubCategoryMetadata maps 3-segment sub-paths (e.g. "crm/apollo/enrichment")
+// to display metadata for the third grouping level, used by 4-segment action IDs
+// like "crm/apollo/enrichment/people_match". Mirrors the executor category.go
+// files under actions/crm/apollo/<type>/.
+var subSubCategoryMetadata = map[string]struct {
+	Name        string
+	Icon        string
+	Description string
+}{
+	"crm/apollo/enrichment": {Name: "Enrichment", Icon: "bolt", Description: "Enrich people and companies with Apollo's data"},
+	"crm/apollo/search":     {Name: "Search", Icon: "magnifying-glass", Description: "Search Apollo's people and company database"},
+	"crm/apollo/contacts":   {Name: "Contacts", Icon: "user", Description: "Create, update and search Apollo CRM contacts"},
+	"crm/apollo/accounts":   {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
+	"crm/apollo/deals":      {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
+	"crm/apollo/sequences":  {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
+}
+
 func getCategoryForAction(actionID string) *api.ActionCategory {
 	parts := strings.Split(actionID, "/")
 	if len(parts) == 0 {
@@ -294,6 +312,21 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 			// Auto-generate from directory name
 			cat.SubKey = subPath
 			cat.SubName = strings.ToUpper(parts[1][:1]) + parts[1][1:]
+		}
+	}
+
+	// For 4+ segment action IDs, populate sub-sub-category fields (third level)
+	if len(parts) >= 4 {
+		subSubPath := parts[0] + "/" + parts[1] + "/" + parts[2]
+		if subSub, ok := subSubCategoryMetadata[subSubPath]; ok {
+			cat.SubSubKey = subSubPath
+			cat.SubSubName = subSub.Name
+			cat.SubSubIcon = subSub.Icon
+			cat.SubSubDescription = subSub.Description
+		} else {
+			// Auto-generate from directory name
+			cat.SubSubKey = subSubPath
+			cat.SubSubName = strings.ToUpper(parts[2][:1]) + parts[2][1:]
 		}
 	}
 

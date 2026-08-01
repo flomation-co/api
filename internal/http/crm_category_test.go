@@ -109,19 +109,57 @@ func TestEverySalesforceActionSharesOneSubGroup(t *testing.T) {
 	}
 }
 
-// The palette is only two tiers deep — a third level is silently flattened. The
-// 17 conceptual groups (Leads, Contacts, Opportunities, ...) are therefore a
-// naming convention inside ONE Salesforce sub-group, not real palette nodes.
-// This asserts the shape we actually get, so nobody later "fixes" the grouping
-// by adding a segment and quietly loses it.
-func TestSalesforceGroupingIsTwoTiersOnly(t *testing.T) {
+// Salesforce deliberately stays two-tier (CRM ▸ Salesforce), even though the
+// palette now supports a third tier (see the Apollo tests below). Its 17
+// conceptual groups (Leads, Contacts, Opportunities, ...) are a naming
+// convention inside ONE Salesforce sub-group, achieved with 3-segment IDs. This
+// asserts a real Salesforce action carries no sub-sub-group, so nobody later
+// "reorganises" Salesforce by adding a fourth segment without meaning to.
+func TestSalesforceGroupingStaysTwoTiers(t *testing.T) {
 	cat := getCategoryForAction("crm/salesforce/lead_create")
 	if cat == nil {
 		t.Fatal("crm/salesforce/lead_create resolved no category")
 	}
-	// A hypothetical third tier must not appear as a deeper sub-key.
-	deeper := getCategoryForAction("crm/salesforce/leads/lead_create")
-	if deeper != nil && deeper.SubKey != "crm/salesforce" {
-		t.Errorf("a 4-segment ID resolved to sub-key %q — the palette is 2-tier and a third level is silently flattened; do not group actions by adding path segments", deeper.SubKey)
+	if cat.SubKey != "crm/salesforce" {
+		t.Errorf("Salesforce sub-key = %q, want crm/salesforce", cat.SubKey)
+	}
+	if cat.SubSubKey != "" {
+		t.Errorf("a real 3-segment Salesforce action gained a third tier %q — Salesforce is intentionally two-tier", cat.SubSubKey)
+	}
+}
+
+// Apollo is the first integration to use the third grouping tier: 4-segment IDs
+// (crm/apollo/enrichment/people_match) must resolve CRM ▸ Apollo ▸ Enrichment.
+// If any of the three metadata maps drifts, the action silently loses its group
+// and vanishes from — or misfiles within — the palette.
+func TestApolloActionsResolveThreeTierCategory(t *testing.T) {
+	cases := []struct {
+		id                              string
+		subSubKey, subSubName, subSubIc string
+	}{
+		{"crm/apollo/enrichment/people_match", "crm/apollo/enrichment", "Enrichment", "bolt"},
+		{"crm/apollo/search/organization_search", "crm/apollo/search", "Search", "magnifying-glass"},
+		{"crm/apollo/contacts/contact_create", "crm/apollo/contacts", "Contacts", "user"},
+		{"crm/apollo/accounts/account_update", "crm/apollo/accounts", "Accounts", "briefcase"},
+		{"crm/apollo/deals/deal_list", "crm/apollo/deals", "Deals", "dollar-sign"},
+		{"crm/apollo/sequences/task_create", "crm/apollo/sequences", "Sequences", "paper-plane"},
+	}
+	for _, c := range cases {
+		cat := getCategoryForAction(c.id)
+		if cat == nil {
+			t.Fatalf("%s resolved no category — a CRM/Apollo metadata entry is missing", c.id)
+		}
+		if cat.Key != "crm" || cat.Name != "CRM" {
+			t.Errorf("%s: category = %s/%q, want crm/CRM", c.id, cat.Key, cat.Name)
+		}
+		if cat.SubKey != "crm/apollo" || cat.SubName != "Apollo" {
+			t.Errorf("%s: sub = %s/%q, want crm/apollo/Apollo", c.id, cat.SubKey, cat.SubName)
+		}
+		if cat.SubSubKey != c.subSubKey || cat.SubSubName != c.subSubName {
+			t.Errorf("%s: sub-sub = %s/%q, want %s/%q", c.id, cat.SubSubKey, cat.SubSubName, c.subSubKey, c.subSubName)
+		}
+		if cat.SubSubIcon != c.subSubIc {
+			t.Errorf("%s: sub-sub icon = %q, want %q", c.id, cat.SubSubIcon, c.subSubIc)
+		}
 	}
 }
