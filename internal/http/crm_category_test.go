@@ -143,6 +143,7 @@ func TestApolloActionsResolveThreeTierCategory(t *testing.T) {
 		{"crm/apollo/accounts/account_update", "crm/apollo/accounts", "Accounts", "briefcase"},
 		{"crm/apollo/deals/deal_list", "crm/apollo/deals", "Deals", "dollar-sign"},
 		{"crm/apollo/sequences/task_create", "crm/apollo/sequences", "Sequences", "paper-plane"},
+		{"crm/apollo/emailer/email_send", "crm/apollo/emailer", "Emailer", "envelope"},
 	}
 	for _, c := range cases {
 		cat := getCategoryForAction(c.id)
