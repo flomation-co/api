@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -117,4 +118,15 @@ func (c *Connector) VerifyDomain(connID, domainID string) (json.RawMessage, erro
 
 func (c *Connector) DeleteDomain(connID, domainID string) error {
 	return c.do(http.MethodDelete, "/internal/sso/connection/"+connID+"/domain/"+domainID, nil, nil)
+}
+
+// ── Directory group search ───────────────────────────────────────────
+
+// SearchGroups asks Sentinel to query the connection's IdP directory for groups
+// matching q (empty q lists the first page). Returns Sentinel's raw
+// {supported, groups, error} body.
+func (c *Connector) SearchGroups(connID, q string) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := c.do(http.MethodGet, "/internal/sso/connection/"+connID+"/groups?q="+url.QueryEscape(q), nil, &out)
+	return out, err
 }

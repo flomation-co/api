@@ -410,7 +410,7 @@ func (m *mockPersistence) GetUserGroupIDs(string, string) ([]string, error) {
 func (m *mockPersistence) GetSSOGroupMappings(string) ([]*api.SSOGroupMapping, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) CreateSSOGroupMapping(string, string, string) error {
+func (m *mockPersistence) CreateSSOGroupMapping(string, string, string, string) error {
 	panic("not implemented")
 }
 func (m *mockPersistence) DeleteSSOGroupMapping(string, string) error {

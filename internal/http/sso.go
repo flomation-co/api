@@ -62,13 +62,14 @@ func (s *Service) createSSOGroupMapping(c *gin.Context) {
 	}
 	var body struct {
 		IDPGroup            string `json:"idp_group"`
+		IDPGroupLabel       string `json:"idp_group_label"`
 		OrganisationGroupID string `json:"organisation_group_id"`
 	}
 	if err := c.BindJSON(&body); err != nil || body.IDPGroup == "" || body.OrganisationGroupID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "idp_group and organisation_group_id are required"})
 		return
 	}
-	if err := s.persistence.CreateSSOGroupMapping(orgID, body.IDPGroup, body.OrganisationGroupID); err != nil {
+	if err := s.persistence.CreateSSOGroupMapping(orgID, body.IDPGroup, body.IDPGroupLabel, body.OrganisationGroupID); err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
@@ -241,6 +242,17 @@ func (s *Service) deleteSSOConnection(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusOK)
+}
+
+// searchSSOGroups forwards a directory group search to Sentinel so the mapping
+// UI can offer a searchable picker. Org-admin gated; falls back to text entry in
+// the editor when Sentinel reports the provider is unsupported.
+func (s *Service) searchSSOGroups(c *gin.Context) {
+	if s.ssoOrgGuard(c) == "" {
+		return
+	}
+	data, err := s.ssoSentinel.SearchGroups(c.Param("connID"), c.Query("q"))
+	raw(c, data, err)
 }
 
 func (s *Service) listSSODomains(c *gin.Context) {

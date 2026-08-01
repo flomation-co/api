@@ -69,7 +69,7 @@ type Persistence interface {
 	RemoveProjectGroup(projectID, groupID string) error
 	GetUserGroupIDs(orgID, userID string) ([]string, error)
 	GetSSOGroupMappings(orgID string) ([]*api.SSOGroupMapping, error)
-	CreateSSOGroupMapping(orgID, idpGroup, groupID string) error
+	CreateSSOGroupMapping(orgID, idpGroup, label, groupID string) error
 	DeleteSSOGroupMapping(id, orgID string) error
 	ReconcileSSOGroups(orgID, userID string, idpGroups []string) error
 	GetMyOrganisations(userID string) ([]*api.Organisation, error)

@@ -416,6 +416,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	orgs.POST("/:ID/sso/connection/:connID/domain", s.addSSODomain)
 	orgs.POST("/:ID/sso/connection/:connID/domain/:domainID/verify", s.verifySSODomain)
 	orgs.DELETE("/:ID/sso/connection/:connID/domain/:domainID", s.deleteSSODomain)
+	orgs.GET("/:ID/sso/connection/:connID/groups", s.searchSSOGroups)
 	orgs.GET("/:ID/sso/group-mapping", s.listSSOGroupMappings)
 	orgs.POST("/:ID/sso/group-mapping", s.createSSOGroupMapping)
 	orgs.DELETE("/:ID/sso/group-mapping/:mappingID", s.deleteSSOGroupMapping)

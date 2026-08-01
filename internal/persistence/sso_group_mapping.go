@@ -6,22 +6,23 @@ import "flomation.app/automate/api"
 func (s *Service) GetSSOGroupMappings(orgID string) ([]*api.SSOGroupMapping, error) {
 	var out []*api.SSOGroupMapping
 	err := s.conn.Select(&out, `
-		SELECT m.id, m.organisation_id, m.idp_group, m.organisation_group_id, g.name AS group_name
+		SELECT m.id, m.organisation_id, m.idp_group, m.idp_group_label, m.organisation_group_id, g.name AS group_name
 		FROM sso_group_mapping m
 		JOIN organisation_group g ON g.id = m.organisation_group_id
 		WHERE m.organisation_id = $1
-		ORDER BY m.idp_group, g.name
+		ORDER BY COALESCE(NULLIF(m.idp_group_label, ''), m.idp_group), g.name
 	`, orgID)
 	return out, err
 }
 
-// CreateSSOGroupMapping adds a mapping (idempotent on the unique triple).
-func (s *Service) CreateSSOGroupMapping(orgID, idpGroup, groupID string) error {
+// CreateSSOGroupMapping adds a mapping (idempotent on the unique triple). label is
+// an optional friendly name for display; empty leaves it NULL.
+func (s *Service) CreateSSOGroupMapping(orgID, idpGroup, label, groupID string) error {
 	_, err := s.conn.Exec(`
-		INSERT INTO sso_group_mapping (organisation_id, idp_group, organisation_group_id)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (organisation_id, idp_group, organisation_group_id) DO NOTHING
-	`, orgID, idpGroup, groupID)
+		INSERT INTO sso_group_mapping (organisation_id, idp_group, idp_group_label, organisation_group_id)
+		VALUES ($1, $2, NULLIF($3, ''), $4)
+		ON CONFLICT (organisation_id, idp_group, organisation_group_id) DO UPDATE SET idp_group_label = EXCLUDED.idp_group_label
+	`, orgID, idpGroup, label, groupID)
 	return err
 }
 
