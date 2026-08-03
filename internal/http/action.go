@@ -347,6 +347,32 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 // and pgvector_options.go (~50). Grep the endpoint name to find them.
 var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
 	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
+	// Live "Model" dropdowns for the paste-a-key AI providers, resolved from a
+	// proxy that fetches each provider's models list server-side (the api_key
+	// secret is resolved from the environment — the plaintext never transits
+	// the browser). The action's static Options remain the fallback when the
+	// fetch fails. See ai_models.go. (Azure OpenAI is intentionally absent: its
+	// "model" is a user-named deployment, not enumerable from a data-plane key.)
+	"ai/anthropic#model": {
+		Endpoint: "/api/v1/action/options/anthropic-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/openai#model": {
+		Endpoint: "/api/v1/action/options/openai-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/gemini#model": {
+		Endpoint: "/api/v1/action/options/gemini-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/groq#model": {
+		Endpoint: "/api/v1/action/options/groq-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/openwebui#model": {
+		Endpoint: "/api/v1/action/options/openwebui-models",
+		Params:   []string{"endpoint", "api_key"},
+	},
 	// Zendesk live dropdowns: the Groups and Organizations pickers each resolve
 	// from a proxy endpoint, forwarding the node's subdomain/email/api_token so
 	// the api can call the account's API server-side (api_token is a secret,

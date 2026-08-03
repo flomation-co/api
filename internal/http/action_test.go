@@ -38,7 +38,10 @@ func TestGetActions_InjectsDynamicOptions(t *testing.T) {
 	})
 	mock := &actionsMockPersistence{actions: []*api.Action{
 		{ID: "ai/openrouter", ActionType: "2", Inputs: inputs},
-		{ID: "ai/groq", ActionType: "2", Inputs: inputs},
+		// A negative control: an action absent from dynamicOptionsMetadata
+		// must not gain a marker on its "model" input. (Most ai/* providers
+		// now DO have a live-model marker, so this uses a synthetic id.)
+		{ID: "test/untouched", ActionType: "2", Inputs: inputs},
 	}}
 
 	r := gin.New()
@@ -63,9 +66,9 @@ func TestGetActions_InjectsDynamicOptions(t *testing.T) {
 	g.Expect(orInputs[1].DynamicOptions.Endpoint).To(Equal("/api/v1/action/options/openrouter-models"))
 	g.Expect(orInputs[1].Options).To(HaveLen(1), "static options must survive as fallback")
 
-	// The same input name on a different action is untouched.
-	groqInputs := served["ai/groq"].Inputs
-	g.Expect(groqInputs[1].DynamicOptions).To(BeNil())
+	// The same input name on an action that has no marker is untouched.
+	untouchedInputs := served["test/untouched"].Inputs
+	g.Expect(untouchedInputs[1].DynamicOptions).To(BeNil())
 }
 
 // TestGetActions_InjectsParameterisedDynamicOptions pins the params leg of

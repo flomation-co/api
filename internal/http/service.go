@@ -449,6 +449,14 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// auth-gated like the other editor option-fetch proxies.
 	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
 	actions.GET("/options/ollama-models", s.jwtMiddleware, s.getOllamaModels)
+	// Live model dropdowns for the paste-a-key AI providers. Each proxies the
+	// provider's models endpoint, resolving a ${secrets.X} api_key server-side
+	// (openwebui additionally forwards its endpoint). See ai_models.go.
+	actions.GET("/options/anthropic-models", s.jwtMiddleware, s.getAnthropicModels)
+	actions.GET("/options/openai-models", s.jwtMiddleware, s.getOpenAIModels)
+	actions.GET("/options/gemini-models", s.jwtMiddleware, s.getGeminiModels)
+	actions.GET("/options/groq-models", s.jwtMiddleware, s.getGroqModels)
+	actions.GET("/options/openwebui-models", s.jwtMiddleware, s.getOpenWebUIModels)
 	actions.GET("/options/zendesk-groups", s.jwtMiddleware, s.getZendeskGroups)
 	actions.GET("/options/zendesk-organizations", s.jwtMiddleware, s.getZendeskOrganizations)
 	actions.GET("/options/woocommerce-categories", s.jwtMiddleware, s.getWooCommerceCategories)
