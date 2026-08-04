@@ -19,6 +19,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"aws":            {Key: "aws", Name: "AWS", Icon: "cloud", Description: "Amazon Web Services integrations"},
 	"common":         {Key: "common", Name: "Common", Icon: "toolbox", Description: "General-purpose data utilities"},
 	"conditional":    {Key: "conditional", Name: "Conditional", Icon: "code-branch", Description: "Control flow based on conditions"},
+	"document":       {Key: "document", Name: "Document", Icon: "file-lines", Description: "Generate and populate documents: fill PDF forms, templates and export"},
 	"humanintheloop": {Key: "humanintheloop", Name: "Human in the Loop", Icon: "user-check", Description: "Pause a flow for a human decision, then branch on their response"},
 	"file":           {Key: "file", Name: "File", Icon: "file", Description: "Read and write files"},
 	"git":            {Key: "git", Name: "Git", Icon: "code-branch", Description: "Version control operations"},
