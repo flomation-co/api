@@ -242,7 +242,7 @@ func (d *doc) parties(p Params) {
 	d.partyBlock("(2) The Controller", controllerLines)
 
 	d.pdf.Ln(4)
-	d.bodyText(fmt.Sprintf("This Agreement is made between the Processor and the Controller (each a \"party\" and together the \"parties\"). It governs the Processing of Personal Data by the Processor on behalf of the Controller in connection with the Controller's use of the Flomation workflow automation platform (the \"Services\"), and forms part of the agreement under which the Services are provided (the \"Principal Agreement\")."))
+	d.bodyText("This Agreement is made between the Processor and the Controller (each a \"party\" and together the \"parties\"). It governs the Processing of Personal Data by the Processor on behalf of the Controller in connection with the Controller's use of the Flomation workflow automation platform (the \"Services\"), and forms part of the agreement under which the Services are provided (the \"Principal Agreement\").")
 }
 
 // legalHeadline builds the Controller's headline identity line.
