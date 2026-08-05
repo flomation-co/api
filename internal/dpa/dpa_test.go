@@ -49,14 +49,14 @@ func TestGeneratePDF_IndividualAndDefaultsDate(t *testing.T) {
 func TestGenerateFilename(t *testing.T) {
 	RegisterTestingT(t)
 
-	p := Params{
-		ControllerName: "Acme Widgets Ltd!",
-		EffectiveDate:  time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC),
-	}
-	Expect(GenerateFilename(p)).To(Equal("flomation-dpa-acme-widgets-ltd-20260805.pdf"))
+	// The filename matches the DPA's own reference.
+	Expect(GenerateFilename(Params{Reference: "DPA-60205F30"})).To(Equal("DPA-60205F30.pdf"))
 
-	// Empty name → stable fallback slug.
-	Expect(GenerateFilename(Params{EffectiveDate: p.EffectiveDate})).To(Equal("flomation-dpa-customer-20260805.pdf"))
+	// No reference → stable fallback derived from the controller name.
+	Expect(GenerateFilename(Params{ControllerName: "Acme Widgets Ltd!"})).To(Equal("DPA-acme-widgets-ltd.pdf"))
+
+	// No reference and no name → generic fallback.
+	Expect(GenerateFilename(Params{})).To(Equal("DPA-customer.pdf"))
 }
 
 func TestLatin1_DowngradesPunctuationAndDropsNoEmDash(t *testing.T) {

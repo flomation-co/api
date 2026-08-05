@@ -99,13 +99,36 @@ type doc struct {
 	clause int
 }
 
-// GenerateFilename returns a stable, filesystem-safe filename for the PDF.
+// GenerateFilename returns a filesystem-safe filename that matches the DPA's
+// own reference (as shown on the document and in the Compliance tab), so the
+// downloaded file is named the same as the agreement it contains.
 func GenerateFilename(p Params) string {
-	slug := sanitiseSlug(p.ControllerName)
-	if slug == "" {
-		slug = "customer"
+	ref := sanitiseRef(p.Reference)
+	if ref == "" {
+		// Fallback when no reference is supplied: derive a stable name from the
+		// controller so the download is still identifiable.
+		slug := sanitiseSlug(p.ControllerName)
+		if slug == "" {
+			slug = "customer"
+		}
+		ref = "DPA-" + slug
 	}
-	return fmt.Sprintf("flomation-dpa-%s-%s.pdf", slug, p.EffectiveDate.Format("20060102"))
+	return ref + ".pdf"
+}
+
+// sanitiseRef keeps a reference filesystem-safe (alphanumerics and hyphens),
+// preserving its existing form (e.g. "DPA-60205F30").
+func sanitiseRef(s string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-':
+			b.WriteRune(r)
+		case r == ' ' || r == '_':
+			b.WriteByte('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 //go:embed logo.png
