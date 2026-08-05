@@ -392,6 +392,8 @@ func controllerSignTitle(p Params) string {
 func (d *doc) sectionTitle(title string) {
 	pdf := d.pdf
 	pdf.Ln(7)
+	// Keep the section title, its rule and the first line of content together.
+	d.ensureSpace(30)
 	pdf.SetFont("Helvetica", "B", 12.5)
 	setColor(pdf, purple)
 	pdf.MultiCell(0, 7, title, "", "L", false)
@@ -409,29 +411,49 @@ func (d *doc) bodyText(text string) {
 	pdf.Ln(2.5)
 }
 
+// ensureSpace forces a page break when fewer than h mm remain before the
+// bottom margin, so a heading is never orphaned at the foot of a page.
+func (d *doc) ensureSpace(h float64) {
+	_, pageH := d.pdf.GetPageSize()
+	_, _, _, bottom := d.pdf.GetMargins()
+	if d.pdf.GetY()+h > pageH-bottom {
+		d.pdf.AddPage()
+	}
+}
+
+// hangingParagraph renders a labelled paragraph with a hanging indent that
+// survives page breaks: the label sits in a fixed-width left column and the
+// body wraps against a temporarily-widened left margin. It deliberately does
+// NOT capture a Y coordinate — a mid-paragraph auto page break would make a
+// captured Y point at the previous page, which corrupted the layout before.
+func (d *doc) hangingParagraph(label, text string, indent float64) {
+	pdf := d.pdf
+	x := pdf.GetX()
+	pdf.CellFormat(indent, 5, latin1(label), "", 0, "L", false, 0, "")
+	pdf.SetFont("Helvetica", "", 9.5)
+	pdf.SetLeftMargin(x + indent)
+	pdf.MultiCell(0, 5, latin1(text), "", "J", false)
+	pdf.SetLeftMargin(x)
+	pdf.SetX(x)
+}
+
 // numbered renders a top-level clause with an auto-incrementing number and its
 // sub-paragraphs numbered N.1, N.2, ...
 func (d *doc) numbered(heading string, paras []string) {
 	d.clause++
 	pdf := d.pdf
 	pdf.Ln(3)
+	// Keep the clause heading with the start of its first paragraph so a
+	// heading never lands alone at the foot of a page.
+	d.ensureSpace(26)
 	pdf.SetFont("Helvetica", "B", 10.5)
 	setColor(pdf, ink)
 	pdf.MultiCell(0, 6, latin1(fmt.Sprintf("%d. %s", d.clause+1, heading)), "", "L", false)
 	pdf.Ln(1)
 	for i, para := range paras {
-		pdf.SetFont("Helvetica", "", 9.5)
 		setColor(pdf, ink)
-		num := fmt.Sprintf("%d.%d", d.clause+1, i+1)
-		// Hanging indent: number in a narrow left cell, text wrapped to the right.
-		x := pdf.GetX()
-		y := pdf.GetY()
 		pdf.SetFont("Helvetica", "B", 9.5)
-		pdf.CellFormat(12, 5, num, "", 0, "L", false, 0, "")
-		pdf.SetFont("Helvetica", "", 9.5)
-		pdf.SetXY(x+12, y)
-		pdf.MultiCell(0, 5, latin1(para), "", "J", false)
-		pdf.SetX(x)
+		d.hangingParagraph(fmt.Sprintf("%d.%d", d.clause+1, i+1), para, 12)
 		pdf.Ln(1.5)
 	}
 }
@@ -478,14 +500,9 @@ func (d *doc) annexRow(label, value string) {
 
 func (d *doc) bullet(text string) {
 	pdf := d.pdf
-	x := pdf.GetX()
-	y := pdf.GetY()
 	pdf.SetFont("Helvetica", "", 9.5)
 	setColor(pdf, ink)
-	pdf.CellFormat(5, 5, latin1("-"), "", 0, "L", false, 0, "")
-	pdf.SetXY(x+5, y)
-	pdf.MultiCell(0, 5, latin1(text), "", "J", false)
-	pdf.SetX(x)
+	d.hangingParagraph("-", text, 5)
 	pdf.Ln(0.5)
 }
 
