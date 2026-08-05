@@ -17,11 +17,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/rds v1.122.0
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.65.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/sns v1.41.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10
 	github.com/flomation-co/go-config v0.0.0-20260116170906-0989aa9f4668
 	github.com/flomation-co/sentinel-client v0.0.0-20260123183314-34c9bf28e3b2
 	github.com/gin-gonic/gin v1.11.0
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -45,7 +47,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.30 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21 // indirect
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.19 // indirect

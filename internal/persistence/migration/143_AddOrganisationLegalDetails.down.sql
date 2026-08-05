@@ -1,0 +1,9 @@
+ALTER TABLE organisation
+    DROP COLUMN legal_name,
+    DROP COLUMN company_number,
+    DROP COLUMN address_line_1,
+    DROP COLUMN address_line_2,
+    DROP COLUMN city,
+    DROP COLUMN region,
+    DROP COLUMN postcode,
+    DROP COLUMN country;

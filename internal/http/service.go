@@ -58,7 +58,7 @@ func (s *Service) corsMiddleware(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items, X-Flomation-Runner-Signature")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items, Content-Disposition")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
 		c.Writer.Header().Set("Vary", "Origin")
 	}
@@ -441,6 +441,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
+
+	// Compliance: customer-specific Data Processing Agreement plus metadata.
+	// Org-scoped via the shared ?organisation query param (personal mode when
+	// absent). The DPA is regenerated from the current template on every
+	// download, so template changes take effect immediately.
+	compliance := v1.Group("compliance")
+	compliance.Use(s.jwtMiddleware)
+	compliance.GET("/status", s.getComplianceStatus)
+	compliance.GET("/dpa", s.getDPA)
 
 	actions := v1.Group("action")
 	actions.GET("", s.getActions)

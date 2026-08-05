@@ -28,6 +28,8 @@ type mockPersistence struct {
 	users        map[string]*api.User
 	properties   map[string]*api.EnvironmentProperty
 	secrets      map[string]*api.EnvironmentSecret
+	// organisations lets compliance/gate tests inject org records keyed by id.
+	organisations map[string]*api.Organisation
 
 	// Blob store stubs. Keyed by (orgID + hex-handle) so tests can
 	// verify cross-org isolation collapses to "not found" without a
@@ -428,8 +430,11 @@ func (m *mockPersistence) MoveFlosToProject([]string, *string, string, *string) 
 func (m *mockPersistence) GetMyOrganisations(string) ([]*api.Organisation, error) {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetOrganisationByID(string) (*api.Organisation, error) {
-	panic("not implemented")
+func (m *mockPersistence) GetOrganisationByID(id string) (*api.Organisation, error) {
+	if m.organisations != nil {
+		return m.organisations[id], nil
+	}
+	return nil, nil
 }
 func (m *mockPersistence) GetQueueByRegistrationCode(string) (*api.Queue, error) {
 	panic("not implemented")
