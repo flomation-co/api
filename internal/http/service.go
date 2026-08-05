@@ -442,6 +442,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
 
+	// Compliance: customer-specific Data Processing Agreement plus metadata.
+	// Org-scoped via the shared ?organisation query param (personal mode when
+	// absent). The DPA is regenerated from the current template on every
+	// download, so template changes take effect immediately.
+	compliance := v1.Group("compliance")
+	compliance.Use(s.jwtMiddleware)
+	compliance.GET("/status", s.getComplianceStatus)
+	compliance.GET("/dpa", s.getDPA)
+
 	actions := v1.Group("action")
 	actions.GET("", s.getActions)
 	// Dynamic dropdown options for action inputs; see dynamicOptionsMetadata

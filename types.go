@@ -24,6 +24,17 @@ type Organisation struct {
 	Role               string     `json:"role,omitempty" db:"role"`
 	AllowPublicRunners bool       `json:"allow_public_runners" db:"allow_public_runners"`
 	CreatedAt          *time.Time `json:"created_at" db:"created_at"`
+	// Legal-entity details used to identify the organisation as the Controller
+	// on the generated Data Processing Agreement. All nullable — completed via
+	// the Organisation settings form. See migration 143.
+	LegalName     *string `json:"legal_name,omitempty" db:"legal_name"`
+	CompanyNumber *string `json:"company_number,omitempty" db:"company_number"`
+	AddressLine1  *string `json:"address_line_1,omitempty" db:"address_line_1"`
+	AddressLine2  *string `json:"address_line_2,omitempty" db:"address_line_2"`
+	City          *string `json:"city,omitempty" db:"city"`
+	Region        *string `json:"region,omitempty" db:"region"`
+	Postcode      *string `json:"postcode,omitempty" db:"postcode"`
+	Country       *string `json:"country,omitempty" db:"country"`
 }
 
 type OrganisationMember struct {

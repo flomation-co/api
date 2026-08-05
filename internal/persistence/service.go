@@ -338,7 +338,15 @@ func NewService(config *config.Config) (*Service, error) {
 		    name,
 		    icon,
 		    allow_public_runners,
-		    created_at
+		    created_at,
+		    legal_name,
+		    company_number,
+		    address_line_1,
+		    address_line_2,
+		    city,
+		    region,
+		    postcode,
+		    country
 		FROM
 		    organisation
 		WHERE
@@ -367,7 +375,15 @@ func NewService(config *config.Config) (*Service, error) {
 		SET
 			name = :name,
 			icon = :icon,
-			allow_public_runners = :allow_public_runners
+			allow_public_runners = :allow_public_runners,
+			legal_name = :legal_name,
+			company_number = :company_number,
+			address_line_1 = :address_line_1,
+			address_line_2 = :address_line_2,
+			city = :city,
+			region = :region,
+			postcode = :postcode,
+			country = :country
 		WHERE
 		    id = :id
 	`)
