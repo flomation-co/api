@@ -122,6 +122,20 @@ func buildDPAParams(user *api.User, org *api.Organisation) dpa.Params {
 	return p
 }
 
+// organisationLegalComplete reports whether an organisation has provided the
+// legal details it needs before its flows may run, and lists any still missing.
+// A missing organisation record is treated as incomplete. Used to gate flow
+// execution for organisation-owned flows.
+func (s *Service) organisationLegalComplete(orgID string) (bool, []string) {
+	org, err := s.persistence.GetOrganisationByID(orgID)
+	if err != nil || org == nil {
+		log.WithFields(log.Fields{"error": err, "org": orgID}).Warn("unable to load organisation for legal-details gate")
+		return false, []string{"legal_name", "company_number", "address_line_1", "postcode"}
+	}
+	missing := missingOrgLegalFields(org)
+	return len(missing) == 0, missing
+}
+
 // missingOrgLegalFields lists the legal fields an organisation still needs to
 // complete for a fully-populated DPA. The DPA still generates without them
 // (falling back to the display name), but the editor nudges admins to finish.

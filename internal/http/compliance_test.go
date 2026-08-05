@@ -80,6 +80,31 @@ func TestBuildDPAParams_Individual(t *testing.T) {
 	Expect(p.Reference).To(Equal("DPA-11112222"))
 }
 
+func TestOrganisationLegalComplete(t *testing.T) {
+	RegisterTestingT(t)
+
+	svc := &Service{persistence: &mockPersistence{organisations: map[string]*api.Organisation{
+		"org-complete": {
+			ID: "org-complete", Name: "Acme", LegalName: strptr("Acme Ltd"),
+			CompanyNumber: strptr("12345678"), AddressLine1: strptr("1 High St"), Postcode: strptr("M1 1AA"),
+		},
+		"org-partial": {ID: "org-partial", Name: "Beta", LegalName: strptr("Beta Ltd")},
+	}}}
+
+	complete, missing := svc.organisationLegalComplete("org-complete")
+	Expect(complete).To(BeTrue())
+	Expect(missing).To(BeEmpty())
+
+	complete, missing = svc.organisationLegalComplete("org-partial")
+	Expect(complete).To(BeFalse())
+	Expect(missing).To(ContainElement("company_number"))
+
+	// Unknown organisation → treated as incomplete (fail closed).
+	complete, missing = svc.organisationLegalComplete("does-not-exist")
+	Expect(complete).To(BeFalse())
+	Expect(missing).ToNot(BeEmpty())
+}
+
 func TestMissingOrgLegalFields(t *testing.T) {
 	RegisterTestingT(t)
 

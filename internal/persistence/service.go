@@ -318,6 +318,14 @@ func NewService(config *config.Config) (*Service, error) {
 		    o.icon,
 		    o.created_at,
 		    o.allow_public_runners,
+		    o.legal_name,
+		    o.company_number,
+		    o.address_line_1,
+		    o.address_line_2,
+		    o.city,
+		    o.region,
+		    o.postcode,
+		    o.country,
 		    ou.role
 		FROM
 		    organisation o
