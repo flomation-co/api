@@ -218,7 +218,7 @@ func (d *doc) parties(p Params) {
 	}
 	d.partyBlock("(2) The Controller", controllerLines)
 
-	d.pdf.Ln(1)
+	d.pdf.Ln(4)
 	d.bodyText(fmt.Sprintf("This Agreement is made between the Processor and the Controller (each a \"party\" and together the \"parties\"). It governs the Processing of Personal Data by the Processor on behalf of the Controller in connection with the Controller's use of the Flomation workflow automation platform (the \"Services\"), and forms part of the agreement under which the Services are provided (the \"Principal Agreement\")."))
 }
 
@@ -391,13 +391,14 @@ func controllerSignTitle(p Params) string {
 
 func (d *doc) sectionTitle(title string) {
 	pdf := d.pdf
-	pdf.Ln(2)
-	pdf.SetFont("Helvetica", "B", 12)
+	pdf.Ln(7)
+	pdf.SetFont("Helvetica", "B", 12.5)
 	setColor(pdf, purple)
 	pdf.MultiCell(0, 7, title, "", "L", false)
+	pdf.Ln(1.5)
 	pdf.SetDrawColor(220, 220, 220)
-	pdf.Line(20, pdf.GetY()+0.5, 190, pdf.GetY()+0.5)
-	pdf.Ln(2)
+	pdf.Line(20, pdf.GetY(), 190, pdf.GetY())
+	pdf.Ln(5)
 }
 
 func (d *doc) bodyText(text string) {
@@ -405,7 +406,7 @@ func (d *doc) bodyText(text string) {
 	pdf.SetFont("Helvetica", "", 9.5)
 	setColor(pdf, ink)
 	pdf.MultiCell(0, 5, latin1(text), "", "J", false)
-	pdf.Ln(1.5)
+	pdf.Ln(2.5)
 }
 
 // numbered renders a top-level clause with an auto-incrementing number and its
@@ -413,10 +414,11 @@ func (d *doc) bodyText(text string) {
 func (d *doc) numbered(heading string, paras []string) {
 	d.clause++
 	pdf := d.pdf
-	pdf.Ln(1)
+	pdf.Ln(3)
 	pdf.SetFont("Helvetica", "B", 10.5)
 	setColor(pdf, ink)
 	pdf.MultiCell(0, 6, latin1(fmt.Sprintf("%d. %s", d.clause+1, heading)), "", "L", false)
+	pdf.Ln(1)
 	for i, para := range paras {
 		pdf.SetFont("Helvetica", "", 9.5)
 		setColor(pdf, ink)
@@ -430,7 +432,7 @@ func (d *doc) numbered(heading string, paras []string) {
 		pdf.SetXY(x+12, y)
 		pdf.MultiCell(0, 5, latin1(para), "", "J", false)
 		pdf.SetX(x)
-		pdf.Ln(0.5)
+		pdf.Ln(1.5)
 	}
 }
 
@@ -441,15 +443,16 @@ func (d *doc) definitionRow(term, meaning string) {
 	pdf.MultiCell(0, 5, latin1("\""+term+"\""), "", "L", false)
 	pdf.SetFont("Helvetica", "", 9.5)
 	pdf.MultiCell(0, 5, latin1("means "+meaning), "", "J", false)
-	pdf.Ln(1)
+	pdf.Ln(2.5)
 }
 
 func (d *doc) partyBlock(label string, lines []string) {
 	pdf := d.pdf
-	pdf.Ln(1)
+	pdf.Ln(3.5)
 	pdf.SetFont("Helvetica", "B", 10)
 	setColor(pdf, teal)
 	pdf.CellFormat(0, 5, label, "", 1, "L", false, 0, "")
+	pdf.Ln(1)
 	setColor(pdf, ink)
 	for i, line := range lines {
 		if i == 0 {
@@ -457,7 +460,7 @@ func (d *doc) partyBlock(label string, lines []string) {
 		} else {
 			pdf.SetFont("Helvetica", "", 9)
 		}
-		pdf.MultiCell(0, 4.6, latin1(line), "", "L", false)
+		pdf.MultiCell(0, 4.8, latin1(line), "", "L", false)
 	}
 }
 
@@ -466,10 +469,11 @@ func (d *doc) annexRow(label, value string) {
 	pdf.SetFont("Helvetica", "B", 9.5)
 	setColor(pdf, teal)
 	pdf.MultiCell(0, 5, label, "", "L", false)
+	pdf.Ln(0.5)
 	pdf.SetFont("Helvetica", "", 9.5)
 	setColor(pdf, ink)
 	pdf.MultiCell(0, 5, latin1(value), "", "J", false)
-	pdf.Ln(1.5)
+	pdf.Ln(3)
 }
 
 func (d *doc) bullet(text string) {
