@@ -20,6 +20,7 @@ func TestBuildDPAParams_Organisation(t *testing.T) {
 	org := &api.Organisation{
 		ID:            "0a1b2c3d-4e5f-6789-abcd-ef0123456789",
 		Name:          "Acme Widgets",
+		CompanyType:   strptr("limited_company"),
 		LegalName:     strptr("Acme Widgets Limited"),
 		CompanyNumber: strptr("12345678"),
 		AddressLine1:  strptr("1 High Street"),
@@ -33,6 +34,7 @@ func TestBuildDPAParams_Organisation(t *testing.T) {
 	Expect(p.ControllerType).To(Equal("organisation"))
 	Expect(p.ControllerName).To(Equal("Acme Widgets"))
 	Expect(p.ControllerLegal).To(Equal("Acme Widgets Limited"))
+	Expect(p.CompanyType).To(Equal("limited_company"))
 	Expect(p.CompanyNumber).To(Equal("12345678"))
 	// Contact is the acting user.
 	Expect(p.ContactName).To(Equal("Andy Esser"))
@@ -84,20 +86,32 @@ func TestOrganisationLegalComplete(t *testing.T) {
 	RegisterTestingT(t)
 
 	svc := &Service{persistence: &mockPersistence{organisations: map[string]*api.Organisation{
+		// Limited company → company number required, address line 1 optional.
 		"org-complete": {
-			ID: "org-complete", Name: "Acme", LegalName: strptr("Acme Ltd"),
-			CompanyNumber: strptr("12345678"), AddressLine1: strptr("1 High St"), Postcode: strptr("M1 1AA"),
+			ID: "org-complete", Name: "Acme", CompanyType: strptr("limited_company"),
+			LegalName: strptr("Acme Ltd"), CompanyNumber: strptr("12345678"),
+			City: strptr("Manchester"), Postcode: strptr("M1 1AA"), Country: strptr("United Kingdom"),
 		},
-		"org-partial": {ID: "org-partial", Name: "Beta", LegalName: strptr("Beta Ltd")},
+		// Sole trader → no company number required; still complete without one.
+		"org-sole": {
+			ID: "org-sole", Name: "Jo's Cafe", CompanyType: strptr("sole_trader"),
+			LegalName: strptr("Josephine Bloggs"),
+			City:      strptr("Leeds"), Postcode: strptr("LS1 2CD"), Country: strptr("United Kingdom"),
+		},
+		"org-partial": {ID: "org-partial", Name: "Beta", CompanyType: strptr("limited_company"), LegalName: strptr("Beta Ltd")},
 	}}}
 
 	complete, missing := svc.organisationLegalComplete("org-complete")
 	Expect(complete).To(BeTrue())
 	Expect(missing).To(BeEmpty())
 
+	complete, _ = svc.organisationLegalComplete("org-sole")
+	Expect(complete).To(BeTrue())
+
 	complete, missing = svc.organisationLegalComplete("org-partial")
 	Expect(complete).To(BeFalse())
 	Expect(missing).To(ContainElement("company_number"))
+	Expect(missing).To(ContainElement("city"))
 
 	// Unknown organisation → treated as incomplete (fail closed).
 	complete, missing = svc.organisationLegalComplete("does-not-exist")
@@ -108,24 +122,38 @@ func TestOrganisationLegalComplete(t *testing.T) {
 func TestMissingOrgLegalFields(t *testing.T) {
 	RegisterTestingT(t)
 
-	// Fully complete → nothing missing.
+	// Fully complete limited company → nothing missing (address line 1 omitted).
 	complete := &api.Organisation{
+		CompanyType:   strptr("limited_company"),
 		LegalName:     strptr("Acme Ltd"),
 		CompanyNumber: strptr("12345678"),
-		AddressLine1:  strptr("1 High Street"),
+		City:          strptr("Manchester"),
 		Postcode:      strptr("M1 1AA"),
+		Country:       strptr("United Kingdom"),
 	}
 	Expect(missingOrgLegalFields(complete)).To(BeEmpty())
 
-	// Empty org → all four required fields flagged.
-	Expect(missingOrgLegalFields(&api.Organisation{})).To(Equal(
-		[]string{"legal_name", "company_number", "address_line_1", "postcode"}))
+	// Sole trader with no company number → still complete.
+	sole := &api.Organisation{
+		CompanyType: strptr("sole_trader"),
+		LegalName:   strptr("Jo Bloggs"),
+		City:        strptr("Leeds"),
+		Postcode:    strptr("LS1 2CD"),
+		Country:     strptr("United Kingdom"),
+	}
+	Expect(missingOrgLegalFields(sole)).To(BeEmpty())
 
-	// Whitespace-only values count as missing.
+	// Empty org → company_type, legal_name, city, postcode, country flagged
+	// (company_number is not required until a type that has one is chosen).
+	Expect(missingOrgLegalFields(&api.Organisation{})).To(Equal(
+		[]string{"company_type", "legal_name", "city", "postcode", "country"}))
+
+	// A limited company missing only its number.
 	Expect(missingOrgLegalFields(&api.Organisation{
-		LegalName:     strptr("  "),
-		CompanyNumber: strptr("87654321"),
-		AddressLine1:  strptr("2 Low Road"),
-		Postcode:      strptr("EH1 1AB"),
-	})).To(Equal([]string{"legal_name"}))
+		CompanyType: strptr("limited_company"),
+		LegalName:   strptr("Acme Ltd"),
+		City:        strptr("Manchester"),
+		Postcode:    strptr("M1 1AA"),
+		Country:     strptr("United Kingdom"),
+	})).To(Equal([]string{"company_number"}))
 }

@@ -67,6 +67,24 @@ func TestLatin1_DowngradesPunctuationAndDropsNoEmDash(t *testing.T) {
 	Expect(got).To(Equal("The Controller's \"data\" - owned - always"))
 }
 
+func TestCompanyTypeHelpers(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Registered entity types require a company number.
+	Expect(RequiresCompanyNumber("limited_company")).To(BeTrue())
+	Expect(RequiresCompanyNumber("llp")).To(BeTrue())
+	Expect(RequiresCompanyNumber("plc")).To(BeTrue())
+	// Sole traders / partnerships / charities do not.
+	Expect(RequiresCompanyNumber("sole_trader")).To(BeFalse())
+	Expect(RequiresCompanyNumber("partnership")).To(BeFalse())
+	Expect(RequiresCompanyNumber("")).To(BeFalse())
+
+	Expect(CompanyTypeLabel("sole_trader")).To(Equal("Sole Trader"))
+	Expect(CompanyTypeLabel("limited_company")).To(Equal("Limited Company"))
+	// Unknown code falls back to the code itself.
+	Expect(CompanyTypeLabel("mystery")).To(Equal("mystery"))
+}
+
 func TestSanitiseSlug(t *testing.T) {
 	RegisterTestingT(t)
 

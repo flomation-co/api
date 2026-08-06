@@ -26,7 +26,8 @@ type Organisation struct {
 	CreatedAt          *time.Time `json:"created_at" db:"created_at"`
 	// Legal-entity details used to identify the organisation as the Controller
 	// on the generated Data Processing Agreement. All nullable — completed via
-	// the Organisation settings form. See migration 143.
+	// the Organisation settings form. See migrations 143 and 144.
+	CompanyType   *string `json:"company_type,omitempty" db:"company_type"`
 	LegalName     *string `json:"legal_name,omitempty" db:"legal_name"`
 	CompanyNumber *string `json:"company_number,omitempty" db:"company_number"`
 	AddressLine1  *string `json:"address_line_1,omitempty" db:"address_line_1"`

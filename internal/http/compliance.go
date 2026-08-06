@@ -102,6 +102,7 @@ func buildDPAParams(user *api.User, org *api.Organisation) dpa.Params {
 		p.ControllerType = "organisation"
 		p.ControllerName = org.Name
 		p.ControllerLegal = firstNonEmpty(deref(org.LegalName), org.Name)
+		p.CompanyType = deref(org.CompanyType)
 		p.CompanyNumber = deref(org.CompanyNumber)
 		p.AddressLines = assembleAddress(
 			deref(org.AddressLine1), deref(org.AddressLine2),
@@ -130,28 +131,38 @@ func (s *Service) organisationLegalComplete(orgID string) (bool, []string) {
 	org, err := s.persistence.GetOrganisationByID(orgID)
 	if err != nil || org == nil {
 		log.WithFields(log.Fields{"error": err, "org": orgID}).Warn("unable to load organisation for legal-details gate")
-		return false, []string{"legal_name", "company_number", "address_line_1", "postcode"}
+		return false, []string{"company_type", "legal_name", "city", "postcode", "country"}
 	}
 	missing := missingOrgLegalFields(org)
 	return len(missing) == 0, missing
 }
 
 // missingOrgLegalFields lists the legal fields an organisation still needs to
-// complete for a fully-populated DPA. The DPA still generates without them
-// (falling back to the display name), but the editor nudges admins to finish.
+// complete before its flows may run and for a fully-populated DPA. A company
+// number is required only for registered entity types (Ltd, LLP, PLC); a sole
+// trader or partnership has none. Address line 1 is optional (city, postcode
+// and country give a usable registered address). This is the single source of
+// truth the editor's Save-button completeness check mirrors.
 func missingOrgLegalFields(org *api.Organisation) []string {
 	var missing []string
+	companyType := strings.TrimSpace(deref(org.CompanyType))
+	if companyType == "" {
+		missing = append(missing, "company_type")
+	}
 	if strings.TrimSpace(deref(org.LegalName)) == "" {
 		missing = append(missing, "legal_name")
 	}
-	if strings.TrimSpace(deref(org.CompanyNumber)) == "" {
+	if dpa.RequiresCompanyNumber(companyType) && strings.TrimSpace(deref(org.CompanyNumber)) == "" {
 		missing = append(missing, "company_number")
 	}
-	if strings.TrimSpace(deref(org.AddressLine1)) == "" {
-		missing = append(missing, "address_line_1")
+	if strings.TrimSpace(deref(org.City)) == "" {
+		missing = append(missing, "city")
 	}
 	if strings.TrimSpace(deref(org.Postcode)) == "" {
 		missing = append(missing, "postcode")
+	}
+	if strings.TrimSpace(deref(org.Country)) == "" {
+		missing = append(missing, "country")
 	}
 	return missing
 }
