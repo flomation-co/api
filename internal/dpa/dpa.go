@@ -50,6 +50,42 @@ var (
 	muted  = []int{120, 120, 120}
 )
 
+// companyTypeLabels maps a stored company-type code to its human-readable label
+// (shown on the DPA). Kept here so the executor, gate and PDF agree on the set.
+var companyTypeLabels = map[string]string{
+	"sole_trader":     "Sole Trader",
+	"limited_company": "Limited Company",
+	"llp":             "Limited Liability Partnership",
+	"plc":             "Public Limited Company",
+	"partnership":     "Partnership",
+	"charity":         "Charity",
+	"other":           "Other",
+}
+
+// companyTypesRequiringNumber are the registered entity types that have a
+// Companies House registration number. Sole traders, partnerships and charities
+// do not, so a company number is not required for them.
+var companyTypesRequiringNumber = map[string]bool{
+	"limited_company": true,
+	"llp":             true,
+	"plc":             true,
+}
+
+// RequiresCompanyNumber reports whether the given company type has a registered
+// company number (and so should require one for a complete legal record).
+func RequiresCompanyNumber(companyType string) bool {
+	return companyTypesRequiringNumber[strings.TrimSpace(companyType)]
+}
+
+// CompanyTypeLabel returns the human-readable label for a company-type code, or
+// the code itself if unknown.
+func CompanyTypeLabel(companyType string) string {
+	if label, ok := companyTypeLabels[strings.TrimSpace(companyType)]; ok {
+		return label
+	}
+	return strings.TrimSpace(companyType)
+}
+
 // Params identifies the Controller for a specific customer's agreement.
 type Params struct {
 	// ControllerType is "organisation" or "individual".
@@ -59,6 +95,8 @@ type Params struct {
 	// ControllerLegal is the registered legal-entity name where known; for an
 	// individual this is their full name.
 	ControllerLegal string
+	// CompanyType is the organisation's company-type code (see companyTypeLabels).
+	CompanyType string
 	// CompanyNumber is the registered company number (organisations only).
 	CompanyNumber string
 	// AddressLines is the registered/contact address, already assembled into
@@ -232,6 +270,9 @@ func (d *doc) parties(p Params) {
 
 	// Controller block.
 	controllerLines := []string{d.legalHeadline(p)}
+	if p.ControllerType == "organisation" && p.CompanyType != "" {
+		controllerLines = append(controllerLines, "Company type: "+CompanyTypeLabel(p.CompanyType))
+	}
 	if p.CompanyNumber != "" {
 		controllerLines = append(controllerLines, "Company number: "+p.CompanyNumber)
 	}
