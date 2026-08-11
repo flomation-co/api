@@ -49,17 +49,19 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"quickbooks":     {Key: "quickbooks", Name: "QuickBooks Online", Icon: "quickbooks", Description: "Manage customers, invoices, bills, payments and the ledger in QuickBooks Online"},
 	"xero":           {Key: "xero", Name: "Xero", Icon: "xero", Description: "Manage contacts, invoices, bills, payments and the ledger in Xero"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
-	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
-	"string":         {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
-	"social":         {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
-	"google":         {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
-	"mailchimp":      {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email", SubKey: "mailchimp", SubName: "Mailchimp", SubIcon: "mailchimp", SubDescription: "Manage audiences, members, tags, and campaigns in Mailchimp"},
-	"makefile":       {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
-	"twilio":         {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
-	"microsoft":      {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
-	"webflow":        {Key: "webflow", Name: "Webflow", Icon: "webflow", Description: "Manage Webflow sites, CMS collections, pages, and forms"},
-	"journey":        {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
-	"plan":           {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
+	// Metadata must match executor/actions/heygen/category.go (Name/Icon/Description).
+	"heygen":    {Key: "heygen", Name: "HeyGen", Icon: "film", Description: "Generate AI avatar videos, voices and translations with HeyGen"},
+	"subflow":   {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
+	"string":    {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
+	"social":    {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
+	"google":    {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
+	"mailchimp": {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email", SubKey: "mailchimp", SubName: "Mailchimp", SubIcon: "mailchimp", SubDescription: "Manage audiences, members, tags, and campaigns in Mailchimp"},
+	"makefile":  {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
+	"twilio":    {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
+	"microsoft": {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
+	"webflow":   {Key: "webflow", Name: "Webflow", Icon: "webflow", Description: "Manage Webflow sites, CMS collections, pages, and forms"},
+	"journey":   {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
+	"plan":      {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
 	// OpenTofu predates the infrastructure/ directory and still uses two-segment
 	// action IDs (opentofu/apply), so its sub-group is carried inline here rather
 	// than resolved from subCategoryMetadata: getCategoryForAction only populates
@@ -183,8 +185,13 @@ var subCategoryMetadata = map[string]struct {
 	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
 	// Description must stay byte-identical to CategoryDescription in
 	// executor/actions/crm/salesforce/category.go.
-	"crm/salesforce":                 {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
-	"crm/apollo":                     {Name: "Apollo", Icon: "apollo", Description: "Enrich, search and manage Apollo.io contacts, accounts, deals and sequences"},
+	"crm/salesforce": {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
+	"crm/apollo":     {Name: "Apollo", Icon: "apollo", Description: "Enrich, search and manage Apollo.io contacts, accounts, deals and sequences"},
+	// Sub-category metadata must match executor/actions/heygen/<group>/category.go.
+	"heygen/videos":                  {Name: "Videos", Icon: "video", Description: "Generate and retrieve HeyGen avatar videos"},
+	"heygen/avatars":                 {Name: "Avatars", Icon: "user", Description: "Browse HeyGen avatars and looks"},
+	"heygen/voices":                  {Name: "Voices", Icon: "microphone", Description: "Browse HeyGen voices"},
+	"heygen/account":                 {Name: "Account", Icon: "gauge", Description: "HeyGen account and credit balance"},
 	"ecommerce/woocommerce":          {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"cms/wordpress":                  {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":            {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
