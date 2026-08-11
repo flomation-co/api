@@ -49,8 +49,10 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"quickbooks":     {Key: "quickbooks", Name: "QuickBooks Online", Icon: "quickbooks", Description: "Manage customers, invoices, bills, payments and the ledger in QuickBooks Online"},
 	"xero":           {Key: "xero", Name: "Xero", Icon: "xero", Description: "Manage contacts, invoices, bills, payments and the ledger in Xero"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
-	// Metadata must match executor/actions/heygen/category.go (Name/Icon/Description).
-	"heygen":    {Key: "heygen", Name: "HeyGen", Icon: "film", Description: "Generate AI avatar videos, voices and translations with HeyGen"},
+	// Name/Description match executor/actions/heygen/category.go. Icon uses the
+	// HeyGen brand mark added to the editor icon set; the executor manifest's
+	// category icon is ignored at serve time, so the palette icon lives here.
+	"heygen":    {Key: "heygen", Name: "HeyGen", Icon: "heygen", Description: "Generate AI avatar videos, voices and translations with HeyGen"},
 	"subflow":   {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
 	"string":    {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
 	"social":    {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
