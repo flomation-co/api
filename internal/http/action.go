@@ -194,6 +194,7 @@ var subCategoryMetadata = map[string]struct {
 	"heygen/avatars":                 {Name: "Avatars", Icon: "user", Description: "Browse HeyGen avatars and looks"},
 	"heygen/voices":                  {Name: "Voices", Icon: "microphone", Description: "Browse HeyGen voices"},
 	"heygen/account":                 {Name: "Account", Icon: "gauge", Description: "HeyGen account and credit balance"},
+	"heygen/templates":               {Name: "Templates", Icon: "copy", Description: "Generate branded videos from HeyGen Studio templates"},
 	"ecommerce/woocommerce":          {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"cms/wordpress":                  {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":            {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
