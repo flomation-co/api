@@ -17,8 +17,8 @@ func TestHeyGenActionsResolveTheirCategory(t *testing.T) {
 	if cat.Name != "HeyGen" {
 		t.Errorf("category name = %q, want HeyGen", cat.Name)
 	}
-	if cat.Icon != "film" {
-		t.Errorf("category icon = %q, want film", cat.Icon)
+	if cat.Icon != "heygen" {
+		t.Errorf("category icon = %q, want heygen", cat.Icon)
 	}
 	if cat.SubKey != "heygen/videos" {
 		t.Errorf("sub-category key = %q, want heygen/videos", cat.SubKey)
