@@ -33,6 +33,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"nosql":          {Key: "nosql", Name: "NoSQL", Icon: "layer-group", Description: "NoSQL database operations"},
 	"sql":            {Key: "sql", Name: "SQL", Icon: "database", Description: "Relational database queries"},
 	"script":         {Key: "script", Name: "Script", Icon: "terminal", Description: "Execute scripts and commands"},
+	"desktop":        {Key: "desktop", Name: "Desktop", Icon: "display", Description: "Drive and record a desktop VM over SSH (screenshots, mouse, keyboard, screen recording)"},
 	"trigger":        {Key: "trigger", Name: "Triggers", Icon: "bolt-lightning", Description: "Start a Flow"},
 	"error":          {Key: "error", Name: "Error Handling", Icon: "triangle-exclamation", Description: "Handle and recover from flow errors"},
 	"agent":          {Key: "agent", Name: "Agent", Icon: "robot", Description: "Interact with Flomation Agents"},
