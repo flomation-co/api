@@ -458,6 +458,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// auth-gated like the other editor option-fetch proxies.
 	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
 	actions.GET("/options/ollama-models", s.jwtMiddleware, s.getOllamaModels)
+	// HeyGen live Avatar/Voice dropdowns — proxy /v3/avatars and /v3/voices,
+	// resolving a ${secrets.X} api_key server-side. See heygen_options.go.
+	actions.GET("/options/heygen-avatars", s.jwtMiddleware, s.getHeyGenAvatars)
+	actions.GET("/options/heygen-voices", s.jwtMiddleware, s.getHeyGenVoices)
 	// Live model dropdowns for the paste-a-key AI providers. Each proxies the
 	// provider's models endpoint, resolving a ${secrets.X} api_key server-side
 	// (openwebui additionally forwards its endpoint). See ai_models.go.

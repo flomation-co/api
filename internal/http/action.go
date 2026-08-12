@@ -195,6 +195,7 @@ var subCategoryMetadata = map[string]struct {
 	"heygen/voices":                  {Name: "Voices", Icon: "microphone", Description: "Browse HeyGen voices"},
 	"heygen/account":                 {Name: "Account", Icon: "gauge", Description: "HeyGen account and credit balance"},
 	"heygen/templates":               {Name: "Templates", Icon: "copy", Description: "Generate branded videos from HeyGen Studio templates"},
+	"heygen/translation":             {Name: "Translation", Icon: "globe", Description: "Translate and dub existing videos into other languages with HeyGen"},
 	"ecommerce/woocommerce":          {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"cms/wordpress":                  {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":            {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
@@ -357,6 +358,23 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 // a wall of near-identical literals — see kubernetes_options.go (~120 markers)
 // and pgvector_options.go (~50). Grep the endpoint name to find them.
 var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
+	// HeyGen live Avatar/Voice pickers. Each resolves from a proxy that lists
+	// the account's avatars/voices server-side, forwarding the node's api_key
+	// (a secret resolved from the environment — the plaintext never transits
+	// the browser). The action's static (empty) options remain the manual-entry
+	// fallback. See heygen_options.go.
+	"heygen/videos/generate_avatar_video#avatar_id": {
+		Endpoint: "/api/v1/action/options/heygen-avatars",
+		Params:   []string{"api_key"},
+	},
+	"heygen/videos/generate_avatar_video#voice_id": {
+		Endpoint: "/api/v1/action/options/heygen-voices",
+		Params:   []string{"api_key"},
+	},
+	"heygen/videos/generate_from_image#voice_id": {
+		Endpoint: "/api/v1/action/options/heygen-voices",
+		Params:   []string{"api_key"},
+	},
 	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
 	// Live "Model" dropdowns for the paste-a-key AI providers, resolved from a
 	// proxy that fetches each provider's models list server-side (the api_key
