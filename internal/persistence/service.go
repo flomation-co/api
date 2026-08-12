@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -4702,12 +4703,52 @@ func (s *Service) UpdateExecutionResult(ID string, result interface{}) error {
 		Result interface{} `db:"result"`
 	}{
 		ID:     ID,
-		Result: result,
+		Result: SanitiseJSONBValue(result),
 	}); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// nulEscapeSeq is the six-character JSON escape a NUL byte marshals to
+// (backslash, u, 0, 0, 0, 0). PostgreSQL's jsonb type CANNOT store it — the
+// write is rejected with "pq: unsupported Unicode escape sequence" — even
+// though it is valid JSON per the spec. A single NUL anywhere in a flow's node
+// outputs therefore fails the whole result write, leaving the execution row
+// marked success but with a NULL result/completed_at (so the editor renders no
+// node state or logs). Strip NULs (raw 0x00 and the escaped form) before any
+// jsonb write.
+var nulEscapeSeq = []byte("\\u0000")
+
+// SanitiseJSONBValue removes NUL bytes and their JSON escape from a value bound
+// for a jsonb column. It handles the marshalled-JSON forms the API actually
+// passes (json.RawMessage / []byte / string); any other type passes through
+// untouched (pq marshals it itself).
+func SanitiseJSONBValue(v interface{}) interface{} {
+	switch b := v.(type) {
+	case json.RawMessage:
+		return json.RawMessage(sanitiseJSONBytes(b))
+	case []byte:
+		return sanitiseJSONBytes(b)
+	case string:
+		return string(sanitiseJSONBytes([]byte(b)))
+	default:
+		return v
+	}
+}
+
+// sanitiseJSONBytes strips raw NUL bytes and their escaped JSON form. It only
+// allocates when a NUL is actually present, so the common (clean) path is a
+// cheap scan.
+func sanitiseJSONBytes(b []byte) []byte {
+	if bytes.IndexByte(b, 0) >= 0 {
+		b = bytes.ReplaceAll(b, []byte{0}, nil)
+	}
+	if bytes.Contains(b, nulEscapeSeq) {
+		b = bytes.ReplaceAll(b, nulEscapeSeq, nil)
+	}
+	return b
 }
 
 func (s *Service) UpdateExecutionRunnerID(ID string, runnerID string) error {
