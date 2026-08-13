@@ -29,22 +29,32 @@ import (
 	"errors"
 	"net/http"
 
-	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
 
-// userBlobScopes returns every blob scope the JWT user may read: their personal
-// owner scope plus one org scope per membership. A blob is served if it lives in
-// ANY of these. This fixes the bug where only Organisations[0] was consulted, so
-// a user belonging to several orgs 404'd on a blob owned by a non-first org
-// (e.g. the execution view's screenshot previews for a multi-org user).
-func userBlobScopes(user *api.User) []persistence.BlobScope {
-	scopes := make([]persistence.BlobScope, 0, len(user.Organisations)+1)
-	scopes = append(scopes, persistence.OwnerScope(user.ID))
-	for _, org := range user.Organisations {
-		scopes = append(scopes, persistence.OrgScope(org.ID))
+// userBlobScopes returns every blob scope the user may read: their personal
+// owner scope plus one org scope per organisation they belong to. A blob is
+// served if it lives in ANY of these.
+//
+// CRUCIAL: it loads the user's real memberships from the DB (GetMyOrganisations)
+// rather than user.Organisations — the latter is populated only from the
+// request's active-org context (c.Get("organisation_id")), which the editor's
+// plain cookie-authed blob fetch does NOT send. So user.Organisations is empty
+// on this path, and relying on it 404'd every org-scoped blob (screenshots,
+// chart renders) in the execution view.
+func (s *Service) userBlobScopes(userID string) []persistence.BlobScope {
+	scopes := []persistence.BlobScope{persistence.OwnerScope(userID)}
+	orgs, err := s.persistence.GetMyOrganisations(userID)
+	if err != nil {
+		log.WithError(err).Warn("blob (public): could not load user organisations; personal scope only")
+		return scopes
+	}
+	for _, org := range orgs {
+		if org != nil && org.ID != "" {
+			scopes = append(scopes, persistence.OrgScope(org.ID))
+		}
 	}
 	return scopes
 }
@@ -93,7 +103,7 @@ func (s *Service) getBlobPublic(c *gin.Context) {
 	// Cross-scope / unknown blobs fall through to 404 — never 403, and the
 	// bytes are never leaked. A miss is a cheap indexed lookup that never
 	// decrypts, so the loop is inexpensive even for many memberships.
-	for _, scope := range userBlobScopes(user) {
+	for _, scope := range s.userBlobScopes(user.ID) {
 		content, mime, _, err := s.persistence.GetBlob(scope, handle)
 		if err == nil {
 			// Cache-Control: private — user-scoped bytes; cache between page
