@@ -81,6 +81,9 @@ func (m *mockPersistence) GetConversationMessagesForAgent(string, string, string
 func (m *mockPersistence) SearchAgentMessages(string, string, string, int) ([]persistence.AgentMessageSearchResult, error) {
 	return nil, nil
 }
+func (m *mockPersistence) SearchAgentMessagesByEmbedding(string, string, pgvector.Vector, int) ([]persistence.AgentMessageSearchResult, error) {
+	return nil, nil
+}
 
 func (m *mockPersistence) GetAgentUserCalendarAccessToken(string) (string, error) {
 	return "", nil

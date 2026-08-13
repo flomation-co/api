@@ -43,10 +43,12 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	poller.StartResumePoller(p, s.executionNotifier)
 	log.Info("API-side resume poller registered")
 
-	// Embedding backfill poller (15s) — generates missing embeddings.
+	// Embedding backfill pollers (15s) — generate missing embeddings for
+	// memories and for conversation messages (Phase 2 semantic search).
 	if s.embeddingProvider != nil {
 		poller.StartEmbeddingBackfillPoller(p, s.embeddingProvider)
-		log.Info("API-side embedding backfill poller registered")
+		poller.StartMessageEmbeddingBackfillPoller(p, s.embeddingProvider)
+		log.Info("API-side embedding backfill pollers registered (memories + messages)")
 	}
 
 	// Conversation sweeper (5m) — closes abandoned conversations whose
