@@ -127,12 +127,17 @@ func (cp *CommitmentPoller) processCommitment(c *api.AgentCommitment) {
 			}
 		}
 
-		// Include recent conversation history.
-		if msgs, err := cp.persistence.GetAgentConversationMessages(*c.ConversationID, 5); err == nil {
+		// Include recent conversation history (same window as the live inbound
+		// path so a fired reminder has the same memory the user would expect).
+		if msgs, err := cp.persistence.GetAgentConversationMessages(*c.ConversationID, 30); err == nil {
 			history := normaliseHistory(msgs)
 			if len(history) > 0 {
 				triggerData["conversation_history"] = history
 			}
+		} else {
+			// Do NOT swallow: a failure here fires the reminder context-blind,
+			// which is invisible without this line.
+			l.WithError(err).Warn("commitment: failed to load conversation history; firing without it")
 		}
 	}
 
