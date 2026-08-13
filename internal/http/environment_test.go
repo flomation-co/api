@@ -78,6 +78,9 @@ func (m *mockPersistence) GetRecentPriorConversations(string, string, int) ([]pe
 func (m *mockPersistence) GetConversationMessagesForAgent(string, string, string, int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error) {
 	return nil, nil, 0, false, nil
 }
+func (m *mockPersistence) SearchAgentMessages(string, string, string, int) ([]persistence.AgentMessageSearchResult, error) {
+	return nil, nil
+}
 
 func (m *mockPersistence) GetAgentUserCalendarAccessToken(string) (string, error) {
 	return "", nil

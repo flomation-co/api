@@ -953,6 +953,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// See plans/agent_memory.md.
 	internal.POST("/agent/:id/resolve-identity", s.resolveAgentIdentityInternal)
 	internal.POST("/agent/:id/conversation", s.resolveAgentConversationInternal)
+	internal.POST("/agent/:id/history/search", s.searchAgentHistoryInternal)
 	internal.GET("/conversation/:id", s.getAgentConversationInternal)
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
