@@ -187,6 +187,13 @@ func (h *InboundHandler) HandleInboundMessage(agentID string, msg InboundMessage
 		msgs, err := h.persistence.GetAgentConversationMessages(*conversationID, defaultHistoryLimit)
 		if err == nil {
 			conversationHistory = normaliseMessages(msgs)
+		} else {
+			// Never silently drop history — running an agent turn context-blind
+			// is a serious, otherwise-invisible failure.
+			log.WithFields(log.Fields{
+				"conversation_id": *conversationID,
+				"error":           err,
+			}).Warn("failed to load conversation history; agent turn will run without it")
 		}
 	}
 

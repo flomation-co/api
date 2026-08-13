@@ -305,6 +305,19 @@ func NewService(config *config.Config) (*Service, error) {
 	db.SetMaxOpenConns(config.Database.MaxOpenConnections)
 	db.SetMaxIdleConns(config.Database.MaxIdleConnections)
 
+	// Mark the connection Unsafe so that `SELECT *` queries tolerate table
+	// columns that have no matching field on the destination struct, instead
+	// of failing the whole scan with "missing destination name <column>".
+	//
+	// This guards against a whole class of silent regression: adding a column
+	// to a table (e.g. agent_message.content_tsv / agent_message.embedding for
+	// conversation search) would otherwise break every `SELECT *` reader of
+	// that table — including GetAgentConversationMessages, which loads an
+	// agent's history. That failure was swallowed by callers, leaving agents
+	// with no conversation memory. Unsafe propagates to statements prepared
+	// from this connection below, so it must be set before any PrepareNamed.
+	db = db.Unsafe()
+
 	s := Service{
 		config: config,
 		conn:   db,
