@@ -81,3 +81,22 @@ func TestSanitiseJSONBValue_CleanPassthrough(t *testing.T) {
 		t.Errorf("int passthrough altered: %v", v)
 	}
 }
+
+func TestSanitiseJSONBValue_PreservesLiteralBackslashU0000(t *testing.T) {
+	// A literal backslash-then-u0000 in the data marshals to two backslashes;
+	// the old ReplaceAll stripped the escape from the second one, leaving a
+	// lone backslash (invalid JSON). It must be preserved; a genuine NUL must
+	// still be stripped.
+	in := json.RawMessage(`{"lit":"\\u0000","real":"a\u0000b","n":3}`)
+	out := SanitiseJSONBValue(in).(json.RawMessage)
+	var v map[string]interface{}
+	if err := json.Unmarshal(out, &v); err != nil {
+		t.Fatalf("literal corrupted to invalid JSON: %v (%q)", err, out)
+	}
+	if v["lit"] != "\\u0000" {
+		t.Errorf("literal value altered: got %q", v["lit"])
+	}
+	if v["real"] != "ab" {
+		t.Errorf("real NUL not stripped: got %q", v["real"])
+	}
+}

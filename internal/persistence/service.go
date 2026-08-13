@@ -4738,17 +4738,40 @@ func SanitiseJSONBValue(v interface{}) interface{} {
 	}
 }
 
-// sanitiseJSONBytes strips raw NUL bytes and their escaped JSON form. It only
-// allocates when a NUL is actually present, so the common (clean) path is a
-// cheap scan.
+// sanitiseJSONBytes strips raw NUL bytes and REAL NUL escapes from marshalled
+// JSON. It is backslash-aware: a naive substring strip of the six-byte NUL
+// escape is WRONG, because a literal backslash-then-u0000 in the data marshals
+// to two backslashes, whose second backslash begins a sequence the strip would
+// remove, leaving a lone backslash and thus invalid JSON ("pq: invalid input
+// syntax for type json"). We walk escape pairs so only a genuine NUL escape
+// (an odd run of backslashes) is removed. Only allocates when a NUL is present.
 func sanitiseJSONBytes(b []byte) []byte {
 	if bytes.IndexByte(b, 0) >= 0 {
 		b = bytes.ReplaceAll(b, []byte{0}, nil)
 	}
-	if bytes.Contains(b, nulEscapeSeq) {
-		b = bytes.ReplaceAll(b, nulEscapeSeq, nil)
+	if !bytes.Contains(b, nulEscapeSeq) {
+		return b
 	}
-	return b
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); {
+		if b[i] == '\\' {
+			// A real NUL escape (backslash u 0 0 0 0): drop all six bytes.
+			if i+5 < len(b) && b[i+1] == 'u' && b[i+2] == '0' && b[i+3] == '0' && b[i+4] == '0' && b[i+5] == '0' {
+				i += 6
+				continue
+			}
+			// Any other escape pair: emit both bytes verbatim so an escaped
+			// backslash is never reinterpreted as the start of a NUL escape.
+			if i+1 < len(b) {
+				out = append(out, b[i], b[i+1])
+				i += 2
+				continue
+			}
+		}
+		out = append(out, b[i])
+		i++
+	}
+	return out
 }
 
 func (s *Service) UpdateExecutionRunnerID(ID string, runnerID string) error {
