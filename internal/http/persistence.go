@@ -240,6 +240,7 @@ type Persistence interface {
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	GetRecentPriorConversations(agentID, agentUserID string, limit int) ([]persistence.PriorConversationSummary, error)
 	GetConversationMessagesForAgent(conversationID, agentID, agentUserID string, maxMessages int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error)
+	SearchAgentMessages(agentID, agentUserID, query string, limit int) ([]persistence.AgentMessageSearchResult, error)
 	GetAgentUserCalendarAccessToken(agentUserID string) (string, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 
