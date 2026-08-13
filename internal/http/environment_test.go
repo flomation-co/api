@@ -427,8 +427,18 @@ func (m *mockPersistence) GetProjectFlos(string, *string, *string, int64, int64,
 func (m *mockPersistence) MoveFlosToProject([]string, *string, string, *string) error {
 	panic("not implemented")
 }
-func (m *mockPersistence) GetMyOrganisations(string) ([]*api.Organisation, error) {
-	panic("not implemented")
+func (m *mockPersistence) GetMyOrganisations(userID string) ([]*api.Organisation, error) {
+	if m.users != nil {
+		if u := m.users[userID]; u != nil {
+			out := make([]*api.Organisation, 0, len(u.Organisations))
+			for i := range u.Organisations {
+				org := u.Organisations[i]
+				out = append(out, &org)
+			}
+			return out, nil
+		}
+	}
+	return nil, nil
 }
 func (m *mockPersistence) GetOrganisationByID(id string) (*api.Organisation, error) {
 	if m.organisations != nil {
