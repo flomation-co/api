@@ -5,9 +5,11 @@ import (
 	"time"
 )
 
-// AgentMessageSearchResult is one full-text hit from an agent's conversation
-// history with a user.
+// AgentMessageSearchResult is one hit from an agent's conversation history with
+// a user (full-text or semantic). ID identifies the message so hybrid fusion can
+// dedupe across the two rankings.
 type AgentMessageSearchResult struct {
+	ID             string    `db:"id" json:"-"`
 	ConversationID string    `db:"conversation_id" json:"conversation_id"`
 	ChannelType    string    `db:"channel_type" json:"channel_type"`
 	Direction      string    `db:"direction" json:"direction"`
@@ -40,7 +42,8 @@ func (s *Service) SearchAgentMessages(agentID, agentUserID, query string, limit 
 	// websearch_to_tsquery is user-input tolerant (never errors on stray
 	// operators), so the AI-supplied query is safe to pass straight through.
 	const q = `
-		SELECT m.conversation_id,
+		SELECT m.id,
+		       m.conversation_id,
 		       m.channel_type,
 		       m.direction,
 		       m.sender,
