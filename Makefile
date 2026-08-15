@@ -10,14 +10,37 @@ REGISTRY 			?= local
 
 OS_ARCHS ?= linux/amd64
 
+# Lint tool versions are PINNED, not @latest.
+#
+# @latest re-resolves and re-downloads the tool on every single run, which costs
+# time and — worse — means an unchanged commit can start failing because the
+# tool changed underneath it. A new gosec rule or vuln database entry then
+# arrives as "your MR broke lint", with nothing in the diff to explain it.
+#
+# Bumping these is a deliberate, reviewable one-line change.
+GOSEC_VERSION        ?= v2.28.0
+GOVULNCHECK_VERSION  ?= v1.7.0
+
+# Install a pinned tool only when the required version is not already present,
+# so a warm GOPATH/bin (see the CI cache) skips the download entirely.
+# `go version -m` reports the module version a binary was built from.
+define ensure_tool
+	@if ! command -v $(1) >/dev/null 2>&1 || ! go version -m "$$(command -v $(1))" 2>/dev/null | grep -q "$(3)"; then \
+		echo "installing $(1)@$(3)"; \
+		go install $(2)@$(3); \
+	else \
+		echo "$(1)@$(3) already present"; \
+	fi
+endef
+
 lint:
 	go mod tidy
 	goimports -l .
 	golangci-lint run --timeout=5m ./...
 	go vet ./...
-	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	$(call ensure_tool,gosec,github.com/securego/gosec/v2/cmd/gosec,$(GOSEC_VERSION))
 	gosec -exclude=G117,G704 ./...
-	go install golang.org/x/vuln/cmd/govulncheck@latest
+	$(call ensure_tool,govulncheck,golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
 	govulncheck ./...
 
 build:
