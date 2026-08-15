@@ -74,22 +74,25 @@ lint:
     KUBERNETES_MEMORY_LIMIT: "4Gi"
     GOMEMLIMIT: "2800MiB"
     GOMAXPROCS: "2"
-    # Keep the module cache and the pinned lint tools inside the build dir so
-    # they can be cached between runs — GitLab's cache cannot reach outside it.
-    GOPATH: "$CI_PROJECT_DIR/.gocache"
-    GOMODCACHE: "$CI_PROJECT_DIR/.gocache/pkg/mod"
+    # Only GOBIN moves into the build dir, because GitLab's cache cannot reach
+    # outside it and the goal is to stop re-installing the pinned tools.
+    #
+    # GOPATH/GOMODCACHE deliberately stay at their defaults. Relocating the
+    # module cache under CI_PROJECT_DIR does cache more, but it also puts a few
+    # hundred thousand third-party .go files inside the tree the linters walk:
+    # `goimports -l .` and golangci-lint then analyse the whole dependency
+    # source and fail the job on other people's formatting. Caching the two tool
+    # binaries is the part that matters — ensure_tool skips `go install`
+    # entirely when they are already present at the pinned version, so a warm
+    # run downloads nothing.
     GOBIN: "$CI_PROJECT_DIR/.gocache/bin"
-  # The lint tools are pinned in the Makefile, so a warm cache means the job
-  # downloads and builds nothing: it finds gosec and govulncheck already at the
-  # required version and skips straight to running them. The cache key follows
-  # go.sum, so a dependency change gets a fresh cache rather than a stale mix.
+  # Keyed on the Makefile, which is where the pinned versions live, so bumping a
+  # version invalidates the cache rather than leaving a stale binary behind.
   cache:
     key:
       files:
-        - go.sum
         - Makefile
     paths:
-      - .gocache/pkg/mod
       - .gocache/bin
   # PATH is extended in script rather than before_script, so this cannot
   # override a default before_script coming from the shared CI template.
