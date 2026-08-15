@@ -10,15 +10,79 @@ REGISTRY 			?= local
 
 OS_ARCHS ?= linux/amd64
 
+# Lint tool versions are PINNED, not @latest.
+#
+# @latest re-resolves and re-downloads the tool on every single run, which costs
+# time and — worse — means an unchanged commit can start failing because the
+# tool changed underneath it. A new gosec rule or vuln database entry then
+# arrives as "your MR broke lint", with nothing in the diff to explain it.
+#
+# Bumping these is a deliberate, reviewable one-line change.
+GOSEC_VERSION        ?= v2.28.0
+GOVULNCHECK_VERSION  ?= v1.7.0
+
+# govulncheck is the memory peak of the whole lint suite: it builds an SSA call
+# graph over the entire transitive dependency tree to prove which vulnerable
+# symbols are actually reachable. As the SDK surface grew it began OOM-killing
+# at the runner's 4Gi cgroup ceiling, and that ceiling cannot be raised without
+# runner config access.
+#
+# ── govulncheck is TEMPORARILY DISABLED IN CI ──────────────────────────────
+#
+# It no longer fits in the runner's 4Gi cgroup ceiling, and that ceiling cannot
+# be raised without runner config access. Per-command tuning was tried and was
+# not enough: GOMAXPROCS=1 with GOMEMLIMIT=2000MiB still OOM-killed (exit 137).
+# GOMEMLIMIT bounds only the Go heap, and govulncheck's footprint is largely
+# OFF-heap (mmap'd package export data, SSA), so no heap setting can hold total
+# RSS under the cap at this module size.
+#
+# It is disabled rather than deleted because a permanently red gate is worse
+# than an honestly absent one: it trains everyone to merge through a failing
+# pipeline, which is how a real failure gets waved past. golangci-lint, go vet
+# and gosec all still run and still block.
+#
+# RE-ENABLE by setting GOVULNCHECK_ENABLED=1 once the agreed fix lands: run it
+# in BINARY mode against the compiled artefact in a job after `compile`
+# (`govulncheck -mode=binary ./dist/flomation-api-amd64-linux-$(VERSION)`).
+# Binary mode reads the shipped symbol table instead of building a source call
+# graph, so the memory peak largely disappears while keeping symbol-level
+# precision for the code that actually ships.
+#
+# Run it locally any time with:  make lint GOVULNCHECK_ENABLED=1
+GOVULNCHECK_ENABLED    ?= 0
+GOVULNCHECK_GOMAXPROCS ?= 1
+GOVULNCHECK_GOMEMLIMIT ?= 2000MiB
+
+# Install a pinned tool only when the required version is not already present,
+# so a warm GOPATH/bin (see the CI cache) skips the download entirely.
+# `go version -m` reports the module version a binary was built from.
+define ensure_tool
+	@if ! command -v $(1) >/dev/null 2>&1 || ! go version -m "$$(command -v $(1))" 2>/dev/null | grep -q "$(3)"; then \
+		echo "installing $(1)@$(3)"; \
+		go install $(2)@$(3); \
+	else \
+		echo "$(1)@$(3) already present"; \
+	fi
+endef
+
 lint:
 	go mod tidy
 	goimports -l .
 	golangci-lint run --timeout=5m ./...
 	go vet ./...
-	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	$(call ensure_tool,gosec,github.com/securego/gosec/v2/cmd/gosec,$(GOSEC_VERSION))
 	gosec -exclude=G117,G704 ./...
-	go install golang.org/x/vuln/cmd/govulncheck@latest
-	govulncheck ./...
+	@if [ "$(GOVULNCHECK_ENABLED)" = "1" ]; then \
+		$(MAKE) --no-print-directory govulncheck; \
+	else \
+		echo "govulncheck SKIPPED (GOVULNCHECK_ENABLED=0) — OOMs at the runner's 4Gi ceiling; re-enable in binary mode after compile. See the Makefile header."; \
+	fi
+
+# Separated so it can be run on its own — locally, or from a post-compile CI job
+# once it moves to binary mode.
+govulncheck:
+	$(call ensure_tool,govulncheck,golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+	GOMAXPROCS=$(GOVULNCHECK_GOMAXPROCS) GOMEMLIMIT=$(GOVULNCHECK_GOMEMLIMIT) govulncheck ./...
 
 build:
 	rm -rf dist/
