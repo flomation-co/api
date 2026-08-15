@@ -353,8 +353,23 @@ type InputDynamicOptions struct {
 }
 
 type InputDefinition struct {
-	Name           string               `json:"name" db:"name"`
-	Value          string               `json:"value" db:"value"`
+	Name string `json:"name" db:"name"`
+
+	// Value is an input's DEFAULT, and it is deliberately not a string.
+	//
+	// It mirrors the executor's core.Connection.Value, which is interface{} —
+	// an input's default takes the shape of its own type, so a boolean input
+	// defaults to a real `true` and a numeric one to a number. Typing this as
+	// string meant the first action to ship a non-string default made
+	// json.Unmarshal fail for the WHOLE action list, and getActions answers 400
+	// on any unmarshal error, so a single boolean anywhere in the tree emptied
+	// the entire palette rather than degrading that one field.
+	//
+	// Keep it interface{}: the API only passes this through to the editor, and
+	// narrowing it again would reintroduce a total outage for a single field's
+	// sake.
+	Value any `json:"value" db:"value"`
+
 	Type           string               `json:"type" db:"type"`
 	Label          string               `json:"label"`
 	Placeholder    string               `json:"placeholder"`
