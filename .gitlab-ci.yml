@@ -58,13 +58,18 @@ lint:
     # govulncheck loads the whole module dependency graph into memory to trace
     # call paths; as the AWS SDK surface grew (adding service/s3 pulled a larger
     # transitive graph) it OOM-killed (exit 137) at the runner's 4Gi ceiling.
-    # Pin memory to that ceiling (the runner rejects a request above 4Gi). Crucially
+    # Pin memory to that ceiling — the runner REJECTS a request above 4Gi, so this
+    # is the hard maximum available without runner config.toml access. Crucially
     # GOMEMLIMIT bounds only the Go HEAP, not total RSS — govulncheck holds a large
-    # OFF-heap footprint (mmap'd package export data, SSA), so 3600MiB heap + off-heap
-    # still blew past 4Gi. Set GOMEMLIMIT well under the cap (2800MiB) to leave ~1.3Gi
-    # headroom for that off-heap RSS. GOMAXPROCS=2 is the sweet spot: GOMAXPROCS=1 fixed
-    # the govulncheck OOM but starved golangci-lint's parallel package loading so it blew
-    # its 5m timeout; 2 gives golangci-lint enough throughput while keeping peak memory low.
+    # OFF-heap footprint (mmap'd package export data, SSA), so a heap limit alone
+    # cannot keep total RSS under the cap.
+    #
+    # These values are the GOLANGCI-LINT budget. govulncheck now sets its own,
+    # tighter GOMAXPROCS/GOMEMLIMIT per command in the Makefile, because the two
+    # tools want opposite things and a single job-wide value cannot serve both:
+    # GOMAXPROCS=1 fixed the govulncheck OOM but starved golangci-lint's parallel
+    # package loading into a timeout, so the job compromised on 2 and govulncheck
+    # kept dying. Splitting them removes the compromise — see the Makefile.
     KUBERNETES_MEMORY_REQUEST: "4Gi"
     KUBERNETES_MEMORY_LIMIT: "4Gi"
     GOMEMLIMIT: "2800MiB"

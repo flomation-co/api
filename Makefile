@@ -21,6 +21,27 @@ OS_ARCHS ?= linux/amd64
 GOSEC_VERSION        ?= v2.28.0
 GOVULNCHECK_VERSION  ?= v1.7.0
 
+# govulncheck is the memory peak of the whole lint suite: it builds an SSA call
+# graph over the entire transitive dependency tree to prove which vulnerable
+# symbols are actually reachable. As the SDK surface grew it began OOM-killing
+# at the runner's 4Gi cgroup ceiling, and that ceiling cannot be raised without
+# runner config access.
+#
+# The CI job's GOMAXPROCS/GOMEMLIMIT apply to every command in the target, so a
+# single value has to serve both tools — and they want opposite things.
+# GOMAXPROCS=1 was previously found to fix the govulncheck OOM, but it starved
+# golangci-lint's parallel package loading badly enough to blow its timeout, so
+# the job settled on 2 and govulncheck kept dying.
+#
+# Setting them PER COMMAND resolves that: govulncheck gets the single-threaded,
+# tightly-capped environment it needs, while golangci-lint keeps the job-level
+# parallelism. Fewer analysis goroutines means fewer concurrent SSA package
+# graphs alive at once, which is where the peak comes from; the lower GOMEMLIMIT
+# forces the GC to work harder and leaves ~2Gi of the 4Gi for govulncheck's
+# large OFF-heap footprint (mmap'd export data), which GOMEMLIMIT does not bound.
+GOVULNCHECK_GOMAXPROCS ?= 1
+GOVULNCHECK_GOMEMLIMIT ?= 2000MiB
+
 # Install a pinned tool only when the required version is not already present,
 # so a warm GOPATH/bin (see the CI cache) skips the download entirely.
 # `go version -m` reports the module version a binary was built from.
@@ -41,7 +62,7 @@ lint:
 	$(call ensure_tool,gosec,github.com/securego/gosec/v2/cmd/gosec,$(GOSEC_VERSION))
 	gosec -exclude=G117,G704 ./...
 	$(call ensure_tool,govulncheck,golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
-	govulncheck ./...
+	GOMAXPROCS=$(GOVULNCHECK_GOMAXPROCS) GOMEMLIMIT=$(GOVULNCHECK_GOMEMLIMIT) govulncheck ./...
 
 build:
 	rm -rf dist/
