@@ -8,6 +8,8 @@ stages:
   - security-scan
   - test
   - build
+  # Checks that need the compiled artefact rather than the source tree.
+  - verify
   - docs
   - rpm-publish
   - deb-publish
@@ -147,6 +149,42 @@ compile:
     policy: push
     paths:
       - ./build.zip
+
+# govulncheck, in BINARY mode, against the artefacts compile just produced.
+#
+# This replaces the source-mode run that was disabled for OOM-killing at the 4Gi
+# ceiling. Source mode measures 12.51 GiB peak RSS on this module, so it would
+# not fit a 10Gi runner either; binary mode measures 20 MiB and 0.55s, hence the
+# small budget below. See the Makefile header for the full reasoning and for the
+# GOVULNCHECK_ALLOW list.
+#
+# It lives after `build` rather than in `prepare` because binary mode needs the
+# compiled binary — that is the whole point, it scans what actually ships.
+vulncheck:
+  stage: verify
+  needs:
+    - inject-metadata
+    - compile
+  variables:
+    # Measured 20 MiB. 1Gi is already two orders of magnitude of headroom, and
+    # keeps the job schedulable on a busy runner.
+    KUBERNETES_CPU_REQUEST: "1"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "1Gi"
+    KUBERNETES_MEMORY_LIMIT: "1Gi"
+    GOBIN: "$CI_PROJECT_DIR/.gocache/bin"
+  # Pull-only: the lint job populates this cache. Keyed on the Makefile so a
+  # GOVULNCHECK_VERSION bump invalidates it rather than reusing a stale binary.
+  cache:
+    key:
+      files:
+        - Makefile
+    paths:
+      - .gocache/bin
+    policy: pull
+  script:
+    - export PATH="$GOBIN:$PATH"
+    - make govulncheck-binary
 
 generate-docs:
   extends: .generate-docs-template
