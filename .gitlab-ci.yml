@@ -492,7 +492,18 @@ build-docker:
   only:
     - main
   variables:
-    BINARY_FILE_PATTERN: "dist/flomation-api-amd64-linux-*"
+    # Widened from "dist/flomation-api-amd64-linux-*" so the gencerts binary is
+    # shipped in the image alongside the service. The Helm chart's internal-mTLS
+    # provisioning Job runs it to mint a shared CA and per-service certificates on
+    # clusters that have no cert-manager; see the Dockerfile.
+    #
+    # The shared template already supports this — it globs this pattern and assigns
+    # BINARY_FILE, BINARY_FILE_2, ... in `ls` order — so no template change is
+    # needed. That assignment is POSITIONAL, and works only because
+    # "flomation-api" sorts before "flomation-gencerts". A third artifact matching
+    # this glob, or a rename, would silently reshuffle them, so the Dockerfile
+    # asserts which binary is which rather than trusting the order.
+    BINARY_FILE_PATTERN: "dist/flomation-*-amd64-linux-*"
   needs:
     - inject-metadata
     - compile
