@@ -319,4 +319,3 @@ func TestGetAgentPlanEvents_MalformedBefore_Returns400(t *testing.T) {
 	Expect(rec.Code).To(Equal(http.StatusBadRequest))
 	Expect(strings.Contains(rec.Body.String(), "RFC3339")).To(BeTrue())
 }
-

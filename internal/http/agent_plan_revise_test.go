@@ -26,15 +26,15 @@ type reviseMock struct {
 	reviseErr  error
 	getPlanErr error
 
-	gotPlanID   string
-	gotOps      persistence.RevisionOps
-	called      bool
+	gotPlanID string
+	gotOps    persistence.RevisionOps
+	called    bool
 }
 
 func newReviseMock() *reviseMock {
 	return &reviseMock{
 		mockPersistence: newMockPersistence(),
-		agent: &api.Agent{ID: "agent-1", Name: "Test Agent"},
+		agent:           &api.Agent{ID: "agent-1", Name: "Test Agent"},
 		plan: &api.Plan{
 			ID: "plan-1", AgentID: "agent-1", Title: "Test", Status: "draft",
 		},
