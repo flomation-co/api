@@ -68,8 +68,10 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -113,10 +115,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(opts); err != nil {
+	// A terminated Job — helm rollback, node drain, a failed install being
+	// cleaned up — must cancel its in-flight API calls rather than leave them
+	// hanging until the TCP timeout, holding the Pod in Terminating long past
+	// terminationGracePeriodSeconds for work nobody is waiting for any more.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx, opts); err != nil {
 		// Exit non-zero on every write failure: the chart's Job gates on this
 		// exit code, and a Job that "succeeds" without minting certificates
 		// leaves every pod after it failing TLS handshakes with no clue why.
+		//
+		// A cancelled run says so in as many words. The underlying error is a
+		// bare "context canceled" buried in a URL error, and an operator who
+		// reads that as a broken API server goes debugging RBAC instead of
+		// re-running the Job — which is all this actually needs, because the
+		// CA Secret is create-once and every re-run adopts what is already
+		// there. ctx.Err() is checked as well as the error chain: a cancelled
+		// connection can surface as a TLS or EOF error that wraps nothing.
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			fmt.Fprintf(os.Stderr, "error: cancelled before provisioning finished, so some certificates were not written; re-run the job to complete it: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -240,9 +261,9 @@ func parseFlags(name string, args []string, out io.Writer) (genOpts, error) {
 	}, nil
 }
 
-func run(opts genOpts) error {
-	ctx := context.Background()
-
+// run does the work. ctx reaches every API-server call, so a SIGTERM'd Job
+// stops at the next one instead of waiting out the TCP timeout.
+func run(ctx context.Context, opts genOpts) error {
 	var client *k8sClient
 	if opts.K8sSecretPrefix != "" {
 		// Re-checked here, not only in parseFlags, so the names are validated
@@ -344,6 +365,22 @@ func run(opts genOpts) error {
 			}
 			fmt.Printf("  %s (CN=%s) secret %s: %s\n", svc.Name, svc.CN, name, action)
 		}
+	}
+
+	// Every API call above fails on a cancelled context, so a Secret run that
+	// was interrupted has already returned an error by now. A files-only run
+	// makes no API calls at all and would otherwise print "Done." over a
+	// half-written directory, which is the one outcome this tool must never
+	// produce: the whole point of it is that a mesh either has its trust root
+	// or is told, loudly, that it does not.
+	//
+	// The check is deliberately last and deliberately unconditional, so the
+	// narrow case of a signal arriving after the final write is also reported
+	// as cancelled. That costs one idempotent re-run — an existing CA Secret
+	// is adopted, not regenerated — and the alternative costs a Job that
+	// exited 0 over certificates it never wrote.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cancelled before completion: %w", err)
 	}
 
 	fmt.Printf("\nDone. Service certificates valid for %d days.\n", int(opts.CertValidity.Hours()/24))

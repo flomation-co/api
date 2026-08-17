@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -128,7 +129,7 @@ func TestFileOutputUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
 	}
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -178,7 +179,7 @@ func TestExistingCAFilesArePinned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
 	}
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -201,7 +202,7 @@ func TestExtraSANsReachTheLeaf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
 	}
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -215,6 +216,33 @@ func TestExtraSANsReachTheLeaf(t *testing.T) {
 	}
 	if err := leaf.VerifyHostname("10.0.0.5"); err != nil {
 		t.Errorf("-san-ip did not reach the leaf: %v", err)
+	}
+}
+
+// A cancelled run must never report success. The chart's Job gates on the exit
+// code, so a Job that was terminated part-way through provisioning the trust
+// root and still exited 0 is the exact failure this tool exists to prevent.
+//
+// The file path is the one worth pinning: it makes no API calls, so nothing in
+// it would otherwise notice the context at all.
+func TestCancelledRunNeverReportsSuccess(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	opts, err := parseFlags("gencerts", []string{"-out", t.TempDir()}, io.Discard)
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+
+	err = run(ctx, opts)
+	if err == nil {
+		t.Fatal("a cancelled run exited 0; the Job would report success over certificates it never finished writing")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error is not identifiable as a cancellation, so main cannot report it as one: %v", err)
+	}
+	if !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("error does not say it was cancelled: %v", err)
 	}
 }
 

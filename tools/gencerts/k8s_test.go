@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +48,11 @@ type fakeAPI struct {
 	// hideGets makes the first n GETs of a name answer 404 even though the
 	// object exists — how a lost create race looks from inside.
 	hideGets map[string]int
+	// onCommit, if set, runs inside a POST after the object has been stored
+	// but before the response is written: the one window where a SIGTERM
+	// leaves the API server holding a Secret the client never heard about.
+	// It is called with f.mu held, so it must not call back into fakeAPI.
+	onCommit func(r *http.Request, name string)
 
 	server *httptest.Server
 }
@@ -85,7 +93,7 @@ func (f *fakeAPI) handle(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		f.get(w, name)
 	case http.MethodPost:
-		f.create(w, body)
+		f.create(w, r, body)
 	case http.MethodPut:
 		f.replace(w, name, body)
 	default:
@@ -106,7 +114,7 @@ func (f *fakeAPI) get(w http.ResponseWriter, name string) {
 	writeSecret(w, http.StatusOK, f.namespace, name, s)
 }
 
-func (f *fakeAPI) create(w http.ResponseWriter, body []byte) {
+func (f *fakeAPI) create(w http.ResponseWriter, r *http.Request, body []byte) {
 	var in secret
 	if err := json.Unmarshal(body, &in); err != nil {
 		writeStatus(w, http.StatusBadRequest, "BadRequest", err.Error())
@@ -118,6 +126,11 @@ func (f *fakeAPI) create(w http.ResponseWriter, body []byte) {
 	}
 	s := &storedSecret{data: in.Data, resourceVersion: 1}
 	f.secrets[in.Metadata.Name] = s
+	// The object is committed from here on, exactly as etcd would have it,
+	// whether or not the client ever reads the response.
+	if f.onCommit != nil {
+		f.onCommit(r, in.Metadata.Name)
+	}
 	writeSecret(w, http.StatusCreated, f.namespace, in.Metadata.Name, s)
 }
 
@@ -193,6 +206,14 @@ func (f *fakeAPI) exists(name string) bool {
 	defer f.mu.Unlock()
 	_, ok := f.secrets[name]
 	return ok
+}
+
+// setOnCommit installs (or clears) the post-commit hook under the same lock the
+// handler reads it with, so swapping it between runs is not a data race.
+func (f *fakeAPI) setOnCommit(hook func(r *http.Request, name string)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onCommit = hook
 }
 
 func (f *fakeAPI) drop(name string) {
@@ -365,7 +386,7 @@ func TestCAKeyNeverLeavesTheCASecret(t *testing.T) {
 	f := newFakeAPI(t, "flomation")
 	withServiceAccount(t, f, nil)
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -423,16 +444,17 @@ func TestCAKeyNeverLeavesTheCASecret(t *testing.T) {
 
 	// The comparisons above are over PEM text, so a leak that re-encoded the
 	// same key — SEC1 to PKCS#8, or bare DER — would walk straight past them.
-	// The scalar is what actually has to stay in flo-ca, so look for that,
+	// The key itself is what has to stay in flo-ca, so hunt for that,
 	// everywhere, whatever it is wrapped in.
-	scalar := caKey.D.Bytes()
+	needles := caKeyNeedles(t, caKey)
+
 	for _, name := range f.names() {
 		if name == "flo-ca" {
 			continue
 		}
 		for k, v := range f.data(name) {
-			if bytes.Contains(v, scalar) {
-				t.Fatalf("secret %s key %q carries the CA private scalar", name, k)
+			if what := findCAKeyMaterial(v, needles); what != "" {
+				t.Fatalf("secret %s key %q carries the CA %s", name, k, what)
 			}
 		}
 	}
@@ -440,18 +462,129 @@ func TestCAKeyNeverLeavesTheCASecret(t *testing.T) {
 		if strings.Contains(string(r.Body), `"flo-ca"`) {
 			continue
 		}
-		var s secret
-		if json.Unmarshal(r.Body, &s) != nil {
+		// Whole body first, then every string in it. Decoding into the `secret`
+		// struct and scanning only data[] would check the one field we already
+		// expect to be right: anything else the client puts on the wire — an
+		// annotation, a label, stringData, a body shape this struct does not
+		// model — reaches the API server just the same, and json.Unmarshal into
+		// a struct drops it silently. Walking the document also unescapes it,
+		// without which a PEM inside a JSON string is a run of literal \n and
+		// matches nothing.
+		if what := findCAKeyMaterial(r.Body, needles); what != "" {
+			t.Fatalf("%s %s body carries the CA %s", r.Method, r.Path, what)
+		}
+		var doc any
+		if json.Unmarshal(r.Body, &doc) != nil {
 			continue
 		}
-		for k, v := range s.Data {
-			raw, err := base64.StdEncoding.DecodeString(v)
-			if err != nil {
-				continue
+		forEachJSONString(doc, func(s string) {
+			if what := findCAKeyMaterial([]byte(s), needles); what != "" {
+				t.Fatalf("%s %s carries the CA %s in a JSON string", r.Method, r.Path, what)
 			}
-			if bytes.Contains(raw, scalar) {
-				t.Fatalf("%s %s data[%q] carries the CA private scalar", r.Method, r.Path, k)
+		})
+	}
+}
+
+// caKeyNeedle is one encoding of the CA private key to hunt for.
+type caKeyNeedle struct {
+	what string
+	enc  []byte
+}
+
+// caKeyNeedles returns every byte sequence that would give the CA private key
+// away.
+//
+// PrivateKey.Bytes is the raw scalar, fixed-width for the curve, which is
+// exactly how both DER encodings carry it — so that one needle catches a SEC1
+// leak, a PKCS#8 leak and a bare dump alike. It replaces caKey.D.Bytes(),
+// deprecated in Go 1.26, and is the better needle besides: big.Int.Bytes
+// strips leading zero bytes, so for roughly one P-256 key in 256 it produced a
+// 31-byte value that is not what any encoder actually writes.
+//
+// The two marshalled forms are searched as well. They are redundant — each
+// contains the scalar — but they cost nothing and make a failure name the
+// encoding it found, which is the first thing anyone chasing a leak wants.
+func caKeyNeedles(t *testing.T, caKey *ecdsa.PrivateKey) []caKeyNeedle {
+	t.Helper()
+
+	scalar, err := caKey.Bytes()
+	if err != nil {
+		t.Fatalf("CA key raw scalar: %v", err)
+	}
+	sec1DER, err := x509.MarshalECPrivateKey(caKey)
+	if err != nil {
+		t.Fatalf("marshal CA key as SEC1: %v", err)
+	}
+	pkcs8DER, err := x509.MarshalPKCS8PrivateKey(caKey)
+	if err != nil {
+		t.Fatalf("marshal CA key as PKCS#8: %v", err)
+	}
+	return []caKeyNeedle{
+		{"private scalar", scalar},
+		{"private key in SEC1 DER", sec1DER},
+		{"private key in PKCS#8 DER", pkcs8DER},
+	}
+}
+
+// findCAKeyMaterial names the encoding of the CA private key hiding in blob, or
+// returns "" if there is none.
+//
+// It searches the bytes as they stand, which catches a bare DER or raw-scalar
+// dump — and then unwraps and searches again, which is the part that actually
+// earns its keep. PEM and Secret data values are both base64 armour: none of
+// the needles appears literally inside either, so a key re-encoded SEC1 ->
+// PKCS#8 and wrapped back up is invisible to a substring search over the
+// armour. That is precisely the leak this test exists to catch, and searching
+// the armour alone would report a clean bill of health over it.
+func findCAKeyMaterial(blob []byte, needles []caKeyNeedle) string {
+	// Two layers is what the real encodings need — a Secret data value is
+	// base64 of PEM, which is base64 of the DER the needles live in — and the
+	// third is slack for a leak that wraps once more. It stays bounded because
+	// every extra layer multiplies the work.
+	const maxUnwrap = 3
+
+	layer := [][]byte{blob}
+	for depth := 0; depth <= maxUnwrap && len(layer) > 0; depth++ {
+		var next [][]byte
+		for _, c := range layer {
+			for _, n := range needles {
+				if bytes.Contains(c, n.enc) {
+					return n.what
+				}
 			}
+			for rest := c; len(rest) > 0; {
+				var block *pem.Block
+				block, rest = pem.Decode(rest)
+				if block == nil {
+					break
+				}
+				next = append(next, block.Bytes)
+			}
+			if raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(c))); err == nil && len(raw) > 0 {
+				next = append(next, raw)
+			}
+		}
+		layer = next
+	}
+	return ""
+}
+
+// forEachJSONString calls fn for every string anywhere in a decoded JSON
+// document — object values, array elements, at any depth. A scan that only
+// looked at the fields expected to carry key material would wave through a leak
+// that chose any other field, which is exactly the leak nobody would think to
+// look for.
+func forEachJSONString(v any, fn func(string)) {
+	switch t := v.(type) {
+	case string:
+		fn(t)
+	case []any:
+		for _, e := range t {
+			forEachJSONString(e, fn)
+		}
+	case map[string]any:
+		for _, e := range t {
+			forEachJSONString(e, fn)
 		}
 	}
 }
@@ -462,7 +595,7 @@ func TestSecondRunChangesNothing(t *testing.T) {
 	f := newFakeAPI(t, "flomation")
 	withServiceAccount(t, f, nil)
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run 1: %v", err)
 	}
 	before := map[string]map[string][]byte{}
@@ -471,7 +604,7 @@ func TestSecondRunChangesNothing(t *testing.T) {
 	}
 	firstRunRequests := len(f.recorded())
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run 2: %v", err)
 	}
 	for n, want := range before {
@@ -506,7 +639,7 @@ func TestConcurrentRunsConverge(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			errs[i] = run(k8sOpts(f, "flo"))
+			errs[i] = run(context.Background(), k8sOpts(f, "flo"))
 		}(i)
 	}
 	wg.Wait()
@@ -537,12 +670,12 @@ func TestStaleServiceSecretIsRejected(t *testing.T) {
 		f := newFakeAPI(t, "flomation")
 		withServiceAccount(t, f, nil)
 
-		if err := run(k8sOpts(f, "flo")); err != nil {
+		if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 			t.Fatalf("run 1: %v", err)
 		}
 		f.drop("flo-ca")
 
-		err := run(k8sOpts(f, "flo"))
+		err := run(context.Background(), k8sOpts(f, "flo"))
 		if err == nil {
 			t.Fatal("run exited 0 leaving flo-api signed by a CA that is no longer the trust root")
 		}
@@ -583,7 +716,7 @@ func TestStaleServiceSecretIsRejected(t *testing.T) {
 			f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: caKeyPEM})
 			f.put("flo-api", tc.data)
 
-			err := run(k8sOpts(f, "flo"))
+			err := run(context.Background(), k8sOpts(f, "flo"))
 			if err == nil {
 				t.Fatal("run exited 0 over a Secret the mesh cannot use")
 			}
@@ -607,7 +740,7 @@ func TestStaleServiceSecretIsRejected(t *testing.T) {
 
 			opts := k8sOpts(f, "flo")
 			opts.K8sForce = true
-			if err := run(opts); err != nil {
+			if err := run(context.Background(), opts); err != nil {
 				t.Fatalf("%s: -k8s-force did not repair it: %v", tc.name, err)
 			}
 			repaired := f.data("flo-api")
@@ -625,7 +758,7 @@ func TestStaleServiceSecretIsRejected(t *testing.T) {
 		f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: caKeyPEM})
 		f.put("flo-api", map[string][]byte{keyCACert: caCertPEM, keyTLSCert: goodCert, keyTLSKey: goodKey})
 
-		if err := run(k8sOpts(f, "flo")); err != nil {
+		if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 			t.Fatalf("run rejected a healthy Secret: %v", err)
 		}
 		if !bytes.Equal(f.data("flo-api")[keyTLSCert], goodCert) {
@@ -656,7 +789,7 @@ func TestExpiredServiceSecretIsRejected(t *testing.T) {
 	f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: caKeyPEM})
 	f.put("flo-api", map[string][]byte{keyCACert: caCertPEM, keyTLSCert: expiredCert, keyTLSKey: expiredKey})
 
-	err = run(k8sOpts(f, "flo"))
+	err = run(context.Background(), k8sOpts(f, "flo"))
 	if err == nil {
 		t.Fatal("run exited 0 over an expired certificate")
 	}
@@ -681,7 +814,7 @@ func TestExpiredCASecretIsRejected(t *testing.T) {
 	}
 	f.put("flo-ca", map[string][]byte{keyCACert: encodePEM("CERTIFICATE", caCert.Raw), keyCAKey: caKeyPEM})
 
-	err = run(k8sOpts(f, "flo"))
+	err = run(context.Background(), k8sOpts(f, "flo"))
 	if err == nil {
 		t.Fatal("run adopted an expired CA and reported success")
 	}
@@ -708,7 +841,7 @@ func TestPlainHTTPAPIServerIsRefused(t *testing.T) {
 
 	opts := k8sOpts(f, "flo")
 	opts.K8sAPI = plain.URL
-	err := run(opts)
+	err := run(context.Background(), opts)
 	if err == nil {
 		t.Fatal("a plain-http API server was accepted")
 	}
@@ -744,7 +877,7 @@ func TestRedirectIsRefused(t *testing.T) {
 
 	opts := k8sOpts(f, "flo")
 	opts.K8sAPI = redirector.URL
-	err := run(opts)
+	err := run(context.Background(), opts)
 	if err == nil {
 		t.Fatal("run followed a redirect and reported success")
 	}
@@ -788,7 +921,7 @@ func TestAPIFailuresAreReported(t *testing.T) {
 
 			opts := k8sOpts(f, "flo")
 			opts.K8sAPI = srv.URL
-			err := run(opts)
+			err := run(context.Background(), opts)
 			if err == nil {
 				t.Fatalf("run returned nil on %s", tc.name)
 			}
@@ -843,7 +976,7 @@ func TestPinnedCAIsNotSilentlyReplaced(t *testing.T) {
 
 	opts := k8sOpts(f, "flo")
 	opts.CACertFile, opts.CAKeyFile = certFile, keyFile
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run with -ca-cert: %v", err)
 	}
 	if f.exists("flo-ca") {
@@ -852,7 +985,7 @@ func TestPinnedCAIsNotSilentlyReplaced(t *testing.T) {
 	verifyLeaf(t, caCertPEM, f.data("flo-api")[keyTLSCert])
 
 	// Same run, flag dropped.
-	err := run(k8sOpts(f, "flo"))
+	err := run(context.Background(), k8sOpts(f, "flo"))
 	if err == nil {
 		t.Fatal("dropping -ca-cert minted a new root and reported success")
 	}
@@ -890,7 +1023,7 @@ func TestExistingCASecretIsReusedNotRegenerated(t *testing.T) {
 	caCertPEM, caKeyPEM, caCert := mintTestCA(t, "Pre-existing CA")
 	f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: caKeyPEM})
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -933,7 +1066,7 @@ func TestCACreateConflictIsTreatedAsSuccess(t *testing.T) {
 	f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: caKeyPEM})
 	f.hideGets["flo-ca"] = 1
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run must treat 409 on the CA Secret as success: %v", err)
 	}
 
@@ -949,13 +1082,152 @@ func TestCACreateConflictIsTreatedAsSuccess(t *testing.T) {
 	}
 }
 
+// A SIGTERM during the CA Secret's create lands in the worst window there is:
+// the API server has committed the object, the client never read the response.
+// The run must fail loudly — and the run after it must adopt the CA that is now
+// in etcd, because minting a second root would sign half the mesh with a key
+// the other half has never seen, with every pod Running throughout.
+// There are two ways back from that window, and both must land on the same
+// root: the next run's read finds the committed object, or it misses and the
+// POST comes back 409 Conflict. The subtests cover one each.
+func TestCancelledCACreateIsAdoptedByTheNextRun(t *testing.T) {
+	// cancelDuringCACreate runs once, cancelled in the commit window, and
+	// returns the CA the API server was left holding.
+	cancelDuringCACreate := func(t *testing.T, f *fakeAPI) map[string][]byte {
+		t.Helper()
+		ctx, cancel := context.WithCancel(context.Background())
+		f.setOnCommit(func(r *http.Request, name string) {
+			if name != caSecretName("flo") {
+				return
+			}
+			// Cancel, then wait for the server side to see the client leave.
+			// Returning any earlier would race the response: the client could
+			// read the 201 and never observe the cancellation this is about.
+			cancel()
+			select {
+			case <-r.Context().Done():
+			case <-time.After(10 * time.Second):
+				t.Error("the client never abandoned the request; this test is not exercising the window it claims to")
+			}
+		})
+
+		err := run(ctx, k8sOpts(f, "flo"))
+		if err == nil {
+			t.Fatal("a run cancelled mid-create reported success")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error is not identifiable as a cancellation, so main cannot report it as one: %v", err)
+		}
+		if !f.exists("flo-ca") {
+			t.Fatal("the CA Secret was never committed; this test is not exercising the window it claims to")
+		}
+		committed := f.data("flo-ca")
+		if _, _, err := parseCA(committed[keyCACert], committed[keyCAKey]); err != nil {
+			t.Fatalf("the committed CA Secret is not a usable CA: %v", err)
+		}
+		f.setOnCommit(nil)
+		return committed
+	}
+
+	// assertAdopted checks the re-run kept the committed root and minted every
+	// leaf under it.
+	assertAdopted := func(t *testing.T, f *fakeAPI, committed map[string][]byte) {
+		t.Helper()
+		after := f.data("flo-ca")
+		if !bytes.Equal(after[keyCACert], committed[keyCACert]) || !bytes.Equal(after[keyCAKey], committed[keyCAKey]) {
+			t.Fatal("the re-run replaced the CA the cancelled run had already committed; a second root splits the mesh")
+		}
+		if n := f.countRequests(http.MethodPut, "flo-ca"); n != 0 {
+			t.Fatalf("%d PUTs against the CA Secret; it must never be updated", n)
+		}
+		for _, svc := range []string{"api", "launch", "runner"} {
+			data := f.data("flo-" + svc)
+			verifyLeaf(t, committed[keyCACert], data[keyTLSCert])
+			if !bytes.Equal(data[keyCACert], committed[keyCACert]) {
+				t.Fatalf("flo-%s carries a ca.pem that is not the adopted root", svc)
+			}
+		}
+	}
+
+	// The ordinary recovery: the object is there, the next run reads it.
+	t.Run("the next run reads the committed CA back", func(t *testing.T) {
+		f := newFakeAPI(t, "flomation")
+		withServiceAccount(t, f, nil)
+
+		committed := cancelDuringCACreate(t, f)
+		if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
+			t.Fatalf("the re-run did not recover from the cancelled create: %v", err)
+		}
+		assertAdopted(t, f, committed)
+	})
+
+	// The recovery the review asked about: the next run's read misses — a
+	// stale cache, or simply a Job that looked a moment too early — so it
+	// tries to create and is told 409 Conflict. Treating that as success is
+	// the only thing standing between this window and a second trust root.
+	t.Run("the next run's read misses and the create conflicts", func(t *testing.T) {
+		f := newFakeAPI(t, "flomation")
+		withServiceAccount(t, f, nil)
+
+		committed := cancelDuringCACreate(t, f)
+
+		postsBefore := f.countRequests(http.MethodPost, "")
+		f.hideGets["flo-ca"] = 1
+		if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
+			t.Fatalf("409 on the CA Secret was not treated as success: %v", err)
+		}
+		if f.countRequests(http.MethodPost, "") <= postsBefore {
+			t.Fatal("the re-run never POSTed, so the 409 path was not exercised")
+		}
+		assertAdopted(t, f, committed)
+	})
+}
+
+// The same cancellation one step later: the CA is safely stored and the run is
+// interrupted while writing per-service Secrets. It must still exit non-zero —
+// a Job that stopped halfway and said nothing leaves pods that start, report
+// Ready, and fail every handshake.
+func TestCancelledServiceWriteStillFails(t *testing.T) {
+	f := newFakeAPI(t, "flomation")
+	withServiceAccount(t, f, nil)
+
+	caCertPEM, caKeyPEM, _ := mintTestCA(t, "Stable CA")
+	f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: caKeyPEM})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	f.setOnCommit(func(r *http.Request, name string) {
+		if name != serviceSecretName("flo", "api") {
+			return
+		}
+		cancel()
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+			t.Error("the client never abandoned the request")
+		}
+	})
+
+	err := run(ctx, k8sOpts(f, "flo"))
+	if err == nil {
+		t.Fatal("a run cancelled part-way through the service Secrets reported success")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error is not identifiable as a cancellation: %v", err)
+	}
+	// The services after the one that was interrupted were never provisioned:
+	// that is precisely why the exit has to be non-zero.
+	if f.exists("flo-runner") {
+		t.Fatal("the run kept going after cancellation")
+	}
+}
+
 // The request body has to be a Secret the API server would accept: PEM is
 // multi-line, so it travels base64-encoded in `data`, never raw.
 func TestSecretRequestBodyIsWellFormed(t *testing.T) {
 	f := newFakeAPI(t, "flomation")
 	withServiceAccount(t, f, nil)
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -1030,7 +1302,7 @@ func TestForceOnlyRenewsServiceSecrets(t *testing.T) {
 	f.put("flo-api", map[string][]byte{keyCACert: caCertPEM, keyTLSCert: oldCertPEM, keyTLSKey: oldKeyPEM})
 
 	opts := k8sOpts(f, "flo")
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if got := f.data("flo-api")[keyTLSCert]; string(got) != string(oldCertPEM) {
@@ -1041,7 +1313,7 @@ func TestForceOnlyRenewsServiceSecrets(t *testing.T) {
 	}
 
 	opts.K8sForce = true
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run with -k8s-force: %v", err)
 	}
 	renewed := f.data("flo-api")
@@ -1070,7 +1342,7 @@ func TestAPIServerCertificateIsVerified(t *testing.T) {
 	otherCA, _, _ := mintTestCA(t, "Someone Else's CA")
 	withServiceAccount(t, f, otherCA)
 
-	err := run(k8sOpts(f, "flo"))
+	err := run(context.Background(), k8sOpts(f, "flo"))
 	if err == nil {
 		t.Fatal("run succeeded against an API server it could not authenticate")
 	}
@@ -1091,7 +1363,7 @@ func TestAPIErrorIsReportedNotSwallowed(t *testing.T) {
 	opts := k8sOpts(f, "flo")
 	opts.K8sNamespace = "wrong-namespace" // every call 404s on an unexpected path
 
-	err := run(opts)
+	err := run(context.Background(), opts)
 	if err == nil {
 		t.Fatal("run returned nil after failing to write any Secret")
 	}
@@ -1104,7 +1376,7 @@ func TestNamespaceDefaultsToThePodsOwn(t *testing.T) {
 
 	opts := k8sOpts(f, "flo")
 	opts.K8sNamespace = ""
-	if err := run(opts); err != nil {
+	if err := run(context.Background(), opts); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -1132,7 +1404,7 @@ func TestPKCS8CAKeyFromSecretIsAccepted(t *testing.T) {
 	}
 	f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: encodePEM("PRIVATE KEY", pkcs8)})
 
-	if err := run(k8sOpts(f, "flo")); err != nil {
+	if err := run(context.Background(), k8sOpts(f, "flo")); err != nil {
 		t.Fatalf("run with a PKCS#8 CA key: %v", err)
 	}
 	verifyLeaf(t, caCertPEM, f.data("flo-api")[keyTLSCert])
@@ -1148,7 +1420,7 @@ func TestMismatchedCASecretIsRejected(t *testing.T) {
 	_, otherKeyPEM, _ := mintTestCA(t, "Key Half")
 	f.put("flo-ca", map[string][]byte{keyCACert: caCertPEM, keyCAKey: otherKeyPEM})
 
-	err := run(k8sOpts(f, "flo"))
+	err := run(context.Background(), k8sOpts(f, "flo"))
 	if err == nil {
 		t.Fatal("run accepted a CA Secret whose key does not match its certificate")
 	}
