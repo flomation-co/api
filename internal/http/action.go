@@ -225,6 +225,7 @@ var subCategoryMetadata = map[string]struct {
 	"ukgov/bankholidays":             {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
 	"ukgov/landregistry":             {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
 	"marketing/sendgrid":             {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
+	"marketing/meta_ads":             {Name: "Meta Ads", Icon: "facebook", Description: "Create, adjust and report on Facebook and Instagram advertising via the Meta Marketing API"},
 	"infrastructure/kubernetes":      {Name: "Kubernetes", Icon: "kubernetes", Description: "Operate a Kubernetes cluster — restart and scale deployments, read pod logs, run jobs, manage config, and drain nodes"},
 	"infrastructure/helm":            {Name: "Helm", Icon: "helm", Description: "Install, upgrade, roll back and inspect Helm releases on a Kubernetes cluster"},
 	// Mirrors executor/actions/infrastructure/awx/category.go's consts — this map,
@@ -295,13 +296,18 @@ var subSubCategoryMetadata = map[string]struct {
 	Icon        string
 	Description string
 }{
-	"crm/apollo/enrichment": {Name: "Enrichment", Icon: "bolt", Description: "Enrich people and companies with Apollo's data"},
-	"crm/apollo/search":     {Name: "Search", Icon: "magnifying-glass", Description: "Search Apollo's people and company database"},
-	"crm/apollo/contacts":   {Name: "Contacts", Icon: "user", Description: "Create, update and search Apollo CRM contacts"},
-	"crm/apollo/accounts":   {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
-	"crm/apollo/deals":      {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
-	"crm/apollo/sequences":  {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
-	"crm/apollo/emailer":    {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
+	"crm/apollo/enrichment":        {Name: "Enrichment", Icon: "bolt", Description: "Enrich people and companies with Apollo's data"},
+	"marketing/meta_ads/accounts":  {Name: "Accounts", Icon: "facebook", Description: "Ad accounts reachable by the connected token"},
+	"marketing/meta_ads/campaigns": {Name: "Campaigns", Icon: "facebook", Description: "Campaign objectives, budgets and state"},
+	"marketing/meta_ads/adsets":    {Name: "Ad Sets", Icon: "facebook", Description: "Targeting, schedule, optimisation and bidding"},
+	"marketing/meta_ads/ads":       {Name: "Ads", Icon: "facebook", Description: "Individual ads and their state"},
+	"marketing/meta_ads/insights":  {Name: "Insights", Icon: "facebook", Description: "Performance reporting at any level of the hierarchy"},
+	"crm/apollo/search":            {Name: "Search", Icon: "magnifying-glass", Description: "Search Apollo's people and company database"},
+	"crm/apollo/contacts":          {Name: "Contacts", Icon: "user", Description: "Create, update and search Apollo CRM contacts"},
+	"crm/apollo/accounts":          {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
+	"crm/apollo/deals":             {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
+	"crm/apollo/sequences":         {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
+	"crm/apollo/emailer":           {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {

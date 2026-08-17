@@ -150,3 +150,38 @@ func TestGetCategoryForUKGov(t *testing.T) {
 	g.Expect(parl.SubName).To(Equal("UK Parliament"))
 	g.Expect(parl.SubIcon).To(Equal("landmark"))
 }
+
+// TestGetCategoryForMetaAds pins the three-level Marketing > Meta Ads > <group>
+// wiring for 4-segment marketing/meta_ads/<group>/<action> ids.
+//
+// The executor's category.go files are NOT what the editor reads — the palette
+// is served from these maps, so a missing entry here leaves the actions
+// auto-titled or ungrouped even though the executor side looks correct.
+func TestGetCategoryForMetaAds(t *testing.T) {
+	g := NewWithT(t)
+
+	cat := getCategoryForAction("marketing/meta_ads/campaigns/campaign_create")
+	g.Expect(cat).To(Not(BeNil()))
+	g.Expect(cat.Key).To(Equal("marketing"))
+	g.Expect(cat.Name).To(Equal("Marketing"))
+	g.Expect(cat.SubKey).To(Equal("marketing/meta_ads"))
+	g.Expect(cat.SubName).To(Equal("Meta Ads"))
+	g.Expect(cat.SubSubKey).To(Equal("marketing/meta_ads/campaigns"))
+	g.Expect(cat.SubSubName).To(Equal("Campaigns"))
+
+	// Every group must resolve — a missing one silently degrades that group
+	// rather than failing loudly.
+	for group, want := range map[string]string{
+		"accounts": "Accounts", "campaigns": "Campaigns",
+		"adsets": "Ad Sets", "ads": "Ads", "insights": "Insights",
+	} {
+		c := getCategoryForAction("marketing/meta_ads/" + group + "/whatever")
+		g.Expect(c).To(Not(BeNil()), group)
+		g.Expect(c.SubSubName).To(Equal(want), group)
+	}
+
+	// The existing 3-segment Marketing action must be unaffected.
+	sg := getCategoryForAction("marketing/sendgrid/mail_send")
+	g.Expect(sg.SubName).To(Equal("SendGrid"))
+	g.Expect(sg.SubSubName).To(Equal(""))
+}
