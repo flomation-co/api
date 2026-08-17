@@ -209,4 +209,3 @@ func (s *Service) getAgentPlanEvents(c *gin.Context) {
 
 	c.JSON(http.StatusOK, events)
 }
-

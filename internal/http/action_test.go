@@ -235,6 +235,7 @@ func TestGetCategoryForMetaAds(t *testing.T) {
 	for group, want := range map[string]string{
 		"accounts": "Accounts", "campaigns": "Campaigns",
 		"adsets": "Ad Sets", "ads": "Ads", "insights": "Insights",
+		"creatives": "Creatives", "media": "Media", "audiences": "Audiences",
 	} {
 		c := getCategoryForAction("marketing/meta_ads/" + group + "/whatever")
 		g.Expect(c).To(Not(BeNil()), group)

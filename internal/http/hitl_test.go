@@ -98,8 +98,8 @@ func (m *hitlMock) UpdateExecutionStatus(id, status string) error {
 	}
 	return nil
 }
-func (m *hitlMock) UpdateCompletionStatus(id, status string) error         { return nil }
-func (m *hitlMock) ClearResumeAt(id string) error                          { return nil }
+func (m *hitlMock) UpdateCompletionStatus(id, status string) error               { return nil }
+func (m *hitlMock) ClearResumeAt(id string) error                                { return nil }
 func (m *hitlMock) SetExecutionResumeData(id string, data json.RawMessage) error { return nil }
 
 func newHITLService(m *hitlMock) *Service {
