@@ -570,10 +570,13 @@ func (m *mockPersistence) GetUserChecklistStateForOrg(string, *string) (int, err
 func (m *mockPersistence) SetUserChecklistFlagForOrg(string, *string, int) error    { return nil }
 func (m *mockPersistence) ClearUserChecklistFlagForOrg(string, *string, int) error  { return nil }
 func (m *mockPersistence) CompleteUserWelcome(string, string, *bool) error          { return nil }
-func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error                 { return nil }
-func (m *mockPersistence) MarkUserMarketingSynced(string) error                     { return nil }
-func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error         { return nil }
-func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error)   { return nil, nil }
+func (m *mockPersistence) SetUserEmailAddressIfMissing(string, string) (int64, error) {
+	return 0, nil
+}
+func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error               { return nil }
+func (m *mockPersistence) MarkUserMarketingSynced(string) error                   { return nil }
+func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error       { return nil }
+func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error) { return nil, nil }
 
 // Favourites stubs
 func (m *mockPersistence) GetFloFavourites(string) ([]string, error) { return nil, nil }

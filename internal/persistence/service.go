@@ -58,6 +58,7 @@ type Service struct {
 	stmtAcceptEula                    *sqlx.NamedStmt
 	stmtCompleteUserWelcome           *sqlx.NamedStmt
 	stmtSetUserMarketingOptIn         *sqlx.NamedStmt
+	stmtSetUserEmailIfMissing         *sqlx.NamedStmt
 	stmtMarkUserMarketingSynced       *sqlx.NamedStmt
 	stmtMarkUserMarketingSyncFailed   *sqlx.NamedStmt
 	stmtListUsersNeedingMarketingSync *sqlx.NamedStmt
@@ -689,6 +690,20 @@ func NewService(config *config.Config) (*Service, error) {
 		    marketing_synced_at       = NULL,
 		    marketing_sync_error      = NULL
 		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lazy top-up of the stored email address from the identity service.
+	//
+	// The IS NULL guard is what makes this safe to call from a read path: it
+	// is idempotent, it cannot clobber an address the user has since changed
+	// through us, and concurrent requests cannot race each other.
+	s.stmtSetUserEmailIfMissing, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET email_address = PGP_SYM_ENCRYPT(:email_address, :encrypt_key)
+		WHERE id = :id AND email_address IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -3868,6 +3883,28 @@ func (s *Service) SetUserMarketingOptIn(userID string, optIn bool) error {
 		ConsentVersion: api.MarketingConsentWordingV1,
 	})
 	return err
+}
+
+// SetUserEmailAddressIfMissing writes an address the product does not yet hold.
+//
+// Sentinel owns the authoritative copy; this fills our own in when it is
+// absent, and does nothing at all when it is already set. Returns the number of
+// rows written so a caller can tell a genuine top-up from a no-op.
+func (s *Service) SetUserEmailAddressIfMissing(userID, email string) (int64, error) {
+	res, err := s.stmtSetUserEmailIfMissing.Exec(struct {
+		ID            string `db:"id"`
+		EmailAddress  string `db:"email_address"`
+		EncryptionKey string `db:"encrypt_key"`
+	}{
+		ID:            userID,
+		EmailAddress:  email,
+		EncryptionKey: s.config.Database.EncryptionKey,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
 }
 
 // MarkUserMarketingSynced is called by the retry poller after a
