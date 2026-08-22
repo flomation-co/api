@@ -157,7 +157,7 @@ type Persistence interface {
 	GetUserChecklistStateForOrg(userID string, organisationID *string) (int, error)
 	SetUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
 	ClearUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
-	CompleteUserWelcome(userID, name string, marketingOptIn bool) error
+	CompleteUserWelcome(userID, name string, marketingOptIn *bool) error
 	SetUserMarketingOptIn(userID string, optIn bool) error
 	MarkUserMarketingSynced(userID string) error
 	MarkUserMarketingSyncFailed(userID, reason string) error

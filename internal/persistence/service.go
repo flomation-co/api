@@ -554,6 +554,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    welcome_completed_at,
 		    marketing_synced_at,
 		    marketing_sync_error,
+		    marketing_consent_at,
+		    marketing_consent_source,
+		    marketing_consent_version,
 		    salutation,
 		    first_name,
 		    last_name,
@@ -590,12 +593,18 @@ func NewService(config *config.Config) (*Service, error) {
 		    id,
 			name,
 		    email_address,
-		    marketing_opt_in
+		    marketing_opt_in,
+		    marketing_consent_at,
+		    marketing_consent_source,
+		    marketing_consent_version
 		) VALUES (
 		  	:id,
 			:name,
 		    PGP_SYM_ENCRYPT(:email_address, :encrypt_key),
-		    :marketing_opt_in
+		    :marketing_opt_in,
+		    :marketing_consent_at,
+		    :marketing_consent_source,
+		    :marketing_consent_version
 		) ON CONFLICT (id) DO NOTHING RETURNING id;
 	`)
 	if err != nil {
@@ -654,11 +663,14 @@ func NewService(config *config.Config) (*Service, error) {
 	// value on the next tick.
 	s.stmtCompleteUserWelcome, err = s.conn.PrepareNamed(`
 		UPDATE users
-		SET name                 = :name,
-		    marketing_opt_in     = :marketing_opt_in,
-		    welcome_completed_at = NOW(),
-		    marketing_synced_at  = NULL,
-		    marketing_sync_error = NULL
+		SET name                      = :name,
+		    marketing_opt_in          = CASE WHEN :marketing_answered THEN :marketing_opt_in          ELSE marketing_opt_in          END,
+		    marketing_consent_at      = CASE WHEN :marketing_answered THEN NOW()                      ELSE marketing_consent_at      END,
+		    marketing_consent_source  = CASE WHEN :marketing_answered THEN :marketing_consent_source  ELSE marketing_consent_source  END,
+		    marketing_consent_version = CASE WHEN :marketing_answered THEN :marketing_consent_version ELSE marketing_consent_version END,
+		    welcome_completed_at      = NOW(),
+		    marketing_synced_at       = CASE WHEN :marketing_answered THEN NULL ELSE marketing_synced_at  END,
+		    marketing_sync_error      = CASE WHEN :marketing_answered THEN NULL ELSE marketing_sync_error END
 		WHERE id = :id
 	`)
 	if err != nil {
@@ -670,9 +682,12 @@ func NewService(config *config.Config) (*Service, error) {
 	// tick. Used by the profile Communications section.
 	s.stmtSetUserMarketingOptIn, err = s.conn.PrepareNamed(`
 		UPDATE users
-		SET marketing_opt_in     = :marketing_opt_in,
-		    marketing_synced_at  = NULL,
-		    marketing_sync_error = NULL
+		SET marketing_opt_in          = :marketing_opt_in,
+		    marketing_consent_at      = NOW(),
+		    marketing_consent_source  = :marketing_consent_source,
+		    marketing_consent_version = :marketing_consent_version,
+		    marketing_synced_at       = NULL,
+		    marketing_sync_error      = NULL
 		WHERE id = :id
 	`)
 	if err != nil {
@@ -719,7 +734,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    marketing_opt_in
 		FROM users
 		WHERE marketing_sync_error IS NOT NULL
-		   OR (welcome_completed_at IS NOT NULL AND marketing_synced_at IS NULL)
+		   OR ((welcome_completed_at IS NOT NULL OR marketing_consent_at IS NOT NULL)
+		       AND marketing_synced_at IS NULL)
 		ORDER BY marketing_synced_at ASC NULLS FIRST
 		LIMIT :limit
 	`)
@@ -3806,15 +3822,31 @@ func (s *Service) AcceptEula(userID string, version int) error {
 // re-appearing on subsequent logins. Resets EmailOctopus sync state
 // so the retry poller pushes the new opt-in value out on its next
 // tick (fire-and-forget per the design decision).
-func (s *Service) CompleteUserWelcome(userID, name string, marketingOptIn bool) error {
+// marketingOptIn is nil when the modal did not ask — which is the case for a
+// user who already answered on the sign-up form. Their existing decision, and
+// the evidence behind it, is then left exactly as recorded rather than being
+// restamped with this surface and this moment.
+func (s *Service) CompleteUserWelcome(userID, name string, marketingOptIn *bool) error {
+	answered := marketingOptIn != nil
+	optIn := false
+	if answered {
+		optIn = *marketingOptIn
+	}
+
 	_, err := s.stmtCompleteUserWelcome.Exec(struct {
 		ID             string `db:"id"`
 		Name           string `db:"name"`
+		Answered       bool   `db:"marketing_answered"`
 		MarketingOptIn bool   `db:"marketing_opt_in"`
+		ConsentSource  string `db:"marketing_consent_source"`
+		ConsentVersion string `db:"marketing_consent_version"`
 	}{
 		ID:             userID,
 		Name:           name,
-		MarketingOptIn: marketingOptIn,
+		Answered:       answered,
+		MarketingOptIn: optIn,
+		ConsentSource:  api.MarketingConsentSourceWelcomeModal,
+		ConsentVersion: api.MarketingConsentWordingV1,
 	})
 	return err
 }
@@ -3827,9 +3859,13 @@ func (s *Service) SetUserMarketingOptIn(userID string, optIn bool) error {
 	_, err := s.stmtSetUserMarketingOptIn.Exec(struct {
 		ID             string `db:"id"`
 		MarketingOptIn bool   `db:"marketing_opt_in"`
+		ConsentSource  string `db:"marketing_consent_source"`
+		ConsentVersion string `db:"marketing_consent_version"`
 	}{
 		ID:             userID,
 		MarketingOptIn: optIn,
+		ConsentSource:  api.MarketingConsentSourceProfile,
+		ConsentVersion: api.MarketingConsentWordingV1,
 	})
 	return err
 }

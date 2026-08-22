@@ -12,8 +12,12 @@ import (
 // Display name is required (per design decision: hard-required to
 // dismiss the modal); marketing opt-in defaults to false.
 type completeWelcomeRequest struct {
-	Name           string `json:"name" binding:"required"`
-	MarketingOptIn bool   `json:"marketing_opt_in,omitempty"`
+	Name string `json:"name" binding:"required"`
+	// MarketingOptIn is omitted entirely when the modal did not show the
+	// question, because the user already answered it at sign-up. Absent means
+	// "leave the existing decision alone" — distinct from an explicit false,
+	// which is a refusal we record.
+	MarketingOptIn *bool `json:"marketing_opt_in,omitempty"`
 }
 
 // completeWelcome handles POST /user/welcome-complete. Atomic write
@@ -48,9 +52,14 @@ func (s *Service) completeWelcome(c *gin.Context) {
 		return
 	}
 
+	optIn := u.MarketingOptIn
+	if req.MarketingOptIn != nil {
+		optIn = *req.MarketingOptIn
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"name":             name,
-		"marketing_opt_in": req.MarketingOptIn,
+		"marketing_opt_in": optIn,
 	})
 }
 

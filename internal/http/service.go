@@ -1185,10 +1185,13 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 	}
 
 	if u == nil {
-		userID, err := s.persistence.CreateUser(&api.User{
+		newUser := &api.User{
 			ID:   userIDFromContext.(string),
 			Name: "auto-generate",
-		})
+		}
+		s.seedFromIdentity(c, newUser)
+
+		userID, err := s.persistence.CreateUser(newUser)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -1219,6 +1222,53 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 // user's current org context. In personal mode (no org selected), only
 // resources with null organisation_id are accessible. In org mode, only
 // resources belonging to that organisation are accessible.
+// seedFromIdentity fills in what Sentinel already knows about an account we are
+// about to provision: the email address, and the marketing decision given on
+// the sign-up form.
+//
+// Seeding the consent matters because the alternative — asking again in the
+// welcome modal — is both a worse experience and worse evidence, since it would
+// overwrite the timestamp and surface of the consent actually given. Accounts
+// created before the sign-up question existed, and SSO sign-ups (which have no
+// form of ours), carry no decision; those are left unasked and the welcome
+// modal asks as before.
+//
+// Seeding the email matters because it is the only copy the product has.
+// Sentinel holds the address encrypted and the marketing sync needs it to
+// subscribe or unsubscribe anyone at all.
+//
+// Best-effort by design. A slow or unreachable Sentinel must not stop a user
+// being provisioned, so a failure here logs and leaves both unset.
+func (s *Service) seedFromIdentity(c *gin.Context, user *api.User) {
+	token := s.getTokenFromContext(c)
+	if token == nil {
+		return
+	}
+
+	account, err := s.identity.GetAccount(*token)
+	if err != nil || account == nil {
+		log.WithFields(log.Fields{
+			"error":   err,
+			"user_id": user.ID,
+		}).Warn("unable to read account from identity service - user will be asked in the product")
+		return
+	}
+
+	if account.Username != "" {
+		email := account.Username
+		user.EmailAddress = &email
+	}
+
+	if account.MarketingConsentAt == nil {
+		return
+	}
+
+	user.MarketingOptIn = account.MarketingOptIn
+	user.MarketingConsentAt = account.MarketingConsentAt
+	user.MarketingConsentSource = account.MarketingConsentSource
+	user.MarketingConsentVersion = account.MarketingConsentVersion
+}
+
 func (s *Service) verifyOrgAccess(user *api.User, resourceOrgID *string) bool {
 	if len(user.Organisations) > 0 {
 		// Org mode — resource must belong to this org

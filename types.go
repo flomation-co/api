@@ -59,6 +59,25 @@ type OrganisationInvite struct {
 	ExpiresAt      time.Time  `json:"expires_at" db:"expires_at"`
 }
 
+const (
+	// MarketingConsentSourceRegistration is a decision made on Sentinel's
+	// sign-up form, seeded into the product when the account is first
+	// provisioned here.
+	MarketingConsentSourceRegistration = "registration_form"
+
+	// MarketingConsentSourceWelcomeModal is the post-EULA welcome modal.
+	MarketingConsentSourceWelcomeModal = "welcome_modal"
+
+	// MarketingConsentSourceProfile is the profile Communications toggle,
+	// which is also how a user withdraws consent.
+	MarketingConsentSourceProfile = "profile_settings"
+
+	// MarketingConsentWordingV1 identifies the wording shown alongside the
+	// question. Bump when that copy changes materially, so existing records
+	// still name the text they were given against.
+	MarketingConsentWordingV1 = "marketing-v1"
+)
+
 type User struct {
 	ID                    string     `json:"id" db:"id"`
 	Name                  string     `json:"name" db:"name"`
@@ -79,6 +98,14 @@ type User struct {
 	// that need re-sync; clears it on success and stamps synced_at.
 	MarketingSyncedAt  *time.Time `json:"-" db:"marketing_synced_at"`
 	MarketingSyncError *string    `json:"-" db:"marketing_sync_error"`
+	// Consent evidence for MarketingOptIn. UK GDPR Art 7(1) requires us
+	// to be able to demonstrate consent, which the boolean alone cannot:
+	// these record when the decision was last made, on which surface, and
+	// against which wording. A NULL MarketingConsentAt means the user has
+	// never been asked — distinct from a recorded refusal.
+	MarketingConsentAt      *time.Time `json:"marketing_consent_at,omitempty" db:"marketing_consent_at"`
+	MarketingConsentSource  *string    `json:"-" db:"marketing_consent_source"`
+	MarketingConsentVersion *string    `json:"-" db:"marketing_consent_version"`
 	// Extended profile fields surfaced in flows as ${user.X} variables.
 	// All nullable — empty/NULL collapses to "" at substitution time.
 	Salutation    *string        `json:"salutation,omitempty" db:"salutation"`
