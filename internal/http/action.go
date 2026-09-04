@@ -190,6 +190,7 @@ var subCategoryMetadata = map[string]struct {
 	// executor/actions/crm/salesforce/category.go.
 	"crm/salesforce": {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
 	"crm/apollo":     {Name: "Apollo", Icon: "apollo", Description: "Enrich, search and manage Apollo.io contacts, accounts, deals and sequences"},
+	"crm/freshsales": {Name: "Freshsales", Icon: "freshworks", Description: "Manage Freshsales contacts, accounts, deals, activities, lists and products"},
 	// Sub-category metadata must match executor/actions/heygen/<group>/category.go.
 	"heygen/videos":                  {Name: "Videos", Icon: "video", Description: "Generate and retrieve HeyGen avatar videos"},
 	"heygen/avatars":                 {Name: "Avatars", Icon: "user", Description: "Browse HeyGen avatars and looks"},
@@ -311,6 +312,20 @@ var subSubCategoryMetadata = map[string]struct {
 	"crm/apollo/deals":             {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
 	"crm/apollo/sequences":         {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
 	"crm/apollo/emailer":           {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
+
+	"crm/freshsales/contacts":         {Name: "Contacts", Icon: "user", Description: "Create, find and manage Freshsales contacts"},
+	"crm/freshsales/accounts":         {Name: "Accounts", Icon: "briefcase", Description: "Create, find and manage Freshsales sales accounts"},
+	"crm/freshsales/deals":            {Name: "Deals", Icon: "dollar-sign", Description: "Create, find and manage Freshsales deals"},
+	"crm/freshsales/notes":            {Name: "Notes", Icon: "file", Description: "Attach notes to Freshsales records"},
+	"crm/freshsales/tasks":            {Name: "Tasks", Icon: "check", Description: "Create and complete Freshsales tasks"},
+	"crm/freshsales/appointments":     {Name: "Appointments", Icon: "calendar", Description: "Schedule and manage Freshsales appointments"},
+	"crm/freshsales/sales_activities": {Name: "Sales Activities", Icon: "phone", Description: "Log and manage Freshsales sales activities"},
+	"crm/freshsales/lists":            {Name: "Marketing Lists", Icon: "people-group", Description: "Manage Freshsales marketing lists and their contacts"},
+	"crm/freshsales/products":         {Name: "Products", Icon: "box", Description: "Manage Freshsales CPQ products"},
+	"crm/freshsales/files":            {Name: "Files & Links", Icon: "file", Description: "Attach files and links to Freshsales records"},
+	"crm/freshsales/search":           {Name: "Search", Icon: "magnifying-glass", Description: "Search and look up Freshsales records"},
+	"crm/freshsales/settings":         {Name: "Settings", Icon: "bolt", Description: "Read Freshsales configuration — owners, stages, currencies and more"},
+	"crm/freshsales/bulk":             {Name: "Bulk & GDPR", Icon: "rotate", Description: "Bulk upsert, bulk delete and GDPR erase across Freshsales"},
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
