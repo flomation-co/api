@@ -427,6 +427,17 @@ type ActionCategory struct {
 	SubSubName        string `json:"sub_sub_name,omitempty"`
 	SubSubIcon        string `json:"sub_sub_icon,omitempty"`
 	SubSubDescription string `json:"sub_sub_description,omitempty"`
+
+	// Palette group: the top tier of the Add Node menu, above the 66
+	// categories. Names a job ("Messaging & email") rather than a vendor, so
+	// somebody can find Slack without knowing which category it lives in.
+	// GroupOrder is explicit because the useful order is neither alphabetical
+	// nor by size — Building blocks leads and Cloud & data is deliberately last.
+	GroupKey         string `json:"group_key,omitempty"`
+	GroupName        string `json:"group_name,omitempty"`
+	GroupIcon        string `json:"group_icon,omitempty"`
+	GroupDescription string `json:"group_description,omitempty"`
+	GroupOrder       int    `json:"group_order,omitempty"`
 }
 
 type Action struct {

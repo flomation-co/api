@@ -328,6 +328,115 @@ var subSubCategoryMetadata = map[string]struct {
 	"crm/freshsales/bulk":             {Name: "Bulk & GDPR", Icon: "rotate", Description: "Bulk upsert, bulk delete and GDPR erase across Freshsales"},
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Palette groups
+//
+// A fourteenth-of-a-catalogue is not browsable: there are 66 top-level
+// categories and 3,660 actions, and Oracle plus AWS alone are 59% of them. The
+// group layer sits above categoryMetadata purely for the Add Node menu, so the
+// everyday surface can be read at a glance and the cloud providers can be put
+// where they belong for most people, which is last.
+//
+// Groups are named for the job, not the vendor — somebody looking for Slack
+// thinks "messaging", not "communications platform". "Building blocks" leads
+// because triggers, conditionals and outputs are the editor's own vocabulary
+// and the most-reached-for things in the product, not miscellany.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type paletteGroup struct {
+	Name        string
+	Icon        string
+	Description string
+	Order       int
+}
+
+var groupMetadata = map[string]paletteGroup{
+	"building-blocks": {Name: "Building blocks", Icon: "bolt", Description: "Triggers, branches, outputs and the pieces every flow is made of", Order: 1},
+	"messaging":       {Name: "Messaging & email", Icon: "comments", Description: "Send and receive messages, email, SMS and voice", Order: 2},
+	"documents":       {Name: "Documents & files", Icon: "file-lines", Description: "Documents, spreadsheets, slides and file storage", Order: 3},
+	"calendars":       {Name: "Calendars & scheduling", Icon: "calendar", Description: "Bookings, appointments and calendars", Order: 4},
+	"crm":             {Name: "Sales & CRM", Icon: "people-group", Description: "Contacts, accounts, deals and marketing", Order: 5},
+	"work":            {Name: "Work tracking", Icon: "list-check", Description: "Tasks, tickets, boards and support queues", Order: 6},
+	"finance":         {Name: "Finance & commerce", Icon: "dollar-sign", Description: "Payments, invoicing, accounting and online shops", Order: 7},
+	"developer":       {Name: "Developer tools", Icon: "code", Description: "Source control, pipelines, scripts and machines", Order: 8},
+	"ai":              {Name: "AI & agents", Icon: "brain", Description: "Models, agents and generation", Order: 9},
+	"media":           {Name: "Media", Icon: "image", Description: "Images, video, audio and generated media", Order: 10},
+	"forms":           {Name: "Forms & surveys", Icon: "clipboard-list", Description: "Collect answers from people", Order: 11},
+	"content":         {Name: "Websites & content", Icon: "globe", Description: "Sites, content management and structured data", Order: 12},
+	"government":      {Name: "UK Government", Icon: "landmark", Description: "Public data from UK government services", Order: 13},
+	// Last on purpose: 59% of the catalogue, and irrelevant to most people.
+	"cloud": {Name: "Cloud & data", Icon: "cloud", Description: "Cloud providers, databases, queues and infrastructure", Order: 14},
+}
+
+// groupByCategory maps every top-level category to its palette group. It is
+// exhaustive by test (TestEveryCategoryHasAGroup) rather than by hope: a new
+// category with no entry would otherwise fall out of the menu silently.
+var groupByCategory = map[string]string{
+	"trigger": "building-blocks", "common": "building-blocks", "conditional": "building-blocks",
+	"output": "building-blocks", "subflow": "building-blocks", "string": "building-blocks",
+	"arithmetic": "building-blocks", "file": "building-blocks", "error": "building-blocks",
+	"humanintheloop": "building-blocks", "journey": "building-blocks", "plan": "building-blocks",
+	"makefile": "building-blocks",
+
+	"slack": "messaging", "messaging": "messaging", "twilio": "messaging",
+	"elevenlabs": "messaging", "social": "messaging",
+
+	"google": "documents", "microsoft": "documents", "notion": "documents", "document": "documents",
+
+	"scheduling": "calendars",
+
+	"crm": "crm", "hubspot": "crm", "marketing": "crm", "mailchimp": "crm",
+
+	"asana": "work", "trello": "work", "monday": "work", "jira": "work",
+	"linear": "work", "helpdesk": "work",
+
+	"stripe": "finance", "xero": "finance", "quickbooks": "finance", "ecommerce": "finance",
+
+	"github": "developer", "gitlab": "developer", "git": "developer", "devops": "developer",
+	"script": "developer", "desktop": "developer", "security": "developer",
+
+	"ai": "ai", "agent": "ai",
+
+	"image": "media", "video": "media", "graphics": "media", "heygen": "media",
+
+	"forms": "forms",
+
+	"cms": "content", "webflow": "content", "web": "content", "airtable": "content",
+
+	"ukgov": "government",
+
+	"aws": "cloud", "azure": "cloud", "oracle": "cloud", "infrastructure": "cloud",
+	"opentofu": "cloud", "databricks": "cloud", "nosql": "cloud", "sql": "cloud",
+	"vectordatabase": "cloud", "messagebrokers": "cloud", "filetransfer": "cloud",
+}
+
+// groupBySubPath moves individual services out of their category's group where
+// the job differs from the vendor. Google Calendar is a calendar even though
+// Google's other actions are documents; Outlook and Gmail are email.
+var groupBySubPath = map[string]string{
+	"google/calendar":    "calendars",
+	"microsoft/calendar": "calendars",
+	"google/gmail":       "messaging",
+	"microsoft/outlook":  "messaging",
+	"microsoft/teams":    "messaging",
+}
+
+// groupForAction resolves the palette group for an action id, preferring a
+// service-level override over its category's group.
+func groupForAction(parts []string) (string, paletteGroup, bool) {
+	if len(parts) >= 2 {
+		if key, ok := groupBySubPath[parts[0]+"/"+parts[1]]; ok {
+			return key, groupMetadata[key], true
+		}
+	}
+	if len(parts) >= 1 {
+		if key, ok := groupByCategory[parts[0]]; ok {
+			return key, groupMetadata[key], true
+		}
+	}
+	return "", paletteGroup{}, false
+}
+
 func getCategoryForAction(actionID string) *api.ActionCategory {
 	parts := strings.Split(actionID, "/")
 	if len(parts) == 0 {
@@ -336,6 +445,14 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 	cat, ok := categoryMetadata[parts[0]]
 	if !ok {
 		return nil
+	}
+
+	if key, group, ok := groupForAction(parts); ok {
+		cat.GroupKey = key
+		cat.GroupName = group.Name
+		cat.GroupIcon = group.Icon
+		cat.GroupDescription = group.Description
+		cat.GroupOrder = group.Order
 	}
 
 	// For 3+ segment action IDs, populate sub-category fields
