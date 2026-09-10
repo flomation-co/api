@@ -790,3 +790,60 @@ func (m *phase2Mock) RevisePlan(ctx context.Context, planID string, ops persiste
 func (m *phase2Mock) GetAgentPlanSummary(agentID string) (persistence.PlanSummary, error) {
 	return persistence.PlanSummary{}, nil
 }
+
+// --- Commitment: fields that used to be dropped at this boundary ---
+
+func Test_CreateAgentCommitmentInternal_KeepsRecurrence(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newPhase2Mock()
+	seedAgent(mock, "agent-1")
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupPhase2InternalRouter(svc)
+
+	body := `{
+		"kind":"reminder",
+		"description":"Morning briefing",
+		"trigger_type":"time_elapsed",
+		"due_at":"2026-09-11T08:00:00Z",
+		"recurrence":"daily"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/internal/agent/agent-1/commitment", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	Expect(res.Code).To(Equal(http.StatusCreated))
+	Expect(mock.createCommitCalls).To(HaveLen(1))
+	Expect(mock.createCommitCalls[0].Recurrence).ToNot(BeNil(),
+		"a dropped recurrence is why every recurring reminder fired exactly once")
+	Expect(*mock.createCommitCalls[0].Recurrence).To(Equal("daily"))
+}
+
+func Test_CreateAgentCommitmentInternal_AcceptsAParkedStatus(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+
+	mock := newPhase2Mock()
+	seedAgent(mock, "agent-1")
+	svc := setupTestService(&mock.mockPersistence)
+	svc.persistence = mock
+	router := setupPhase2InternalRouter(svc)
+
+	body := `{
+		"kind":"followup",
+		"description":"Check back",
+		"trigger_type":"time_elapsed",
+		"status":"needs_attention"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/internal/agent/agent-1/commitment", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	Expect(res.Code).To(Equal(http.StatusCreated))
+	Expect(mock.createCommitCalls).To(HaveLen(1))
+	Expect(mock.createCommitCalls[0].Status).To(Equal("needs_attention"))
+}

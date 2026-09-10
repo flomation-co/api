@@ -3400,11 +3400,13 @@ func NewService(config *config.Config) (*Service, error) {
 		INSERT INTO agent_commitment (
 			agent_id, agent_user_id, conversation_id, kind, description,
 			payload, trigger_type, due_at, condition, status,
-			source_conversation, source_message, made_by, expires_at
+			source_conversation, source_message, made_by, expires_at,
+			recurrence
 		) VALUES (
 			:agent_id, :agent_user_id, :conversation_id, :kind, :description,
 			:payload, :trigger_type, :due_at, :condition, :status,
-			:source_conversation, :source_message, :made_by, :expires_at
+			:source_conversation, :source_message, :made_by, :expires_at,
+			:recurrence
 		)
 		RETURNING id
 	`)
