@@ -26,6 +26,9 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"time"
+
+	agentdispatch "flomation.app/automate/api/internal/agent"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -152,9 +155,10 @@ func (s *Service) extractAgentInternal(c *gin.Context) {
 	// agent/pending_action, and agent/commitment writes inside the
 	// extraction flow can scope themselves without an extra lookup.
 	triggerData := map[string]interface{}{
-		"agent_id": agentID,
-		"role":     body.Role,
-		"content":  body.Content,
+		"agent_id":     agentID,
+		"role":         body.Role,
+		"content":      body.Content,
+		"current_time": agentdispatch.ExtractionCurrentTime(time.Now()),
 	}
 	if body.MessageID != nil {
 		triggerData["message_id"] = *body.MessageID

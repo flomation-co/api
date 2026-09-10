@@ -192,6 +192,29 @@ func manualTriggerRegistrationData(nodeID string, triggerInputs []map[string]int
 	}
 }
 
+// formTriggerData builds the payload registered with Launch for a form trigger.
+// The form_definition (a JSON string among the node inputs) becomes the ROOT
+// trigger data so Launch serves the form from it. Parsing the definition
+// replaces the map, which would drop __node_id — so it is re-stamped, ensuring a
+// form submission is injected into THIS trigger node in a multi-trigger flow. If
+// there is no parseable form_definition the original data is returned unchanged.
+func formTriggerData(triggerData map[string]interface{}, nodeID string) map[string]interface{} {
+	fd, ok := triggerData["form_definition"]
+	if !ok {
+		return triggerData
+	}
+	fdStr, ok := fd.(string)
+	if !ok || fdStr == "" {
+		return triggerData
+	}
+	var formDef map[string]interface{}
+	if err := json.Unmarshal([]byte(fdStr), &formDef); err != nil {
+		return triggerData
+	}
+	formDef["__node_id"] = nodeID
+	return formDef
+}
+
 // extractManualTriggerInputs parses a flow revision's data blob and
 // returns the trigger_inputs schema declared on its manual trigger node
 // (if any). The bool result distinguishes "no manual node found" from

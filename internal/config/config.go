@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+
 	goconfig "github.com/flomation-co/go-config"
 
 	"flomation.app/automate/api/internal/mtls"
@@ -108,6 +110,61 @@ type Config struct {
 	Billing          BillingConfig                  `json:"billing"`
 	OAuth            map[string]OAuthProviderConfig `json:"oauth,omitempty"`
 	EmailOctopus     *EmailOctopusConfig            `json:"email_octopus,omitempty"`
+	AWS              *AWSConfig                     `json:"aws,omitempty"`
+	OCIHosting       *OCIHostingConfig              `json:"oci_hosting,omitempty"`
+}
+
+// OCIHostingConfig is Flomation's OWN OCI signing-key identity + bucket used to
+// host the per-credential "Connect Oracle Cloud" provisioning stacks. OCI Resource
+// Manager only fetches stack zips from supported providers (Object Storage /
+// GitHub / GitLab), so the connector uploads each stack to this bucket and hands
+// RM a pre-authenticated request (PAR) URL. Lives ONLY on the API.
+type OCIHostingConfig struct {
+	Tenancy     string `json:"tenancy"`
+	User        string `json:"user"`
+	Region      string `json:"region"`
+	Fingerprint string `json:"fingerprint"`
+	PrivateKey  string `json:"private_key"`
+	Passphrase  string `json:"passphrase,omitempty"`
+	Bucket      string `json:"bucket"`
+	Namespace   string `json:"namespace,omitempty"` // optional; resolved via GetNamespace when blank
+}
+
+// String redacts the signing key and passphrase so an accidental %v/%+v dump of the
+// config (directly or via a parent struct) never leaks the private key.
+func (c OCIHostingConfig) String() string {
+	redact := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		return "***redacted***"
+	}
+	return fmt.Sprintf("{Tenancy:%s User:%s Region:%s Fingerprint:%s PrivateKey:%s Passphrase:%s Bucket:%s Namespace:%s}",
+		c.Tenancy, c.User, c.Region, c.Fingerprint, redact(c.PrivateKey), redact(c.Passphrase), c.Bucket, c.Namespace)
+}
+
+// AWSConfig holds platform-level AWS settings.
+//
+// Provisioning holds the tightly-scoped IAM identity the API uses to mint a
+// dedicated per-credential Flomation IAM user for each AWS Role credential
+// (auto-provisioning). It can only manage assume-role-only users under a fixed
+// path (enforced by a permissions boundary), and lives ONLY here — never on the
+// runner. When Provisioning is nil, AWS Role credentials fall back to the
+// single-principal TrustPrincipalARN (a placeholder if that too is unset).
+type AWSConfig struct {
+	TrustPrincipalARN string                 `json:"trust_principal_arn"`
+	Provisioning      *AWSProvisioningConfig `json:"provisioning,omitempty"`
+}
+
+// AWSProvisioningConfig is the credentials + guardrails for auto-provisioning
+// per-credential IAM users in Flomation's own AWS account.
+type AWSProvisioningConfig struct {
+	AccessKeyID            string `json:"access_key_id"`
+	SecretAccessKey        string `json:"secret_access_key"`
+	Region                 string `json:"region"`
+	AccountID              string `json:"account_id"`
+	UserPath               string `json:"user_path"`                // e.g. "/flomation-creds/"
+	PermissionsBoundaryARN string `json:"permissions_boundary_arn"` // caps minted users to sts:AssumeRole only
 }
 
 func LoadConfig(path string) (*Config, error) {

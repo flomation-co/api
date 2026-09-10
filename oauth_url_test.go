@@ -125,4 +125,29 @@ func TestProviderURLVariables(t *testing.T) {
 	if vs := (CredentialProvider{}).URLVariables(); vs != nil {
 		t.Fatalf("expected nil, got %v", vs)
 	}
+
+	// An optional variable with a default (the azure-arm {tenant} shape) parses
+	// its Optional/Default fields; a required one (Shopify {shop}) leaves them
+	// zero-valued. The create handler uses Optional to skip the "required" check
+	// and Default as the stored fallback.
+	tenantRaw := json.RawMessage(`[{"key":"tenant","label":"Azure tenant (advanced)","optional":true,"default":"organizations"}]`)
+	tv := CredentialProvider{URLVariablesRaw: &tenantRaw}.URLVariables()
+	if len(tv) != 1 || !tv[0].Optional || tv[0].Default != "organizations" {
+		t.Fatalf("optional/default not parsed: %+v", tv)
+	}
+	// A required variable (no optional/default in the JSON) parses them
+	// zero-valued. Parsed fresh rather than reusing an earlier `vs` so the
+	// assertion doesn't depend on scoping above.
+	reqRaw := json.RawMessage(`[{"key":"shop","label":"Shop Subdomain"}]`)
+	rv := CredentialProvider{URLVariablesRaw: &reqRaw}.URLVariables()
+	if len(rv) != 1 || rv[0].Optional || rv[0].Default != "" {
+		t.Fatalf("required var should have zero-valued Optional/Default: %+v", rv)
+	}
+	// A concrete tenant GUID and the default keyword both pass the host-safe
+	// value charset (single label of letters/digits/hyphens).
+	for _, v := range []string{"organizations", "f11a332d-b270-4ce1-be01-e868c3eefd5a"} {
+		if _, err := SubstituteURLVariables("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize", map[string]string{"tenant": v}); err != nil {
+			t.Errorf("SubstituteURLVariables(tenant=%q) = %v, want nil", v, err)
+		}
+	}
 }

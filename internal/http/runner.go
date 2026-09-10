@@ -417,6 +417,20 @@ func (s *Service) registerRunner(c *gin.Context) {
 	c.JSON(http.StatusOK, runner)
 }
 
+// failUndispatchableExecution marks an execution that cannot be dispatched
+// (missing flow or revision) as terminally failed, so it does not remain stuck
+// in the "allocated" state after being selected by a runner poll. Best-effort:
+// errors are logged, not surfaced to the runner.
+func (s *Service) failUndispatchableExecution(executionID, reason string) {
+	if err := s.persistence.UpdateExecutionStatus(executionID, "executed"); err != nil {
+		log.WithFields(log.Fields{"error": err, "execution_id": executionID}).Error("unable to fail undispatchable execution (status)")
+	}
+	if err := s.persistence.UpdateCompletionStatus(executionID, "fail"); err != nil {
+		log.WithFields(log.Fields{"error": err, "execution_id": executionID}).Error("unable to fail undispatchable execution (completion)")
+	}
+	log.WithFields(log.Fields{"execution_id": executionID, "reason": reason}).Warn("execution failed: not dispatchable")
+}
+
 func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 	id := c.Param("id")
 
@@ -512,12 +526,35 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		return
 	}
 
+	// A missing flow means the execution references something that no longer
+	// exists. Fail it terminally rather than dispatch — otherwise it would be
+	// picked, marked allocated and then panic below on the nil dereference,
+	// leaving it stuck in "allocated" forever.
+	if flow == nil {
+		s.failUndispatchableExecution(execution.ID, "execution references a flow that no longer exists")
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	rev, err := s.persistence.GetLatestRevisionByFloID(flow.ID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to get latest revision for Flo")
 		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// A flow with no revision cannot run. Fail the execution terminally rather
+	// than allocate it and then nil-dereference rev.Data when building the
+	// PendingExecution below (which left executions stuck in "allocated").
+	if rev == nil {
+		log.WithFields(log.Fields{
+			"execution_id": execution.ID,
+			"flo_id":       flow.ID,
+		}).Error("flow has no revision; failing execution")
+		s.failUndispatchableExecution(execution.ID, "flow has no revision")
+		c.Status(http.StatusNoContent)
 		return
 	}
 

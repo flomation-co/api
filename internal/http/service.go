@@ -58,7 +58,7 @@ func (s *Service) corsMiddleware(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items, X-Flomation-Runner-Signature")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items, Content-Disposition")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
 		c.Writer.Header().Set("Vary", "Origin")
 	}
@@ -367,6 +367,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
+	v1.GET("config/platform", s.jwtMiddleware, s.getPlatformConfig)
 
 	// Organisations Group
 	orgs := v1.Group("organisation")
@@ -441,6 +442,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
 
+	// Compliance: customer-specific Data Processing Agreement plus metadata.
+	// Org-scoped via the shared ?organisation query param (personal mode when
+	// absent). The DPA is regenerated from the current template on every
+	// download, so template changes take effect immediately.
+	compliance := v1.Group("compliance")
+	compliance.Use(s.jwtMiddleware)
+	compliance.GET("/status", s.getComplianceStatus)
+	compliance.GET("/dpa", s.getDPA)
+
 	actions := v1.Group("action")
 	actions.GET("", s.getActions)
 	// Dynamic dropdown options for action inputs; see dynamicOptionsMetadata
@@ -448,6 +458,18 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// auth-gated like the other editor option-fetch proxies.
 	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
 	actions.GET("/options/ollama-models", s.jwtMiddleware, s.getOllamaModels)
+	// HeyGen live Avatar/Voice dropdowns — proxy /v3/avatars and /v3/voices,
+	// resolving a ${secrets.X} api_key server-side. See heygen_options.go.
+	actions.GET("/options/heygen-avatars", s.jwtMiddleware, s.getHeyGenAvatars)
+	actions.GET("/options/heygen-voices", s.jwtMiddleware, s.getHeyGenVoices)
+	// Live model dropdowns for the paste-a-key AI providers. Each proxies the
+	// provider's models endpoint, resolving a ${secrets.X} api_key server-side
+	// (openwebui additionally forwards its endpoint). See ai_models.go.
+	actions.GET("/options/anthropic-models", s.jwtMiddleware, s.getAnthropicModels)
+	actions.GET("/options/openai-models", s.jwtMiddleware, s.getOpenAIModels)
+	actions.GET("/options/gemini-models", s.jwtMiddleware, s.getGeminiModels)
+	actions.GET("/options/groq-models", s.jwtMiddleware, s.getGroqModels)
+	actions.GET("/options/openwebui-models", s.jwtMiddleware, s.getOpenWebUIModels)
 	actions.GET("/options/zendesk-groups", s.jwtMiddleware, s.getZendeskGroups)
 	actions.GET("/options/zendesk-organizations", s.jwtMiddleware, s.getZendeskOrganizations)
 	actions.GET("/options/woocommerce-categories", s.jwtMiddleware, s.getWooCommerceCategories)
@@ -455,6 +477,86 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/wordpress-categories", s.jwtMiddleware, s.getWordPressCategories)
 	actions.GET("/options/wordpress-tags", s.jwtMiddleware, s.getWordPressTags)
 	actions.GET("/options/wordpress-authors", s.jwtMiddleware, s.getWordPressAuthors)
+	actions.GET("/options/oracle-compartments", s.jwtMiddleware, s.getOracleCompartments)
+	actions.GET("/options/oracle-availability-domains", s.jwtMiddleware, s.getOracleAvailabilityDomains)
+	actions.GET("/options/oracle-shapes", s.jwtMiddleware, s.getOracleShapes)
+	actions.GET("/options/oracle-images", s.jwtMiddleware, s.getOracleImages)
+	actions.GET("/options/oracle-vcns", s.jwtMiddleware, s.getOracleVcns)
+	actions.GET("/options/oracle-subnets", s.jwtMiddleware, s.getOracleSubnets)
+	actions.GET("/options/oracle-route-tables", s.jwtMiddleware, s.getOracleRouteTables)
+	actions.GET("/options/oracle-volumes", s.jwtMiddleware, s.getOracleVolumes)
+	actions.GET("/options/oracle-boot-volumes", s.jwtMiddleware, s.getOracleBootVolumes)
+	actions.GET("/options/oracle-volume-groups", s.jwtMiddleware, s.getOracleVolumeGroups)
+	actions.GET("/options/oracle-load-balancers", s.jwtMiddleware, s.getOracleLoadBalancers)
+	actions.GET("/options/oracle-lb-backend-sets", s.jwtMiddleware, s.getOracleLbBackendSets)
+	actions.GET("/options/oracle-lb-certificates", s.jwtMiddleware, s.getOracleLbCertificates)
+	actions.GET("/options/oracle-lb-shapes", s.jwtMiddleware, s.getOracleLbShapes)
+	actions.GET("/options/oracle-lb-policies", s.jwtMiddleware, s.getOracleLbPolicies)
+	actions.GET("/options/oracle-lb-protocols", s.jwtMiddleware, s.getOracleLbProtocols)
+	actions.GET("/options/oracle-network-load-balancers", s.jwtMiddleware, s.getOracleNetworkLoadBalancers)
+	actions.GET("/options/oracle-nlb-backend-sets", s.jwtMiddleware, s.getOracleNlbBackendSets)
+	actions.GET("/options/oracle-nlb-policies", s.jwtMiddleware, s.getOracleNlbPolicies)
+	actions.GET("/options/oracle-nlb-protocols", s.jwtMiddleware, s.getOracleNlbProtocols)
+	actions.GET("/options/oracle-instances", s.jwtMiddleware, s.getOracleInstances)
+	actions.GET("/options/oracle-backup-policies", s.jwtMiddleware, s.getOracleBackupPolicies)
+	actions.GET("/options/oracle-dns-zones", s.jwtMiddleware, s.getOracleDnsZones)
+	actions.GET("/options/oracle-dns-steering-policies", s.jwtMiddleware, s.getOracleDnsSteeringPolicies)
+	actions.GET("/options/oracle-dns-steering-policy-attachments", s.jwtMiddleware, s.getOracleDnsSteeringPolicyAttachments)
+	actions.GET("/options/oracle-dns-views", s.jwtMiddleware, s.getOracleDnsViews)
+	actions.GET("/options/oracle-dns-resolvers", s.jwtMiddleware, s.getOracleDnsResolvers)
+	actions.GET("/options/oracle-dns-resolver-endpoints", s.jwtMiddleware, s.getOracleDnsResolverEndpoints)
+	actions.GET("/options/oracle-dns-tsig-keys", s.jwtMiddleware, s.getOracleDnsTsigKeys)
+	actions.GET("/options/oracle-iam-users", s.jwtMiddleware, s.getOracleIamUsers)
+	actions.GET("/options/oracle-iam-groups", s.jwtMiddleware, s.getOracleIamGroups)
+	actions.GET("/options/oracle-iam-policies", s.jwtMiddleware, s.getOracleIamPolicies)
+	actions.GET("/options/oracle-iam-dynamic-groups", s.jwtMiddleware, s.getOracleIamDynamicGroups)
+	actions.GET("/options/oracle-iam-network-sources", s.jwtMiddleware, s.getOracleIamNetworkSources)
+	actions.GET("/options/oracle-iam-tag-namespaces", s.jwtMiddleware, s.getOracleIamTagNamespaces)
+	actions.GET("/options/oracle-iam-identity-providers", s.jwtMiddleware, s.getOracleIamIdentityProviders)
+	actions.GET("/options/oracle-fss-file-systems", s.jwtMiddleware, s.getOracleFssFileSystems)
+	actions.GET("/options/oracle-fss-mount-targets", s.jwtMiddleware, s.getOracleFssMountTargets)
+	actions.GET("/options/oracle-fss-export-sets", s.jwtMiddleware, s.getOracleFssExportSets)
+	actions.GET("/options/oracle-fss-exports", s.jwtMiddleware, s.getOracleFssExports)
+	actions.GET("/options/oracle-fss-snapshots", s.jwtMiddleware, s.getOracleFssSnapshots)
+	actions.GET("/options/oracle-fss-snapshot-policies", s.jwtMiddleware, s.getOracleFssSnapshotPolicies)
+	actions.GET("/options/oracle-fss-replications", s.jwtMiddleware, s.getOracleFssReplications)
+	actions.GET("/options/oracle-fss-outbound-connectors", s.jwtMiddleware, s.getOracleFssOutboundConnectors)
+	actions.GET("/options/oracle-vault-vaults", s.jwtMiddleware, s.getOracleVaultVaults)
+	actions.GET("/options/oracle-vault-keys", s.jwtMiddleware, s.getOracleVaultKeys)
+	actions.GET("/options/oracle-vault-key-versions", s.jwtMiddleware, s.getOracleVaultKeyVersions)
+	actions.GET("/options/oracle-vault-secrets", s.jwtMiddleware, s.getOracleVaultSecrets)
+	actions.GET("/options/oracle-notifications-topics", s.jwtMiddleware, s.getOracleNotificationsTopics)
+	actions.GET("/options/oracle-notifications-subscriptions", s.jwtMiddleware, s.getOracleNotificationsSubscriptions)
+	actions.GET("/options/oracle-oke-clusters", s.jwtMiddleware, s.getOracleOKEClusters)
+	actions.GET("/options/oracle-oke-node-pools", s.jwtMiddleware, s.getOracleOKENodePools)
+	actions.GET("/options/oracle-oke-virtual-node-pools", s.jwtMiddleware, s.getOracleOKEVirtualNodePools)
+	actions.GET("/options/oracle-exadata-infrastructures", s.jwtMiddleware, s.getOracleExadataInfrastructures)
+	actions.GET("/options/oracle-exadata-vm-clusters", s.jwtMiddleware, s.getOracleExadataVmClusters)
+	actions.GET("/options/oracle-streaming-streams", s.jwtMiddleware, s.getOracleStreamingStreams)
+	actions.GET("/options/oracle-streaming-stream-pools", s.jwtMiddleware, s.getOracleStreamingStreamPools)
+	actions.GET("/options/oracle-streaming-connect-harnesses", s.jwtMiddleware, s.getOracleStreamingConnectHarnesses)
+	actions.GET("/options/oracle-events-rules", s.jwtMiddleware, s.getOracleEventsRules)
+	actions.GET("/options/oracle-queue-queues", s.jwtMiddleware, s.getOracleQueueQueues)
+	actions.GET("/options/oracle-functions-applications", s.jwtMiddleware, s.getOracleFunctionsApplications)
+	actions.GET("/options/oracle-monitoring-alarms", s.jwtMiddleware, s.getOracleMonitoringAlarms)
+	actions.GET("/options/oracle-logging-log-groups", s.jwtMiddleware, s.getOracleLoggingLogGroups)
+	actions.GET("/options/oracle-apigateway-gateways", s.jwtMiddleware, s.getOracleApiGatewayGateways)
+	actions.GET("/options/oracle-waf-firewalls", s.jwtMiddleware, s.getOracleWafFirewalls)
+	actions.GET("/options/oracle-certificates-certificates", s.jwtMiddleware, s.getOracleCertificatesCertificates)
+	actions.GET("/options/oracle-email-domains", s.jwtMiddleware, s.getOracleEmailDomains)
+	actions.GET("/options/oracle-nosql-tables", s.jwtMiddleware, s.getOracleNosqlTables)
+	actions.GET("/options/oracle-mysql-db-systems", s.jwtMiddleware, s.getOracleMysqlDbSystems)
+	actions.GET("/options/oracle-dataflow-applications", s.jwtMiddleware, s.getOracleDataflowApplications)
+	actions.GET("/options/oracle-datacatalog-catalogs", s.jwtMiddleware, s.getOracleDatacatalogCatalogs)
+	actions.GET("/options/oracle-generativeai-models", s.jwtMiddleware, s.getOracleGenerativeAiModels)
+	actions.GET("/options/oracle-language-projects", s.jwtMiddleware, s.getOracleLanguageProjects)
+	actions.GET("/options/oracle-vision-projects", s.jwtMiddleware, s.getOracleVisionProjects)
+	actions.GET("/options/oracle-documentunderstanding-projects", s.jwtMiddleware, s.getOracleDocumentUnderstandingProjects)
+	actions.GET("/options/oracle-speech-transcription-jobs", s.jwtMiddleware, s.getOracleSpeechTranscriptionJobs)
+	actions.GET("/options/oracle-bastions", s.jwtMiddleware, s.getOracleBastions)
+	actions.GET("/options/oracle-waa-accelerations", s.jwtMiddleware, s.getOracleWaaAccelerations)
+	actions.GET("/options/oracle-vss-host-scan-recipes", s.jwtMiddleware, s.getOracleVssHostScanRecipes)
+	actions.GET("/options/oracle-cloudguard-detector-recipes", s.jwtMiddleware, s.getOracleCloudGuardDetectorRecipes)
 	actions.GET("/options/jenkins-jobs", s.jwtMiddleware, s.getJenkinsJobs)
 	actions.GET("/options/jira-projects", s.jwtMiddleware, s.getJiraProjects)
 	actions.GET("/options/jira-issue-types", s.jwtMiddleware, s.getJiraIssueTypes)
@@ -507,6 +609,21 @@ func (s *Service) registerRoutes(config *config.Config) {
 		actions.GET("/options/awx-"+slug, s.jwtMiddleware, s.awxOptions(slug))
 	}
 	actions.GET("/options/awx-adhoc-modules", s.jwtMiddleware, s.getAWXAdHocModules)
+	// AWS resource pickers (security groups, subnets, KMS keys, IAM roles, SNS
+	// topics, RDS subnet groups) for the aws/* actions. awsResourceInputs is the
+	// shared source of truth for both the routes and the rule-based marker
+	// injection (aws_options.go).
+	// Several input names can map to the same picker slug (e.g. both subnet_id and
+	// subnet_ids → "subnets"), so register each unique slug ONCE — gin panics on a
+	// duplicate route.
+	registeredAWS := map[string]bool{}
+	for _, slug := range awsResourceInputs {
+		if registeredAWS[slug] {
+			continue
+		}
+		registeredAWS[slug] = true
+		actions.GET("/options/aws-"+slug, s.jwtMiddleware, s.awsOptions(slug))
+	}
 	// pgvector pickers open a raw Postgres connection to a caller-named host —
 	// the only option proxy that is not HTTP, and the only one that could be
 	// aimed at the api's own control-plane database. See pgvector_options.go for
@@ -514,6 +631,48 @@ func (s *Service) registerRoutes(config *config.Config) {
 	actions.GET("/options/pgvector-schemas", s.jwtMiddleware, s.getPGVectorSchemas)
 	actions.GET("/options/pgvector-tables", s.jwtMiddleware, s.getPGVectorTables)
 	actions.GET("/options/pgvector-columns", s.jwtMiddleware, s.getPGVectorColumns)
+	// Azure pickers: Storage containers (SharedKey-signed or Entra), Cosmos DB
+	// databases/containers (master-key-signed or Entra), Entra ID groups/users
+	// (app-only Graph), Azure OpenAI deployments and AI Search indexes
+	// (api-key). See azure_options.go for the host validation, signing, and
+	// dial guard.
+	actions.GET("/options/azure-storage-containers", s.jwtMiddleware, s.getAzureStorageContainers)
+	actions.GET("/options/azure-cosmos-databases", s.jwtMiddleware, s.getAzureCosmosDatabases)
+	actions.GET("/options/azure-cosmos-containers", s.jwtMiddleware, s.getAzureCosmosContainers)
+	actions.GET("/options/azure-entra-groups", s.jwtMiddleware, s.getAzureEntraGroups)
+	actions.GET("/options/azure-entra-users", s.jwtMiddleware, s.getAzureEntraUsers)
+	actions.GET("/options/azure-openai-deployments", s.jwtMiddleware, s.getAzureOpenAIDeployments)
+	actions.GET("/options/azure-aisearch-indexes", s.jwtMiddleware, s.getAzureAISearchIndexes)
+	actions.GET("/options/azure-files-shares", s.jwtMiddleware, s.getAzureFilesShares)
+	actions.GET("/options/azure-tables-tables", s.jwtMiddleware, s.getAzureTablesTables)
+	actions.GET("/options/azure-servicebus-queues", s.jwtMiddleware, s.getAzureServiceBusQueues)
+	actions.GET("/options/azure-servicebus-topics", s.jwtMiddleware, s.getAzureServiceBusTopics)
+	actions.GET("/options/azure-servicebus-subscriptions", s.jwtMiddleware, s.getAzureServiceBusSubscriptions)
+	actions.GET("/options/azuredevops-projects", s.jwtMiddleware, s.getAzureDevOpsProjects)
+	actions.GET("/options/azuredevops-repositories", s.jwtMiddleware, s.getAzureDevOpsRepositories)
+	actions.GET("/options/azuredevops-pipelines", s.jwtMiddleware, s.getAzureDevOpsPipelines)
+	actions.GET("/options/azuredevops-release-definitions", s.jwtMiddleware, s.getAzureDevOpsReleaseDefinitions)
+	actions.GET("/options/azuredevops-teams", s.jwtMiddleware, s.getAzureDevOpsTeams)
+	// Salesforce pickers. Fourteen proxies back all 565 markers registered from
+	// salesforce_options_markers.go — record ids and picklist API names are the
+	// two things a non-technical operator cannot be asked to look up, and they
+	// are most of a Salesforce action's inputs. The org's instance_url is
+	// caller-supplied and becomes the request host, so see salesforce_options.go
+	// for the Salesforce-suffix validation, dial guard and SOQL escaping.
+	actions.GET("/options/salesforce-objects", s.jwtMiddleware, s.getSalesforceObjects)
+	actions.GET("/options/salesforce-fields", s.jwtMiddleware, s.getSalesforceFields)
+	actions.GET("/options/salesforce-picklist", s.jwtMiddleware, s.getSalesforcePicklistValues)
+	actions.GET("/options/salesforce-external-id-fields", s.jwtMiddleware, s.getSalesforceExternalIDFields)
+	actions.GET("/options/salesforce-record-types", s.jwtMiddleware, s.getSalesforceRecordTypes)
+	actions.GET("/options/salesforce-lookup", s.jwtMiddleware, s.getSalesforceLookup)
+	actions.GET("/options/salesforce-users", s.jwtMiddleware, s.getSalesforceUsers)
+	actions.GET("/options/salesforce-owners", s.jwtMiddleware, s.getSalesforceOwners)
+	actions.GET("/options/salesforce-lead-converted-statuses", s.jwtMiddleware, s.getSalesforceLeadConvertedStatuses)
+	actions.GET("/options/salesforce-contract-statuses", s.jwtMiddleware, s.getSalesforceContractStatuses)
+	actions.GET("/options/salesforce-campaign-member-status", s.jwtMiddleware, s.getSalesforceCampaignMemberStatus)
+	actions.GET("/options/salesforce-list-views", s.jwtMiddleware, s.getSalesforceListViews)
+	actions.GET("/options/salesforce-reports", s.jwtMiddleware, s.getSalesforceReports)
+	actions.GET("/options/salesforce-price-book-entries", s.jwtMiddleware, s.getSalesforcePriceBookEntries)
 
 	flos := v1.Group("flo")
 	//flos.Use(s.jwtMiddleware)
@@ -527,6 +686,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 
 	flos.POST("/export", s.jwtMiddleware, s.exportFlos)
 	flos.POST("/import", s.jwtMiddleware, s.importFlo)
+	flos.POST("/move", s.jwtMiddleware, s.moveFlosToProject)
 	flos.POST("/:FloID/revision", s.jwtMiddleware, s.createFloRevision)
 
 	flos.POST("/:FloID/execute", s.flexAuthMiddleware, s.executeFlo)
@@ -569,6 +729,9 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// is scope-based: the persistence layer returns 404 for blobs
 	// outside the user's org/owner scope. See blob_public.go.
 	v1.GET("blob/:handle", s.jwtMiddleware, s.getBlobPublic)
+	// Editor upload of flow assets (logo/PSD/image) → a permanent asset blob,
+	// returned as a flo:blob: token the Asset node wires into file inputs.
+	v1.POST("asset", s.jwtMiddleware, s.putAssetPublic)
 
 	runners := v1.Group("runner")
 	runners.GET("", s.jwtMiddleware, s.getRunners)
@@ -596,6 +759,14 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// duplicates the route on the main engine and panics gin at startup when
 	// mTLS is disabled (internalRouter == v1).
 
+	project := v1.Group("project")
+	project.GET("", s.jwtMiddleware, s.getProjects)
+	project.POST("", s.jwtMiddleware, s.createProject)
+	project.PATCH("/:id", s.jwtMiddleware, s.updateProject)
+	project.DELETE("/:id", s.jwtMiddleware, s.deleteProject)
+	project.GET("/:id/acl", s.jwtMiddleware, s.getProjectACL)
+	project.PUT("/:id/acl", s.jwtMiddleware, s.setProjectACL)
+
 	environment := v1.Group("environment")
 	environment.GET("", s.jwtMiddleware, s.getEnvironments)
 	environment.GET("/:environment", s.jwtMiddleware, s.getEnvironmentByID)
@@ -617,6 +788,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	environment.GET("/:environment/credential", s.jwtMiddleware, s.getEnvironmentCredentials)
 	environment.POST("/:environment/credential", s.jwtMiddleware, s.createEnvironmentCredential)
 	environment.POST("/:environment/credential/:id/reauthorise", s.jwtMiddleware, s.reauthoriseCredential)
+	environment.PUT("/:environment/credential/:id/aws-role", s.jwtMiddleware, s.setAWSRoleARN)
+	environment.PUT("/:environment/credential/:id/aws-permissions", s.jwtMiddleware, s.updateAWSRolePermissions)
+	environment.POST("/:environment/credential/:id/aws-role/test", s.jwtMiddleware, s.testAWSRoleAccess)
+	environment.PUT("/:environment/credential/:id/oci-connection", s.jwtMiddleware, s.setOCIConnection)
+	environment.POST("/:environment/credential/:id/oci-key/test", s.jwtMiddleware, s.testOCIAccess)
 	environment.DELETE("/:environment/credential/:id", s.jwtMiddleware, s.deleteEnvironmentCredential)
 
 	environment.GET("/:environment/secret", s.jwtMiddleware, s.getEnvironmentSecrets)
@@ -652,6 +828,10 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// Credentials
 	v1.GET("credential/providers", s.jwtMiddleware, s.getCredentialProviders)
 	v1.GET("credential/callback", s.credentialOAuthCallback) // No auth — OAuth redirect
+	// Distinct top-level path (not under credential/) so gin's radix tree doesn't
+	// conflict the :id param with the static credential/providers|callback routes.
+	// (OCI connect stacks are hosted on Object Storage via a PAR — RM only fetches
+	// zipUrls from supported providers, not a self-served endpoint.)
 
 	// Agents
 	agents := v1.Group("agent")
@@ -773,6 +953,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// See plans/agent_memory.md.
 	internal.POST("/agent/:id/resolve-identity", s.resolveAgentIdentityInternal)
 	internal.POST("/agent/:id/conversation", s.resolveAgentConversationInternal)
+	internal.POST("/agent/:id/history/search", s.searchAgentHistoryInternal)
 	internal.GET("/conversation/:id", s.getAgentConversationInternal)
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
@@ -1004,10 +1185,13 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 	}
 
 	if u == nil {
-		userID, err := s.persistence.CreateUser(&api.User{
+		newUser := &api.User{
 			ID:   userIDFromContext.(string),
 			Name: "auto-generate",
-		})
+		}
+		s.seedFromIdentity(c, newUser)
+
+		userID, err := s.persistence.CreateUser(newUser)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -1038,6 +1222,53 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 // user's current org context. In personal mode (no org selected), only
 // resources with null organisation_id are accessible. In org mode, only
 // resources belonging to that organisation are accessible.
+// seedFromIdentity fills in what Sentinel already knows about an account we are
+// about to provision: the email address, and the marketing decision given on
+// the sign-up form.
+//
+// Seeding the consent matters because the alternative — asking again in the
+// welcome modal — is both a worse experience and worse evidence, since it would
+// overwrite the timestamp and surface of the consent actually given. Accounts
+// created before the sign-up question existed, and SSO sign-ups (which have no
+// form of ours), carry no decision; those are left unasked and the welcome
+// modal asks as before.
+//
+// Seeding the email matters because it is the only copy the product has.
+// Sentinel holds the address encrypted and the marketing sync needs it to
+// subscribe or unsubscribe anyone at all.
+//
+// Best-effort by design. A slow or unreachable Sentinel must not stop a user
+// being provisioned, so a failure here logs and leaves both unset.
+func (s *Service) seedFromIdentity(c *gin.Context, user *api.User) {
+	token := s.getTokenFromContext(c)
+	if token == nil {
+		return
+	}
+
+	account, err := s.identity.GetAccount(*token)
+	if err != nil || account == nil {
+		log.WithFields(log.Fields{
+			"error":   err,
+			"user_id": user.ID,
+		}).Warn("unable to read account from identity service - user will be asked in the product")
+		return
+	}
+
+	if account.Username != "" {
+		email := account.Username
+		user.EmailAddress = &email
+	}
+
+	if account.MarketingConsentAt == nil {
+		return
+	}
+
+	user.MarketingOptIn = account.MarketingOptIn
+	user.MarketingConsentAt = account.MarketingConsentAt
+	user.MarketingConsentSource = account.MarketingConsentSource
+	user.MarketingConsentVersion = account.MarketingConsentVersion
+}
+
 func (s *Service) verifyOrgAccess(user *api.User, resourceOrgID *string) bool {
 	if len(user.Organisations) > 0 {
 		// Org mode — resource must belong to this org

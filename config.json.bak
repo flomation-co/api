@@ -1,0 +1,43 @@
+{
+  "http": {
+    "address": "0.0.0.0",
+    "port": 8080
+  },
+  "database": {
+    "hostname": "localhost",
+    "port": 5432,
+    "username": "postgres",
+    "password": "Password1234",
+    "database": "postgres",
+    "encryption_key": "6643dcd05aabb300c16dba8a7d43e4dc",
+    "max_idle_connections": 10,
+    "max_open_connections": 25,
+    "ssl_mode": "disable"
+  },
+  "security": {
+    "identity_service": "http://localhost:8999",
+    "allowed_origins": "http://localhost:5173,http://localhost:5174"
+  },
+  "launch": {
+    "url": "http://localhost:8085",
+    "public_url": "http://localhost:8085",
+    "api_url": "http://localhost:8080"
+  },
+  "smtp": {
+    "host": "localhost",
+    "port": 1025,
+    "from": "noreply@flomation.local"
+  },
+  "billing": {
+    "quota_enforcement_enabled": false
+  },
+  "metrics": {
+    "enabled": false
+  },
+  "tls": {
+    "enabled": false
+  },
+  "embedding": {
+    "enabled": false
+  }
+}

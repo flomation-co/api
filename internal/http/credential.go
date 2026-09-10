@@ -40,6 +40,12 @@ func (s *Service) getCredentialProviders(c *gin.Context) {
 				configured = true
 			}
 		}
+		// oci_key is token-less (no OAuth), so "configured" instead reflects whether
+		// managed stack hosting is set up. The editor uses this to choose the wizard:
+		// configured -> one-click managed flow; not configured -> manual key entry.
+		if p.Slug == "oci_key" {
+			configured = s.ociHostConfigured()
+		}
 		result = append(result, providerResponse{
 			CredentialProvider: p,
 			Configured:         configured,
@@ -68,6 +74,13 @@ func (s *Service) deleteEnvironmentCredential(c *gin.Context) {
 	environmentID := c.Param("environment")
 	credID := c.Param("id")
 
+	// Best-effort teardown of a dedicated AWS Role IAM user before the row goes.
+	// A failure here only orphans an assume-role-only user (recoverable by a
+	// sweep), so it must not block the credential deletion.
+	s.cleanupAWSRoleIdentity(c, credID)
+	// Best-effort removal of an oci_key credential's hosted provisioning stack.
+	s.cleanupOCIStack(credID)
+
 	if err := s.persistence.DeleteCredential(credID, environmentID); err != nil {
 		log.WithError(err).Error("unable to delete credential")
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -88,6 +101,28 @@ type createCredentialRequest struct {
 	// URLVars supplies per-tenant OAuth URL variable values (e.g.
 	// {"shop":"my-store"}) for providers that declare url_variables.
 	URLVars map[string]string `json:"url_vars"`
+	// RoleARN / Region apply only to the aws_role provider: the customer's IAM
+	// role to assume, and its region.
+	RoleARN string `json:"role_arn"`
+	Region  string `json:"region"`
+	// PermissionLevels is the aws_role picker's per-service access-level map
+	// ({serviceId: level}). Persisted in metadata so the "edit permissions" flow
+	// can pre-fill the picker; NOT enforced by Flomation (the policy lives on the
+	// customer's role).
+	PermissionLevels map[string]string `json:"permission_levels"`
+	// TenancyOCID / Scope apply only to the oci_key provider. Scope is
+	// "compartment" (default) or "tenancy"; when "compartment" the compartment is
+	// chosen in the customer's console via the provisioning stack, so it is NOT
+	// required here. Region is reused from the aws_role fields above.
+	TenancyOCID string `json:"tenancy_ocid"`
+	Scope       string `json:"scope"`
+	// Manual oci_key entry — used only when the server has NO stack hosting, so the
+	// one-click managed flow is unavailable. The operator pastes an existing OCI API
+	// signing key: user OCID, fingerprint and the (unencrypted) private-key PEM,
+	// alongside TenancyOCID + Region above.
+	UserOCID    string `json:"user_ocid"`
+	Fingerprint string `json:"fingerprint"`
+	PrivateKey  string `json:"private_key"`
 }
 
 func (s *Service) createEnvironmentCredential(c *gin.Context) {
@@ -118,6 +153,21 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 		return
 	}
 
+	// aws_role is a token-less credential: no OAuth round-trip. Generate an
+	// External ID, store the role details in metadata, and return the trust
+	// policy for the customer to paste into their AWS role.
+	if req.ProviderSlug == "aws_role" {
+		s.createAWSRoleCredential(c, environmentID, env, req)
+		return
+	}
+
+	// oci_key is a token-less managed signing-key credential: Flomation generates
+	// the RSA keypair and hands back a one-click provisioning stack; no OAuth.
+	if req.ProviderSlug == "oci_key" {
+		s.createOCIKeyCredential(c, environmentID, env, req)
+		return
+	}
+
 	// Use provider defaults if client credentials not provided
 	scopes := provider.DefaultScopes
 	if req.Scopes != nil && *req.Scopes != "" {
@@ -125,13 +175,33 @@ func (s *Service) createEnvironmentCredential(c *gin.Context) {
 	}
 
 	// Validate the provider's per-tenant URL variables are all supplied and
-	// host-safe (surfaces a clear message before an OAuth round-trip).
+	// host-safe (surfaces a clear message before an OAuth round-trip). An
+	// optional variable left blank falls back to its declared Default, which is
+	// stored on the credential so every downstream substitution (authorize,
+	// token exchange, refresh) reads a concrete value with no default logic.
 	for _, v := range provider.URLVariables() {
-		val := req.URLVars[v.Key]
-		if val == "" {
+		if strings.TrimSpace(req.URLVars[v.Key]) != "" {
+			continue
+		}
+		if !v.Optional {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is required", v.Label)})
 			return
 		}
+		// Optional and blank → substitute the declared default. An optional URL
+		// variable MUST declare a default: the auth/token URL still contains its
+		// {placeholder}, so with nothing to fill it the OAuth URL is malformed.
+		// Enforce that invariant loudly here (a provider-seed bug) rather than
+		// letting it slip through to a confusing OAuth failure downstream.
+		if v.Default == "" {
+			log.WithFields(log.Fields{"provider": provider.Slug, "variable": v.Key}).
+				Error("optional URL variable declared without a default")
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		if req.URLVars == nil {
+			req.URLVars = map[string]string{}
+		}
+		req.URLVars[v.Key] = v.Default
 	}
 	if _, err := api.SubstituteURLVariables(provider.AuthURL, req.URLVars); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -333,7 +403,10 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 
 	// Exchange code for tokens
 	callbackURL := s.credentialCallbackURL()
-	tokenResp, err := exchangeOAuthCode(tokenURL, code, *clientID, *clientSecret, callbackURL, cred.ProviderSlug)
+	// The verifier was stashed on the credential when the authorize URL was built;
+	// the callback shares nothing else with that request.
+	codeVerifier := api.PKCEVerifierFromMetadata(cred.Metadata)
+	tokenResp, err := exchangeOAuthCode(tokenURL, code, *clientID, *clientSecret, callbackURL, cred.ProviderSlug, codeVerifier)
 	if err != nil {
 		log.WithError(err).Error("OAuth token exchange failed")
 		errMsg := err.Error()
@@ -342,11 +415,29 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	// Calculate expiry
+	// Calculate expiry.
+	//
+	// Salesforce never sends expires_in — it sends issued_at instead — and a nil
+	// expiry is stored as NULL, which GetCredentialsNeedingRefresh filters OUT.
+	// The credential was therefore never refreshed: it connected cleanly, showed
+	// "active", and then every call began failing with INVALID_SESSION_ID at the
+	// org's session timeout with last_error still NULL. A provider-level fallback
+	// lifetime keeps such a credential inside the refresh pool.
+	//
+	// Providers with NO declared fallback still store NULL, because for them a
+	// missing expires_in genuinely means the token does not expire (Shopify).
 	var expiresAt *time.Time
-	if tokenResp.ExpiresIn > 0 {
+	switch {
+	case tokenResp.ExpiresIn > 0:
 		t := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 		expiresAt = &t
+	case tokenResp.RefreshToken != "":
+		if ttl, ok := api.DefaultTokenLifetime(cred.ProviderSlug); ok {
+			t := time.Now().Add(ttl)
+			expiresAt = &t
+			log.WithFields(log.Fields{"provider": cred.ProviderSlug, "ttl": ttl}).
+				Debug("token response omitted expires_in; applying the provider's fallback lifetime")
+		}
 	}
 
 	// Store tokens (also persist client credentials so the refresh poller can use them)
@@ -363,7 +454,15 @@ func (s *Service) credentialOAuthCallback(c *gin.Context) {
 	// Capture the per-account identifier that's only knowable after auth
 	// (QuickBooks realmId / Xero tenantId) into the credential metadata. No-op
 	// for every other provider. Non-fatal — see captureProviderTenant.
-	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, cred.Metadata, tokenResp.AccessToken)
+	s.captureProviderTenant(c, stateData.CredentialID, cred.ProviderSlug, tokenResp)
+
+	// Clear the spent verifier. Both this and captureProviderTenant now RE-READ
+	// before writing, so neither can clobber the other and the ordering between
+	// them no longer carries meaning — which is the point: the previous version
+	// was correct only because it ran last, and nothing enforced that.
+	if codeVerifier != "" {
+		s.clearPKCEVerifier(stateData.CredentialID)
+	}
 
 	log.WithFields(log.Fields{
 		"credential_id": stateData.CredentialID,
@@ -413,7 +512,30 @@ func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialPr
 		params.Set("scope", *scopes)
 	}
 
-	// Twitter uses PKCE
+	// PKCE, S256. Providers that require it are listed in the api package rather
+	// than branched on here — the previous slug equality check is how Salesforce
+	// came to be DOCUMENTED as PKCE-enabled (migration 138 tells the operator to
+	// register the app that way) while sending no challenge whatsoever, which
+	// rejects every authorization request.
+	//
+	// The verifier has to survive until the callback, which shares nothing with
+	// this request except the credential id carried in `state`, so it is persisted
+	// on the credential and cleared once exchanged.
+	if api.ProviderUsesPKCE(provider.Slug) {
+		verifier := generateCodeVerifier()
+		if err := s.storePKCEVerifier(credID, verifier); err != nil {
+			// Continuing would send a challenge whose verifier is lost, so the
+			// exchange would fail with an opaque provider error. Better to refuse
+			// here, where the reason can still be stated.
+			return "", fmt.Errorf("unable to start the secure handshake for %s: %w", provider.Name, err)
+		}
+		params.Set("code_challenge", api.PKCEChallenge(verifier))
+		params.Set("code_challenge_method", "S256")
+	}
+
+	// Twitter's older plain-method path, left as found. It is NOT the model to
+	// copy: it sends the raw verifier as the challenge and never persists it, so
+	// the exchange cannot present one.
 	if provider.Slug == "twitter" {
 		verifier := generateCodeVerifier()
 		params.Set("code_challenge", verifier)
@@ -421,6 +543,58 @@ func (s *Service) buildOAuthURL(credID, envID string, provider *api.CredentialPr
 	}
 
 	return authURL + "?" + params.Encode(), nil
+}
+
+// storePKCEVerifier persists the code_verifier on the credential so the callback
+// can present it at the token exchange.
+func (s *Service) storePKCEVerifier(credID, verifier string) error {
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil {
+		return err
+	}
+	var existing *json.RawMessage
+	if cred != nil {
+		existing = cred.Metadata
+	}
+	merged, err := api.MergeMetadata(existing, map[string]interface{}{"pkce_verifier": verifier})
+	if err != nil {
+		return err
+	}
+	return s.persistence.UpdateCredentialMetadata(credID, merged)
+}
+
+// clearPKCEVerifier removes a used verifier. A code_verifier is single-use by
+// design, so leaving it on the credential would keep a spent secret at rest for
+// no benefit.
+func (s *Service) clearPKCEVerifier(credID string) {
+	// Every exit here is logged. This is the one path where silence hides a
+	// secret NOT being removed, and the connect has already succeeded by now, so
+	// nothing downstream will notice on its own.
+	cred, err := s.persistence.GetCredentialByID(credID)
+	if err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Warn("unable to read the credential to clear its used PKCE verifier — the spent verifier remains at rest")
+		return
+	}
+	if cred == nil {
+		log.WithField("credential_id", credID).
+			Warn("credential vanished before its used PKCE verifier could be cleared")
+		return
+	}
+	// REMOVE the key rather than blank it: MergeMetadata can only add or
+	// overwrite, so setting "" would leave pkce_verifier present-and-empty, and
+	// anyone auditing "does this credential still hold a verifier" would read a
+	// misleading yes.
+	merged, err := api.MetadataWithout(cred.Metadata, "pkce_verifier")
+	if err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Warn("unable to rebuild credential metadata without the used PKCE verifier")
+		return
+	}
+	if err := s.persistence.UpdateCredentialMetadata(credID, merged); err != nil {
+		log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+			Warn("unable to clear the used PKCE verifier")
+	}
 }
 
 func (s *Service) credentialCallbackURL() string {
@@ -459,13 +633,27 @@ type oauthTokenResponse struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	TokenType    string `json:"token_type"`
 	Scope        string `json:"scope"`
+	// InstanceURL is Salesforce's per-org API host, returned only on the token
+	// response and available nowhere else on the callback. It is per-org and
+	// changes on My Domain setup, sandbox refresh or org migration, so it
+	// cannot be derived from the login host the user authorised against.
+	// captureProviderTenant stores it on the credential.
+	InstanceURL string `json:"instance_url"`
 }
 
-func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, providerSlug string) (*oauthTokenResponse, error) {
+func exchangeOAuthCode(tokenURL, code, clientID, clientSecret, redirectURI, providerSlug, codeVerifier string) (*oauthTokenResponse, error) {
 	data := url.Values{
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
 		"redirect_uri": {redirectURI},
+	}
+
+	// PKCE: the provider hashed our challenge at authorize time and will only
+	// honour this code if the matching verifier comes back. Sending a challenge
+	// without ever sending the verifier fails the exchange, so the two legs are
+	// deliberately driven by the same ProviderUsesPKCE table.
+	if codeVerifier != "" {
+		data.Set("code_verifier", codeVerifier)
 	}
 
 	// Intuit (and Xero) require the client credentials via HTTP Basic auth and

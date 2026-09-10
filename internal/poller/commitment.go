@@ -25,6 +25,16 @@ type FlowDispatcher interface {
 	DispatchFlow(flowID string, triggerID *string, data map[string]interface{}) error
 }
 
+// StatusNeedsAttention marks a commitment the platform refuses to fire
+// because its timing is not believable. Nothing selects it, so it stays
+// out of the way until someone looks at it.
+const StatusNeedsAttention = "needs_attention"
+
+// bornOverdueTolerance allows for the seconds between an assistant's
+// reply and the extraction pass that records the promise. Anything
+// beyond it is a wrong date rather than a slow pipeline.
+const bornOverdueTolerance = 5 * time.Minute
+
 // CommitmentPoller fires due commitments by dispatching orchestrator
 // flows. Runs every 30 seconds.
 type CommitmentPoller struct {
@@ -75,6 +85,20 @@ func (cp *CommitmentPoller) processCommitment(c *api.AgentCommitment) {
 		"agent_id":      c.AgentID,
 		"kind":          c.Kind,
 	})
+
+	// A due date that precedes the commitment's own creation is a date
+	// bug, never an intent — nobody asks to be reminded before they
+	// asked. Delivering it means a reminder arriving the instant it is
+	// made, which is what a whole run of 2024- and 2025-dated
+	// commitments did. Park it instead of firing it.
+	if c.DueAt != nil && c.DueAt.Before(c.CreatedAt.Add(-bornOverdueTolerance)) {
+		l.WithFields(log.Fields{
+			"due_at":     c.DueAt.Format(time.RFC3339),
+			"created_at": c.CreatedAt.Format(time.RFC3339),
+		}).Warn("commitment was already overdue when it was made, not firing it")
+		_ = cp.persistence.UpdateCommitmentStatus(c.ID, StatusNeedsAttention)
+		return
+	}
 
 	// Claim by transitioning to 'firing'.
 	if err := cp.persistence.UpdateCommitmentStatus(c.ID, "firing"); err != nil {
@@ -127,12 +151,17 @@ func (cp *CommitmentPoller) processCommitment(c *api.AgentCommitment) {
 			}
 		}
 
-		// Include recent conversation history.
-		if msgs, err := cp.persistence.GetAgentConversationMessages(*c.ConversationID, 5); err == nil {
+		// Include recent conversation history (same window as the live inbound
+		// path so a fired reminder has the same memory the user would expect).
+		if msgs, err := cp.persistence.GetAgentConversationMessages(*c.ConversationID, 30); err == nil {
 			history := normaliseHistory(msgs)
 			if len(history) > 0 {
 				triggerData["conversation_history"] = history
 			}
+		} else {
+			// Do NOT swallow: a failure here fires the reminder context-blind,
+			// which is invisible without this line.
+			l.WithError(err).Warn("commitment: failed to load conversation history; firing without it")
 		}
 	}
 

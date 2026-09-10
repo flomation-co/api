@@ -56,6 +56,18 @@ type Persistence interface {
 	GetFloByID(floID string) (*api.Flo, error)
 	GetLatestRevisionByFloID(ID string) (*api.Revision, error)
 	GetMyFlos(userID string, offset int64, limit int64, search string, organisationID ...string) ([]*api.Flo, int64, error)
+	GetProjects(ownerID string, organisationID *string, isAdmin bool) ([]*api.Project, error)
+	GetProjectByID(id string) (*api.Project, error)
+	CreateProject(p api.Project) (*string, error)
+	UpdateProject(id, name string, description *string, parentID *string) error
+	ArchiveProject(id string) error
+	GetProjectFlos(userID string, organisationID *string, projectID *string, offset, limit int64, search string) ([]*api.Flo, int64, error)
+	MoveFlosToProject(floIDs []string, projectID *string, ownerID string, organisationID *string) error
+	GetProjectAccess(userID string, organisationID *string, isAdmin bool) (map[string]persistence.ProjectAccess, error)
+	GetProjectACL(projectID string) (direct []api.ProjectGrant, inherited []api.ProjectGrant, err error)
+	SetProjectGroupRole(projectID, groupID, role string) error
+	RemoveProjectGroup(projectID, groupID string) error
+	GetUserGroupIDs(orgID, userID string) ([]string, error)
 	GetMyOrganisations(userID string) ([]*api.Organisation, error)
 	GetOrganisationByID(ID string) (*api.Organisation, error)
 	GetQueueByRegistrationCode(code string) (*api.Queue, error)
@@ -90,6 +102,10 @@ type Persistence interface {
 	GetCredentialsByEnvironmentID(environmentID string) ([]api.EnvironmentCredential, error)
 	GetCredentialByID(id string) (*api.EnvironmentCredential, error)
 	CreateCredential(cred *api.EnvironmentCredential, environmentKey string) (string, error)
+	CreateAWSRoleCredential(environmentID, name, environmentKey, baseSecret string, metadata json.RawMessage) (string, error)
+	CreateOCIKeyCredential(environmentID, name, environmentKey, privateKeyPEM string, metadata json.RawMessage) (string, error)
+	ActivateCredential(id string) error
+	GetCredentialWithMetaByID(id, environmentKey string) (*string, *json.RawMessage, error)
 	StoreCredentialTokens(id, environmentKey, accessToken, refreshToken, clientID, clientSecret string, expiresAt *time.Time) error
 	UpdateCredentialStatus(id, status string, lastError *string) error
 	UpdateCredentialMetadata(id string, metadata *json.RawMessage) error
@@ -142,7 +158,8 @@ type Persistence interface {
 	GetUserChecklistStateForOrg(userID string, organisationID *string) (int, error)
 	SetUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
 	ClearUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
-	CompleteUserWelcome(userID, name string, marketingOptIn bool) error
+	CompleteUserWelcome(userID, name string, marketingOptIn *bool) error
+	SetUserEmailAddressIfMissing(userID, email string) (int64, error)
 	SetUserMarketingOptIn(userID string, optIn bool) error
 	MarkUserMarketingSynced(userID string) error
 	MarkUserMarketingSyncFailed(userID, reason string) error
@@ -225,6 +242,8 @@ type Persistence interface {
 	GetAgentConversationMessages(conversationID string, limit int) ([]*api.AgentMessage, error)
 	GetRecentPriorConversations(agentID, agentUserID string, limit int) ([]persistence.PriorConversationSummary, error)
 	GetConversationMessagesForAgent(conversationID, agentID, agentUserID string, maxMessages int) ([]persistence.PriorConversationMessage, *time.Time, int64, bool, error)
+	SearchAgentMessages(agentID, agentUserID, query string, limit int) ([]persistence.AgentMessageSearchResult, error)
+	SearchAgentMessagesByEmbedding(agentID, agentUserID string, embedding pgvector.Vector, limit int) ([]persistence.AgentMessageSearchResult, error)
 	GetAgentUserCalendarAccessToken(agentUserID string) (string, error)
 	CreateAgentMessageInConversation(msg api.AgentMessage) (*string, error)
 

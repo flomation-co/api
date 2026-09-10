@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -40,4 +41,18 @@ func TestCompleteExecutionSQL_SetsEveryCompletionColumn(t *testing.T) {
 		To(Equal(1), "completeExecutionSQL must be a single UPDATE statement")
 	Expect(strings.Count(completeExecutionSQL, ";")).
 		To(Equal(1), "completeExecutionSQL must contain exactly one statement terminator")
+}
+
+// TestCompleteExecution_SanitisesTheResult guards the atomic completion path
+// against the jsonb hazard UpdateExecutionResult already handles: a NUL byte
+// anywhere in a flow's outputs is rejected by Postgres, and on this path it
+// would fail the whole write, leaving a finished execution with a NULL result.
+func TestCompleteExecution_SanitisesTheResult(t *testing.T) {
+	RegisterTestingT(t)
+
+	dirty := json.RawMessage("{\"out\":\"before\x00after\"}")
+	clean, ok := SanitiseJSONBValue(dirty).(json.RawMessage)
+
+	Expect(ok).To(BeTrue())
+	Expect(string(clean)).To(Equal(`{"out":"beforeafter"}`))
 }
