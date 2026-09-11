@@ -13,6 +13,8 @@
 package agent
 
 import (
+	"strings"
+
 	api "flomation.app/automate/api"
 )
 
@@ -34,6 +36,81 @@ type IdentityPersistence interface {
 type TriggeringUser struct {
 	UserID     string
 	Identities []*api.UserIdentity
+}
+
+// identityChannelTypes returns the user_identity channel types to try
+// for an inbound channel, in priority order.
+//
+// The transport name and the name people declare an identity under are
+// not always the same word. A call or text arrives as "twilio", but the
+// profile screen offers "Mobile" and "Phone" — there is no Twilio option,
+// and there never was a `twilio` row in the table. Every inbound call
+// therefore missed its owner and ran as an anonymous stub, with
+// ${flow.identities} empty and the agent unable to recognise a caller it
+// already knows by email and Slack.
+//
+// Mobile is tried first: an inbound call or text is far more often from
+// a mobile than a landline, and a user who declared both gets the same
+// account either way.
+func identityChannelTypes(channelType string) []string {
+	switch channelType {
+	case "twilio":
+		return []string{"mobile", "phone", "twilio"}
+	default:
+		return []string{channelType}
+	}
+}
+
+// phoneVariants expands a phone number into the forms it may have been
+// declared in. Only formatting is normalised — spaces, dashes, brackets
+// and dots — plus the bare-digits form for a number stored without its
+// leading "+".
+//
+// It deliberately does NOT convert between international and national
+// form (+447926248382 ↔ 07926248382): that needs a country, and guessing
+// one risks matching a different person's number in another country. A
+// profile holding a national-format number still will not match, which
+// is an argument for normalising to E.164 when the identity is saved.
+func phoneVariants(externalID string) []string {
+	cleaned := strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", ".", "", "\u00a0", "").Replace(externalID)
+	if cleaned == "" {
+		return nil
+	}
+	variants := []string{}
+	if cleaned != externalID {
+		variants = append(variants, cleaned)
+	}
+	if digits := strings.TrimPrefix(cleaned, "+"); digits != cleaned {
+		variants = append(variants, digits)
+	} else {
+		variants = append(variants, "+"+cleaned)
+	}
+	return variants
+}
+
+// lookupCandidates expands the caller-supplied identifiers into every
+// form worth trying, preserving order and dropping duplicates. The first
+// element stays the canonical one, so anonymous stubs keep keying on the
+// identifier the caller chose.
+func lookupCandidates(channelType string, externalIDs []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(v string) {
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	for _, e := range externalIDs {
+		add(e)
+		if channelType == "twilio" {
+			for _, v := range phoneVariants(e) {
+				add(v)
+			}
+		}
+	}
+	return out
 }
 
 // ResolveTriggeringUser is the single source of truth for resolving the
@@ -83,32 +160,36 @@ func ResolveTriggeringUser(
 	externalIDs ...string,
 ) (*TriggeringUser, error) {
 	// Filter empties while preserving order — first non-empty becomes
-	// the canonical identifier for any anonymous-user creation.
-	var candidates []string
+	// the canonical identifier for any anonymous-user creation — then
+	// expand into the forms the identity may have been declared in.
+	var supplied []string
 	for _, e := range externalIDs {
 		if e != "" {
-			candidates = append(candidates, e)
+			supplied = append(supplied, e)
 		}
 	}
-	if len(candidates) == 0 {
+	if len(supplied) == 0 {
 		return nil, nil
 	}
+	candidates := lookupCandidates(channelType, supplied)
 
 	// Try each candidate against declared user_identity rows. A hit on
 	// any candidate wins — typical flow: a user declares "AndyEsser"
 	// as their Telegram identity; webhook delivers numeric sender_id as
 	// canonical + "AndyEsser" as alias; alias-match returns the
 	// declared user.
-	for _, ext := range candidates {
-		declared, err := p.LookupUserIdentityByChannel(organisationID, channelType, ext)
-		if err != nil {
-			// Treat lookup failure for this candidate as "no match";
-			// continue trying the others.
-			continue
-		}
-		if declared != nil {
-			identities, _ := p.GetUserIdentitiesByUserAndOrg(declared.UserID, organisationID)
-			return &TriggeringUser{UserID: declared.UserID, Identities: identities}, nil
+	for _, lookupType := range identityChannelTypes(channelType) {
+		for _, ext := range candidates {
+			declared, err := p.LookupUserIdentityByChannel(organisationID, lookupType, ext)
+			if err != nil {
+				// Treat lookup failure for this candidate as "no match";
+				// continue trying the others.
+				continue
+			}
+			if declared != nil {
+				identities, _ := p.GetUserIdentitiesByUserAndOrg(declared.UserID, organisationID)
+				return &TriggeringUser{UserID: declared.UserID, Identities: identities}, nil
+			}
 		}
 	}
 
@@ -118,7 +199,7 @@ func ResolveTriggeringUser(
 	if organisationID == nil || *organisationID == "" {
 		return nil, nil
 	}
-	anonID, err := p.UpsertAnonymousUser(*organisationID, channelType, candidates[0], displayName)
+	anonID, err := p.UpsertAnonymousUser(*organisationID, channelType, supplied[0], displayName)
 	if err != nil {
 		return nil, err
 	}
