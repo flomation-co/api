@@ -150,3 +150,100 @@ func TestGetCategoryForUKGov(t *testing.T) {
 	g.Expect(parl.SubName).To(Equal("UK Parliament"))
 	g.Expect(parl.SubIcon).To(Equal("landmark"))
 }
+
+// TestGetActions_TolerantOfNonStringInputDefaults — an input's default takes the
+// shape of its own type, so a boolean input defaults to a real `true`.
+//
+// InputDefinition.Value used to be a string, and getActions aborts with 400 on
+// ANY unmarshal error, so the first action to ship a boolean default did not
+// degrade that one field — it emptied the ENTIRE palette. The editor sat on
+// "Loading..." with "Unable to fetch actions", and nothing in the failure
+// pointed at a single checkbox in an unrelated integration.
+//
+// The blast radius is the point: one malformed-looking value must never be able
+// to take down the whole action list.
+func TestGetActions_TolerantOfNonStringInputDefaults(t *testing.T) {
+	g := NewWithT(t)
+	gin.SetMode(gin.TestMode)
+
+	// Raw JSON rather than a marshalled struct, so this reproduces exactly what
+	// the actions table holds after a manifest migration.
+	inputs := []byte(`[
+		{"name":"reveal_personal_emails","type":"boolean","label":"Reveal Personal Emails","value":true},
+		{"name":"force","type":"boolean","label":"Force Delete","value":false},
+		{"name":"format","type":"string","label":"Format","value":"png"},
+		{"name":"per_page","type":"integer","label":"Per Page","value":25},
+		{"name":"api_key","type":"secret","label":"API Key","value":null}
+	]`)
+
+	mock := &actionsMockPersistence{actions: []*api.Action{
+		{ID: "crm/apollo/enrichment/people_match", ActionType: "2", Inputs: inputs},
+		// A second action proves the failure was never scoped to one entry.
+		{ID: "ai/openrouter", ActionType: "2", Inputs: inputs},
+	}}
+
+	r := gin.New()
+	svc := &Service{persistence: mock}
+	r.GET("/api/v1/action", svc.getActions)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/action", nil)
+	r.ServeHTTP(rec, req)
+	g.Expect(rec.Code).To(Equal(http.StatusOK), "a boolean default must not 400 the whole action list")
+
+	var served map[string]struct {
+		Inputs []api.InputDefinition `json:"inputs"`
+	}
+	g.Expect(json.Unmarshal(rec.Body.Bytes(), &served)).To(Succeed())
+	g.Expect(served).To(HaveLen(2), "every action must survive, not just the first")
+
+	got := served["crm/apollo/enrichment/people_match"].Inputs
+	g.Expect(got).To(HaveLen(5))
+
+	// Defaults must reach the editor with their type intact: a boolean has to
+	// arrive as a real bool, because the editor renders a checkbox from
+	// `typeof value === "boolean"` and a string "true" would render UNTICKED —
+	// the exact mismatch the default was added to remove.
+	g.Expect(got[0].Value).To(BeAssignableToTypeOf(true))
+	g.Expect(got[0].Value).To(Equal(true))
+	g.Expect(got[1].Value).To(Equal(false))
+	g.Expect(got[2].Value).To(Equal("png"))
+	g.Expect(got[3].Value).To(BeNumerically("==", 25))
+	g.Expect(got[4].Value).To(BeNil())
+}
+
+// TestGetCategoryForMetaAds pins the three-level Marketing > Meta Ads > <group>
+// wiring for 4-segment marketing/meta_ads/<group>/<action> ids.
+//
+// The executor's category.go files are NOT what the editor reads — the palette
+// is served from these maps, so a missing entry here leaves the actions
+// auto-titled or ungrouped even though the executor side looks correct.
+func TestGetCategoryForMetaAds(t *testing.T) {
+	g := NewWithT(t)
+
+	cat := getCategoryForAction("marketing/meta_ads/campaigns/campaign_create")
+	g.Expect(cat).To(Not(BeNil()))
+	g.Expect(cat.Key).To(Equal("marketing"))
+	g.Expect(cat.Name).To(Equal("Marketing"))
+	g.Expect(cat.SubKey).To(Equal("marketing/meta_ads"))
+	g.Expect(cat.SubName).To(Equal("Meta Ads"))
+	g.Expect(cat.SubSubKey).To(Equal("marketing/meta_ads/campaigns"))
+	g.Expect(cat.SubSubName).To(Equal("Campaigns"))
+
+	// Every group must resolve — a missing one silently degrades that group
+	// rather than failing loudly.
+	for group, want := range map[string]string{
+		"accounts": "Accounts", "campaigns": "Campaigns",
+		"adsets": "Ad Sets", "ads": "Ads", "insights": "Insights",
+		"creatives": "Creatives", "media": "Media", "audiences": "Audiences",
+	} {
+		c := getCategoryForAction("marketing/meta_ads/" + group + "/whatever")
+		g.Expect(c).To(Not(BeNil()), group)
+		g.Expect(c.SubSubName).To(Equal(want), group)
+	}
+
+	// The existing 3-segment Marketing action must be unaffected.
+	sg := getCategoryForAction("marketing/sendgrid/mail_send")
+	g.Expect(sg.SubName).To(Equal("SendGrid"))
+	g.Expect(sg.SubSubName).To(Equal(""))
+}

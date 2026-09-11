@@ -169,18 +169,18 @@ var subCategoryMetadata = map[string]struct {
 	"aws/secretsmanager":   {Name: "Secrets Manager", Icon: "lock", Description: "Store, retrieve and rotate secrets — secret values, versions, rotation and resource policies"},
 	"social/linkedin":      {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
 	"social/facebook":      {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
-	"google/drive":         {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
-	"google/sheets":        {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
-	"google/docs":          {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
-	"google/slides":        {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
+	"google/drive":         {Name: "Drive", Icon: "googledrive", Description: "Google Drive file storage and management"},
+	"google/sheets":        {Name: "Sheets", Icon: "googlesheets", Description: "Google Sheets spreadsheet operations"},
+	"google/docs":          {Name: "Docs", Icon: "googledocs", Description: "Google Docs document operations"},
+	"google/slides":        {Name: "Slides", Icon: "googleslides", Description: "Google Slides presentation operations"},
 	"microsoft/outlook":    {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
 	"microsoft/teams":      {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
 	"microsoft/calendar":   {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
-	"microsoft/excel":      {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
-	"microsoft/onedrive":   {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
+	"microsoft/excel":      {Name: "Excel", Icon: "msexcel", Description: "Microsoft Excel Online spreadsheet operations"},
+	"microsoft/onedrive":   {Name: "OneDrive", Icon: "onedrive", Description: "Microsoft OneDrive file storage and management"},
 	"microsoft/sharepoint": {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
-	"microsoft/word":       {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
-	"microsoft/powerpoint": {Name: "PowerPoint", Icon: "display", Description: "Microsoft PowerPoint Online presentation operations"},
+	"microsoft/word":       {Name: "Word", Icon: "msword", Description: "Microsoft Word Online document operations"},
+	"microsoft/powerpoint": {Name: "PowerPoint", Icon: "mspowerpoint", Description: "Microsoft PowerPoint Online presentation operations"},
 	"google/gmail":         {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
 	"google/calendar":      {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
 	"messaging/telegram":   {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
@@ -190,6 +190,7 @@ var subCategoryMetadata = map[string]struct {
 	// executor/actions/crm/salesforce/category.go.
 	"crm/salesforce": {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
 	"crm/apollo":     {Name: "Apollo", Icon: "apollo", Description: "Enrich, search and manage Apollo.io contacts, accounts, deals and sequences"},
+	"crm/freshsales": {Name: "Freshsales", Icon: "freshworks", Description: "Manage Freshsales contacts, accounts, deals, activities, lists and products"},
 	// Sub-category metadata must match executor/actions/heygen/<group>/category.go.
 	"heygen/videos":                  {Name: "Videos", Icon: "video", Description: "Generate and retrieve HeyGen avatar videos"},
 	"heygen/avatars":                 {Name: "Avatars", Icon: "user", Description: "Browse HeyGen avatars and looks"},
@@ -206,10 +207,10 @@ var subCategoryMetadata = map[string]struct {
 	"helpdesk/intercom":              {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
 	"devops/jenkins":                 {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
 	"devops/azuredevops":             {Name: "Azure DevOps", Icon: "azure", Description: "Azure DevOps — work items, repositories, pull requests, pipelines and builds"},
-	"forms/typeform":                 {Name: "Typeform", Icon: "clipboard-list", Description: "Create Typeform forms, read responses and manage webhooks"},
-	"forms/jotform":                  {Name: "JotForm", Icon: "clipboard-list", Description: "Create JotForm forms, read submissions and manage webhooks"},
-	"forms/surveymonkey":             {Name: "SurveyMonkey", Icon: "clipboard-list", Description: "Create SurveyMonkey surveys, read responses, manage collectors and webhooks"},
-	"forms/googleforms":              {Name: "Google Forms", Icon: "clipboard-list", Description: "Create Google Forms, add questions and read responses (uses your Google connection)"},
+	"forms/typeform":                 {Name: "Typeform", Icon: "typeform", Description: "Create Typeform forms, read responses and manage webhooks"},
+	"forms/jotform":                  {Name: "JotForm", Icon: "jotform", Description: "Create JotForm forms, read submissions and manage webhooks"},
+	"forms/surveymonkey":             {Name: "SurveyMonkey", Icon: "surveymonkey", Description: "Create SurveyMonkey surveys, read responses, manage collectors and webhooks"},
+	"forms/googleforms":              {Name: "Google Forms", Icon: "googleforms", Description: "Create Google Forms, add questions and read responses (uses your Google connection)"},
 	"messagebrokers/mqtt":            {Name: "MQTT", Icon: "tower-broadcast", Description: "Publish messages to an MQTT broker, read retained values, and wait for messages on a topic"},
 	"messagebrokers/azureservicebus": {Name: "Azure Service Bus", Icon: "azure", Description: "Azure Service Bus — send and receive messages, work through queues and topics, and schedule messages for later"},
 	"ukgov/companieshouse":           {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
@@ -225,6 +226,7 @@ var subCategoryMetadata = map[string]struct {
 	"ukgov/bankholidays":             {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
 	"ukgov/landregistry":             {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
 	"marketing/sendgrid":             {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
+	"marketing/meta_ads":             {Name: "Meta Ads", Icon: "facebook", Description: "Create, adjust and report on Facebook and Instagram advertising via the Meta Marketing API"},
 	"infrastructure/kubernetes":      {Name: "Kubernetes", Icon: "kubernetes", Description: "Operate a Kubernetes cluster — restart and scale deployments, read pod logs, run jobs, manage config, and drain nodes"},
 	"infrastructure/helm":            {Name: "Helm", Icon: "helm", Description: "Install, upgrade, roll back and inspect Helm releases on a Kubernetes cluster"},
 	// Mirrors executor/actions/infrastructure/awx/category.go's consts — this map,
@@ -295,13 +297,144 @@ var subSubCategoryMetadata = map[string]struct {
 	Icon        string
 	Description string
 }{
-	"crm/apollo/enrichment": {Name: "Enrichment", Icon: "bolt", Description: "Enrich people and companies with Apollo's data"},
-	"crm/apollo/search":     {Name: "Search", Icon: "magnifying-glass", Description: "Search Apollo's people and company database"},
-	"crm/apollo/contacts":   {Name: "Contacts", Icon: "user", Description: "Create, update and search Apollo CRM contacts"},
-	"crm/apollo/accounts":   {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
-	"crm/apollo/deals":      {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
-	"crm/apollo/sequences":  {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
-	"crm/apollo/emailer":    {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
+	"crm/apollo/enrichment":        {Name: "Enrichment", Icon: "bolt", Description: "Enrich people and companies with Apollo's data"},
+	"marketing/meta_ads/accounts":  {Name: "Accounts", Icon: "facebook", Description: "Ad accounts reachable by the connected token"},
+	"marketing/meta_ads/campaigns": {Name: "Campaigns", Icon: "facebook", Description: "Campaign objectives, budgets and state"},
+	"marketing/meta_ads/adsets":    {Name: "Ad Sets", Icon: "facebook", Description: "Targeting, schedule, optimisation and bidding"},
+	"marketing/meta_ads/ads":       {Name: "Ads", Icon: "facebook", Description: "Individual ads and their state"},
+	"marketing/meta_ads/insights":  {Name: "Insights", Icon: "facebook", Description: "Performance reporting at any level of the hierarchy"},
+	"marketing/meta_ads/creatives": {Name: "Creatives", Icon: "facebook", Description: "Ad creatives — the image, copy and destination an ad shows"},
+	"marketing/meta_ads/media":     {Name: "Media", Icon: "facebook", Description: "Upload images and video for use in ad creatives"},
+	"marketing/meta_ads/audiences": {Name: "Audiences", Icon: "facebook", Description: "Custom and lookalike audiences"},
+	"crm/apollo/search":            {Name: "Search", Icon: "magnifying-glass", Description: "Search Apollo's people and company database"},
+	"crm/apollo/contacts":          {Name: "Contacts", Icon: "user", Description: "Create, update and search Apollo CRM contacts"},
+	"crm/apollo/accounts":          {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
+	"crm/apollo/deals":             {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
+	"crm/apollo/sequences":         {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
+	"crm/apollo/emailer":           {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
+
+	"crm/freshsales/contacts":         {Name: "Contacts", Icon: "user", Description: "Create, find and manage Freshsales contacts"},
+	"crm/freshsales/accounts":         {Name: "Accounts", Icon: "briefcase", Description: "Create, find and manage Freshsales sales accounts"},
+	"crm/freshsales/deals":            {Name: "Deals", Icon: "dollar-sign", Description: "Create, find and manage Freshsales deals"},
+	"crm/freshsales/notes":            {Name: "Notes", Icon: "file", Description: "Attach notes to Freshsales records"},
+	"crm/freshsales/tasks":            {Name: "Tasks", Icon: "check", Description: "Create and complete Freshsales tasks"},
+	"crm/freshsales/appointments":     {Name: "Appointments", Icon: "calendar", Description: "Schedule and manage Freshsales appointments"},
+	"crm/freshsales/sales_activities": {Name: "Sales Activities", Icon: "phone", Description: "Log and manage Freshsales sales activities"},
+	"crm/freshsales/lists":            {Name: "Marketing Lists", Icon: "people-group", Description: "Manage Freshsales marketing lists and their contacts"},
+	"crm/freshsales/products":         {Name: "Products", Icon: "box", Description: "Manage Freshsales CPQ products"},
+	"crm/freshsales/files":            {Name: "Files & Links", Icon: "file", Description: "Attach files and links to Freshsales records"},
+	"crm/freshsales/search":           {Name: "Search", Icon: "magnifying-glass", Description: "Search and look up Freshsales records"},
+	"crm/freshsales/settings":         {Name: "Settings", Icon: "bolt", Description: "Read Freshsales configuration — owners, stages, currencies and more"},
+	"crm/freshsales/bulk":             {Name: "Bulk & GDPR", Icon: "rotate", Description: "Bulk upsert, bulk delete and GDPR erase across Freshsales"},
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Palette groups
+//
+// A fourteenth-of-a-catalogue is not browsable: there are 66 top-level
+// categories and 3,660 actions, and Oracle plus AWS alone are 59% of them. The
+// group layer sits above categoryMetadata purely for the Add Node menu, so the
+// everyday surface can be read at a glance and the cloud providers can be put
+// where they belong for most people, which is last.
+//
+// Groups are named for the job, not the vendor — somebody looking for Slack
+// thinks "messaging", not "communications platform". "Building blocks" leads
+// because triggers, conditionals and outputs are the editor's own vocabulary
+// and the most-reached-for things in the product, not miscellany.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type paletteGroup struct {
+	Name        string
+	Icon        string
+	Description string
+	Order       int
+}
+
+var groupMetadata = map[string]paletteGroup{
+	"building-blocks": {Name: "Building blocks", Icon: "bolt", Description: "Triggers, branches, outputs and the pieces every flow is made of", Order: 1},
+	"messaging":       {Name: "Messaging & email", Icon: "comments", Description: "Send and receive messages, email, SMS and voice", Order: 2},
+	"documents":       {Name: "Documents & files", Icon: "file-lines", Description: "Documents, spreadsheets, slides and file storage", Order: 3},
+	"calendars":       {Name: "Calendars & scheduling", Icon: "calendar", Description: "Bookings, appointments and calendars", Order: 4},
+	"crm":             {Name: "Sales & CRM", Icon: "people-group", Description: "Contacts, accounts, deals and marketing", Order: 5},
+	"work":            {Name: "Work tracking", Icon: "list-check", Description: "Tasks, tickets, boards and support queues", Order: 6},
+	"finance":         {Name: "Finance & commerce", Icon: "dollar-sign", Description: "Payments, invoicing, accounting and online shops", Order: 7},
+	"developer":       {Name: "Developer tools", Icon: "code", Description: "Source control, pipelines, scripts and machines", Order: 8},
+	"ai":              {Name: "AI & agents", Icon: "brain", Description: "Models, agents and generation", Order: 9},
+	"media":           {Name: "Media", Icon: "image", Description: "Images, video, audio and generated media", Order: 10},
+	"forms":           {Name: "Forms & surveys", Icon: "clipboard-list", Description: "Collect answers from people", Order: 11},
+	"content":         {Name: "Websites & content", Icon: "globe", Description: "Sites, content management and structured data", Order: 12},
+	"government":      {Name: "UK Government", Icon: "landmark", Description: "Public data from UK government services", Order: 13},
+	// Last on purpose: 59% of the catalogue, and irrelevant to most people.
+	"cloud": {Name: "Cloud & data", Icon: "cloud", Description: "Cloud providers, databases, queues and infrastructure", Order: 14},
+}
+
+// groupByCategory maps every top-level category to its palette group. It is
+// exhaustive by test (TestEveryCategoryHasAGroup) rather than by hope: a new
+// category with no entry would otherwise fall out of the menu silently.
+var groupByCategory = map[string]string{
+	"trigger": "building-blocks", "common": "building-blocks", "conditional": "building-blocks",
+	"output": "building-blocks", "subflow": "building-blocks", "string": "building-blocks",
+	"arithmetic": "building-blocks", "file": "building-blocks", "error": "building-blocks",
+	"humanintheloop": "building-blocks", "journey": "building-blocks", "plan": "building-blocks",
+	"makefile": "building-blocks",
+
+	"slack": "messaging", "messaging": "messaging", "twilio": "messaging",
+	"elevenlabs": "messaging", "social": "messaging",
+
+	"google": "documents", "microsoft": "documents", "notion": "documents", "document": "documents",
+
+	"scheduling": "calendars",
+
+	"crm": "crm", "hubspot": "crm", "marketing": "crm", "mailchimp": "crm",
+
+	"asana": "work", "trello": "work", "monday": "work", "jira": "work",
+	"linear": "work", "helpdesk": "work",
+
+	"stripe": "finance", "xero": "finance", "quickbooks": "finance", "ecommerce": "finance",
+
+	"github": "developer", "gitlab": "developer", "git": "developer", "devops": "developer",
+	"script": "developer", "desktop": "developer", "security": "developer",
+
+	"ai": "ai", "agent": "ai",
+
+	"image": "media", "video": "media", "graphics": "media", "heygen": "media",
+
+	"forms": "forms",
+
+	"cms": "content", "webflow": "content", "web": "content", "airtable": "content",
+
+	"ukgov": "government",
+
+	"aws": "cloud", "azure": "cloud", "oracle": "cloud", "infrastructure": "cloud",
+	"opentofu": "cloud", "databricks": "cloud", "nosql": "cloud", "sql": "cloud",
+	"vectordatabase": "cloud", "messagebrokers": "cloud", "filetransfer": "cloud",
+}
+
+// groupBySubPath moves individual services out of their category's group where
+// the job differs from the vendor. Google Calendar is a calendar even though
+// Google's other actions are documents; Outlook and Gmail are email.
+var groupBySubPath = map[string]string{
+	"google/calendar":    "calendars",
+	"microsoft/calendar": "calendars",
+	"google/gmail":       "messaging",
+	"microsoft/outlook":  "messaging",
+	"microsoft/teams":    "messaging",
+}
+
+// groupForAction resolves the palette group for an action id, preferring a
+// service-level override over its category's group.
+func groupForAction(parts []string) (string, paletteGroup, bool) {
+	if len(parts) >= 2 {
+		if key, ok := groupBySubPath[parts[0]+"/"+parts[1]]; ok {
+			return key, groupMetadata[key], true
+		}
+	}
+	if len(parts) >= 1 {
+		if key, ok := groupByCategory[parts[0]]; ok {
+			return key, groupMetadata[key], true
+		}
+	}
+	return "", paletteGroup{}, false
 }
 
 func getCategoryForAction(actionID string) *api.ActionCategory {
@@ -312,6 +445,14 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 	cat, ok := categoryMetadata[parts[0]]
 	if !ok {
 		return nil
+	}
+
+	if key, group, ok := groupForAction(parts); ok {
+		cat.GroupKey = key
+		cat.GroupName = group.Name
+		cat.GroupIcon = group.Icon
+		cat.GroupDescription = group.Description
+		cat.GroupOrder = group.Order
 	}
 
 	// For 3+ segment action IDs, populate sub-category fields
