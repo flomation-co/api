@@ -100,7 +100,26 @@ func (s *Service) createAWSRoleCredential(c *gin.Context, environmentID string, 
 // setAWSRoleARN is step 2 of the wizard: attach the customer role ARN (created
 // from the policies shown in the UI) to an existing aws_role credential.
 func (s *Service) setAWSRoleARN(c *gin.Context) {
+	environmentID := c.Param("environment")
 	credID := c.Param("id")
+
+	// Authorize: the caller must own the environment in the path, and the credential
+	// must belong to it — otherwise an authenticated user could patch another tenant's
+	// credential by guessing its id (BOLA). jwtMiddleware only authenticates.
+	user := s.getUserFromContext(c)
+	if user == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil || env == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "environment not found"})
+		return
+	}
 
 	var body struct {
 		RoleARN string `json:"role_arn"`
@@ -116,7 +135,7 @@ func (s *Service) setAWSRoleARN(c *gin.Context) {
 	}
 
 	cred, err := s.persistence.GetCredentialByID(credID)
-	if err != nil || cred == nil || cred.ProviderSlug != "aws_role" {
+	if err != nil || cred == nil || cred.ProviderSlug != "aws_role" || cred.EnvironmentID != environmentID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "AWS role credential not found"})
 		return
 	}
@@ -141,7 +160,25 @@ func (s *Service) setAWSRoleARN(c *gin.Context) {
 // flow can pre-fill next time. Flomation does NOT apply this to AWS — the policy
 // generated from it lives on the customer's role — so this is store-only.
 func (s *Service) updateAWSRolePermissions(c *gin.Context) {
+	environmentID := c.Param("environment")
 	credID := c.Param("id")
+
+	// Authorize the request (see setAWSRoleARN): own the environment in the path, and
+	// the credential must belong to it — jwtMiddleware only authenticates.
+	user := s.getUserFromContext(c)
+	if user == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	var organisation *string
+	if len(user.Organisations) > 0 {
+		organisation = &user.Organisations[0].ID
+	}
+	env, err := s.persistence.GetEnvironmentByID(environmentID, user.ID, organisation)
+	if err != nil || env == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "environment not found"})
+		return
+	}
 
 	var body struct {
 		PermissionLevels map[string]string `json:"permission_levels"`
@@ -152,7 +189,7 @@ func (s *Service) updateAWSRolePermissions(c *gin.Context) {
 	}
 
 	cred, err := s.persistence.GetCredentialByID(credID)
-	if err != nil || cred == nil || cred.ProviderSlug != "aws_role" {
+	if err != nil || cred == nil || cred.ProviderSlug != "aws_role" || cred.EnvironmentID != environmentID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "AWS role credential not found"})
 		return
 	}

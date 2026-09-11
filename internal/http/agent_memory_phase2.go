@@ -432,6 +432,13 @@ type createAgentCommitmentInternalRequest struct {
 	SourceMessage      *string         `json:"source_message,omitempty"`
 	MadeBy             string          `json:"made_by,omitempty"` // 'assistant' | 'user'; defaults to 'assistant'
 	ExpiresAt          *time.Time      `json:"expires_at,omitempty"`
+	// Recurrence was accepted by the executor and dropped here, so no
+	// commitment on live has ever carried one and "remind me every
+	// morning" fired exactly once.
+	Recurrence *string `json:"recurrence,omitempty"`
+	// Status lets a caller park a commitment it does not trust rather
+	// than have it fire. Empty means 'pending'.
+	Status string `json:"status,omitempty"`
 }
 
 // createAgentCommitmentInternal handles POST /api/v1/internal/agent/:id/commitment.
@@ -464,6 +471,8 @@ func (s *Service) createAgentCommitmentInternal(c *gin.Context) {
 		SourceMessage:      body.SourceMessage,
 		MadeBy:             body.MadeBy,
 		ExpiresAt:          body.ExpiresAt,
+		Recurrence:         body.Recurrence,
+		Status:             body.Status,
 	})
 	if err != nil {
 		log.WithFields(log.Fields{

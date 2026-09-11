@@ -118,6 +118,7 @@ type Persistence interface {
 	TriggerExecution(floId string, triggerId string, data interface{}, triggererUserID string, parent *persistence.ParentLink) (*string, error)
 	IsFlowAgentPaused(flowID string) bool
 	GetAgentByOrchestratorFloID(flowID string) (*api.Agent, error)
+	CompleteExecution(ID, executionStatus, completionStatus string, result interface{}) error
 	UpdateCompletionStatus(ID string, status string) error
 	UpdateEnvironmentProperty(environmentID string, environmentKey string, property api.EnvironmentProperty) error
 	UpdateExecutionResult(ID string, result interface{}) error
@@ -157,7 +158,8 @@ type Persistence interface {
 	GetUserChecklistStateForOrg(userID string, organisationID *string) (int, error)
 	SetUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
 	ClearUserChecklistFlagForOrg(userID string, organisationID *string, flag int) error
-	CompleteUserWelcome(userID, name string, marketingOptIn bool) error
+	CompleteUserWelcome(userID, name string, marketingOptIn *bool) error
+	SetUserEmailAddressIfMissing(userID, email string) (int64, error)
 	SetUserMarketingOptIn(userID string, optIn bool) error
 	MarkUserMarketingSynced(userID string) error
 	MarkUserMarketingSyncFailed(userID, reason string) error

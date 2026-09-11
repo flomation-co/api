@@ -30,6 +30,10 @@ type mockPersistence struct {
 	secrets      map[string]*api.EnvironmentSecret
 	// organisations lets compliance/gate tests inject org records keyed by id.
 	organisations map[string]*api.Organisation
+	// executionStatus / completionStatus record the last status written per
+	// execution id, so tests can assert failure/allocation transitions.
+	executionStatus  map[string]string
+	completionStatus map[string]string
 
 	// Blob store stubs. Keyed by (orgID + hex-handle) so tests can
 	// verify cross-org isolation collapses to "not found" without a
@@ -540,13 +544,28 @@ func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }
 func (m *mockPersistence) GetAgentByOrchestratorFloID(string) (*api.Agent, error) {
 	return nil, nil
 }
-func (m *mockPersistence) UpdateCompletionStatus(string, string) error { panic("not implemented") }
+func (m *mockPersistence) CompleteExecution(string, string, string, interface{}) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) UpdateCompletionStatus(id string, status string) error {
+	if m.completionStatus == nil {
+		m.completionStatus = map[string]string{}
+	}
+	m.completionStatus[id] = status
+	return nil
+}
 func (m *mockPersistence) UpdateEnvironmentProperty(string, string, api.EnvironmentProperty) error {
 	panic("not implemented")
 }
-func (m *mockPersistence) UpdateExecutionResult(string, interface{}) error           { panic("not implemented") }
-func (m *mockPersistence) UpdateExecutionRunnerID(string, string) error              { panic("not implemented") }
-func (m *mockPersistence) UpdateExecutionStatus(string, string) error                { panic("not implemented") }
+func (m *mockPersistence) UpdateExecutionResult(string, interface{}) error { panic("not implemented") }
+func (m *mockPersistence) UpdateExecutionRunnerID(string, string) error    { panic("not implemented") }
+func (m *mockPersistence) UpdateExecutionStatus(id string, status string) error {
+	if m.executionStatus == nil {
+		m.executionStatus = map[string]string{}
+	}
+	m.executionStatus[id] = status
+	return nil
+}
 func (m *mockPersistence) GetExecutionsBySessionID(string) ([]*api.Execution, error) { return nil, nil }
 func (m *mockPersistence) SetExecutionAgentID(string, string) error                  { return nil }
 func (m *mockPersistence) SetExecutionAgentSessionID(string, string) error           { return nil }
@@ -569,11 +588,14 @@ func (m *mockPersistence) ClearChecklistFlag(string, int) error                 
 func (m *mockPersistence) GetUserChecklistStateForOrg(string, *string) (int, error) { return 0, nil }
 func (m *mockPersistence) SetUserChecklistFlagForOrg(string, *string, int) error    { return nil }
 func (m *mockPersistence) ClearUserChecklistFlagForOrg(string, *string, int) error  { return nil }
-func (m *mockPersistence) CompleteUserWelcome(string, string, bool) error           { return nil }
-func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error                 { return nil }
-func (m *mockPersistence) MarkUserMarketingSynced(string) error                     { return nil }
-func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error         { return nil }
-func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error)   { return nil, nil }
+func (m *mockPersistence) CompleteUserWelcome(string, string, *bool) error          { return nil }
+func (m *mockPersistence) SetUserEmailAddressIfMissing(string, string) (int64, error) {
+	return 0, nil
+}
+func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error               { return nil }
+func (m *mockPersistence) MarkUserMarketingSynced(string) error                   { return nil }
+func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error       { return nil }
+func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error) { return nil, nil }
 
 // Favourites stubs
 func (m *mockPersistence) GetFloFavourites(string) ([]string, error) { return nil, nil }
