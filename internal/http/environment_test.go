@@ -544,6 +544,9 @@ func (m *mockPersistence) IsFlowAgentPaused(string) bool { return false }
 func (m *mockPersistence) GetAgentByOrchestratorFloID(string) (*api.Agent, error) {
 	return nil, nil
 }
+func (m *mockPersistence) CompleteExecution(string, string, string, interface{}) error {
+	panic("not implemented")
+}
 func (m *mockPersistence) UpdateCompletionStatus(id string, status string) error {
 	if m.completionStatus == nil {
 		m.completionStatus = map[string]string{}

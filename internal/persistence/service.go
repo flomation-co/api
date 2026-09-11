@@ -111,6 +111,7 @@ type Service struct {
 	stmtUpdateFloExecutionStatus  *sqlx.NamedStmt
 	stmtUpdateFloCompletionStatus *sqlx.NamedStmt
 	stmtUpdateExecutionResult     *sqlx.NamedStmt
+	stmtCompleteExecution         *sqlx.NamedStmt
 	stmtUpdateExecutionRunnerID   *sqlx.NamedStmt
 	stmtGetExecutionByID          *sqlx.NamedStmt
 
@@ -1580,6 +1581,16 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    id = :id;
 	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// stmtCompleteExecution writes the whole completion outcome — execution
+	// status, completion status and result — in ONE atomic statement. This
+	// replaces three separate round-trips on the completion hot path and, more
+	// importantly, closes the window where a /wait long-poll could observe
+	// execution_status='executed' before the result column was written.
+	s.stmtCompleteExecution, err = s.conn.PrepareNamed(completeExecutionSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -4791,6 +4802,48 @@ func (s *Service) UpdateExecutionResult(ID string, result interface{}) error {
 		Result interface{} `db:"result"`
 	}{
 		ID:     ID,
+		Result: SanitiseJSONBValue(result),
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// completeExecutionSQL sets every completion column on the execution row in a
+// single statement. Kept as a package constant so its shape can be pinned by a
+// test (guards against a column silently dropping out of the atomic write).
+const completeExecutionSQL = `
+		UPDATE execution
+		SET
+		    execution_status = :execution_status,
+		    completion_status = :completion_status,
+		    result = :result,
+			updated_at = CURRENT_TIMESTAMP,
+			completed_at = CURRENT_TIMESTAMP
+		WHERE
+		    id = :id;
+	`
+
+// CompleteExecution writes execution status, completion status and result in a
+// single atomic UPDATE, replacing the three-round-trip UpdateExecutionStatus →
+// UpdateCompletionStatus → UpdateExecutionResult sequence on the completion hot
+// path. Atomicity matters: a /wait long-poll wakes on execution_status flipping
+// to 'executed', so the result must land in the same statement or a waiter could
+// read a finished execution whose result is still NULL.
+func (s *Service) CompleteExecution(ID, executionStatus, completionStatus string, result interface{}) error {
+	if _, err := s.stmtCompleteExecution.Exec(struct {
+		ID               string      `db:"id"`
+		ExecutionStatus  string      `db:"execution_status"`
+		CompletionStatus string      `db:"completion_status"`
+		Result           interface{} `db:"result"`
+	}{
+		ID:               ID,
+		ExecutionStatus:  executionStatus,
+		CompletionStatus: completionStatus,
+		// Same jsonb hazard as UpdateExecutionResult: a single NUL byte
+		// anywhere in a flow's outputs is rejected by Postgres, and on this
+		// path it would fail the whole atomic completion write.
 		Result: SanitiseJSONBValue(result),
 	}); err != nil {
 		return err

@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"flomation.app/automate/api"
@@ -592,61 +593,93 @@ func (s *Service) checkForRunnerExecutions(c *gin.Context) {
 		return
 	}
 
-	// Enrich execution with author email. Keep the fetched user around so the
-	// ${user.X} enrichment below can reuse it when the executing user IS the
-	// author (the common manual/scheduled case) — saving a second identical
-	// GetUserByID on the hot work-fetch path.
-	author, _ := s.persistence.GetUserByID(execution.OwnerID)
-	if author != nil {
-		execution.AuthorEmail = author.EmailAddress
-		// Default triggerer to author (overridden below if trigger invocation has a different owner)
-		execution.TriggererEmail = author.EmailAddress
-	}
+	// The two enrichment chains below hit independent tables, so run them
+	// concurrently to shave round-trips off the work-fetch hot path (this runs
+	// before the executor is even spawned). Race-free by construction:
+	//   • Chain A owns execution.AuthorEmail, execution.TriggererEmail (default)
+	//     and execution.Data exclusively.
+	//   • Chain B (trigger invocation) only READS execution.OwnerID/TriggeredBy
+	//     and writes its findings into locals, applied to execution AFTER the
+	//     join — so B's triggerer override deterministically wins over A's
+	//     default and no field is written by both goroutines.
+	var enrichWG sync.WaitGroup
 
-	// Enrich execution.Data with the author's identities + user_id when
-	// they're not already present. The inbound agent pipeline sets these
-	// itself (using the message sender, not the flow author), so we
-	// only fill them in for manual / scheduled runs where the executing
-	// user IS the author. The runner picks these fields out of
-	// triggerData and routes them onto ExecutionContext so ${flow.user_id}
-	// and ${flow.identities} resolve in non-agent flows too.
-	enrichDataWithAuthorIdentities(s.persistence, execution, flow)
-	// Always runs AFTER the identity enrichment so it picks up whichever
-	// user_id won (sender for inbound agent messages, author for manual /
-	// scheduled runs). Adds ${user.X} substitution data.
-	enrichDataWithUserVariables(s.persistence, execution, author)
+	// Chain A — author email + ${user.X}/identity enrichment of execution.Data.
+	enrichWG.Add(1)
+	go func() {
+		defer enrichWG.Done()
+		// Keep the fetched author around so the ${user.X} enrichment can reuse
+		// it when the executing user IS the author (the common manual/scheduled
+		// case) — saving a second identical GetUserByID.
+		author, _ := s.persistence.GetUserByID(execution.OwnerID)
+		if author != nil {
+			execution.AuthorEmail = author.EmailAddress
+			execution.TriggererEmail = author.EmailAddress // default; chain B may override
+		}
+		// Fill execution.Data with the author's identities + user_id when not
+		// already present (manual/scheduled runs where the executing user IS the
+		// author; the inbound agent pipeline sets these itself using the message
+		// sender). The runner routes these onto ExecutionContext so
+		// ${flow.user_id}/${flow.identities} resolve in non-agent flows too.
+		enrichDataWithAuthorIdentities(s.persistence, execution, flow)
+		// Runs after identity enrichment so it picks up whichever user_id won.
+		enrichDataWithUserVariables(s.persistence, execution, author)
+	}()
 
-	// Enrich with trigger type, triggerer email, and entry node ID from trigger invocation chain
-	if execution.TriggeredBy != nil {
-		if invocation, err := s.persistence.GetTriggerInvocationById(*execution.TriggeredBy); err == nil && invocation != nil {
-			if trigger, err := s.persistence.GetTriggerByID(invocation.TriggerID); err == nil && trigger != nil {
-				execution.TriggerType = &trigger.TypeName
-
-				// Extract entry node ID from trigger data if available
-				if trigger.Data != nil {
-					var triggerData map[string]interface{}
-					switch d := trigger.Data.(type) {
-					case []byte:
-						_ = json.Unmarshal(d, &triggerData)
-					case map[string]interface{}:
-						triggerData = d
-					default:
-						if raw, err := json.Marshal(d); err == nil {
-							_ = json.Unmarshal(raw, &triggerData)
-						}
-					}
-					if nodeID, ok := triggerData["__node_id"].(string); ok && nodeID != "" {
-						execution.EntryNodeID = &nodeID
+	// Chain B — trigger type, entry node and triggerer email from the trigger
+	// invocation chain. Side-effect-free on `execution` until the join.
+	var trigTypeName *string
+	var trigEntryNodeID *string
+	var trigTriggererEmail *string
+	enrichWG.Add(1)
+	go func() {
+		defer enrichWG.Done()
+		if execution.TriggeredBy == nil {
+			return
+		}
+		invocation, err := s.persistence.GetTriggerInvocationById(*execution.TriggeredBy)
+		if err != nil || invocation == nil {
+			return
+		}
+		if trigger, err := s.persistence.GetTriggerByID(invocation.TriggerID); err == nil && trigger != nil {
+			trigTypeName = &trigger.TypeName
+			// Extract entry node ID from trigger data if available.
+			if trigger.Data != nil {
+				var triggerData map[string]interface{}
+				switch d := trigger.Data.(type) {
+				case []byte:
+					_ = json.Unmarshal(d, &triggerData)
+				case map[string]interface{}:
+					triggerData = d
+				default:
+					if raw, err := json.Marshal(d); err == nil {
+						_ = json.Unmarshal(raw, &triggerData)
 					}
 				}
-			}
-			// If the invocation was triggered by a different user, look up their email
-			if invocation.OwnerID != nil && *invocation.OwnerID != execution.OwnerID {
-				if triggerer, err := s.persistence.GetUserByID(*invocation.OwnerID); err == nil && triggerer != nil {
-					execution.TriggererEmail = triggerer.EmailAddress
+				if nodeID, ok := triggerData["__node_id"].(string); ok && nodeID != "" {
+					trigEntryNodeID = &nodeID
 				}
 			}
 		}
+		// If the invocation was triggered by a different user, look up their email.
+		if invocation.OwnerID != nil && *invocation.OwnerID != execution.OwnerID {
+			if triggerer, err := s.persistence.GetUserByID(*invocation.OwnerID); err == nil && triggerer != nil {
+				trigTriggererEmail = triggerer.EmailAddress
+			}
+		}
+	}()
+
+	enrichWG.Wait()
+
+	// Apply chain B's findings after the join (its override wins over A's default).
+	if trigTypeName != nil {
+		execution.TriggerType = trigTypeName
+	}
+	if trigEntryNodeID != nil {
+		execution.EntryNodeID = trigEntryNodeID
+	}
+	if trigTriggererEmail != nil {
+		execution.TriggererEmail = trigTriggererEmail
 	}
 
 	// Default trigger type to manual if not determined from invocation
