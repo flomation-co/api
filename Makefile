@@ -21,37 +21,46 @@ OS_ARCHS ?= linux/amd64
 GOSEC_VERSION        ?= v2.28.0
 GOVULNCHECK_VERSION  ?= v1.7.0
 
-# govulncheck is the memory peak of the whole lint suite: it builds an SSA call
-# graph over the entire transitive dependency tree to prove which vulnerable
-# symbols are actually reachable. As the SDK surface grew it began OOM-killing
-# at the runner's 4Gi cgroup ceiling, and that ceiling cannot be raised without
-# runner config access.
+# ── govulncheck runs in BINARY mode, in CI, after compile ──────────────────
 #
-# ── govulncheck is TEMPORARILY DISABLED IN CI ──────────────────────────────
+# This is the fix the previous "temporarily disabled" note asked for. It is
+# enabled and blocking again; see the `vulncheck` job in .gitlab-ci.yml.
 #
-# It no longer fits in the runner's 4Gi cgroup ceiling, and that ceiling cannot
-# be raised without runner config access. Per-command tuning was tried and was
-# not enough: GOMAXPROCS=1 with GOMEMLIMIT=2000MiB still OOM-killed (exit 137).
-# GOMEMLIMIT bounds only the Go heap, and govulncheck's footprint is largely
-# OFF-heap (mmap'd package export data, SSA), so no heap setting can hold total
-# RSS under the cap at this module size.
+# SOURCE mode is not viable and never will be at this module size. It builds an
+# SSA call graph over the entire transitive dependency tree, and measured peak
+# RSS on this module is 12.51 GiB in 2m32s at GOMAXPROCS=1 — above even a 10Gi
+# runner ceiling. GOMEMLIMIT cannot rescue it: that bounds the Go heap, while
+# govulncheck's footprint is largely OFF-heap (mmap'd package export data, SSA).
 #
-# It is disabled rather than deleted because a permanently red gate is worse
-# than an honestly absent one: it trains everyone to merge through a failing
-# pipeline, which is how a real failure gets waved past. golangci-lint, go vet
-# and gosec all still run and still block.
+# BINARY mode reads the shipped symbol table instead. Measured on the same
+# module: 20 MiB peak RSS in 0.55s — roughly 640x less memory. It also scans
+# exactly what ships, which is the thing we actually care about.
 #
-# RE-ENABLE by setting GOVULNCHECK_ENABLED=1 once the agreed fix lands: run it
-# in BINARY mode against the compiled artefact in a job after `compile`
-# (`govulncheck -mode=binary ./dist/flomation-api-amd64-linux-$(VERSION)`).
-# Binary mode reads the shipped symbol table instead of building a source call
-# graph, so the memory peak largely disappears while keeping symbol-level
-# precision for the code that actually ships.
+# The trade-off, stated honestly: binary mode reports symbols PRESENT in the
+# binary and does not do source mode's call-graph reachability analysis, so it
+# can flag code that is linked but never called. That is what GOVULNCHECK_ALLOW
+# below exists for. Source mode stays available for local use.
 #
-# Run it locally any time with:  make lint GOVULNCHECK_ENABLED=1
+# Local use:
+#   make govulncheck-binary   # needs `make build` first; what CI runs
+#   make lint GOVULNCHECK_ENABLED=1   # source mode; budget ~13 GiB of RAM
 GOVULNCHECK_ENABLED    ?= 0
 GOVULNCHECK_GOMAXPROCS ?= 1
 GOVULNCHECK_GOMEMLIMIT ?= 2000MiB
+
+# Findings accepted with a written justification. Anything NOT on this list
+# fails the build. Keep each entry's reasoning with it, and re-check on any
+# dependency bump.
+#
+# GO-2026-5932  golang.org/x/crypto/openpgp — unmaintained and unsafe by
+#               design, with "Fixed in: N/A", so there is no version to move to.
+#               `go mod why golang.org/x/crypto/openpgp` reports "main module
+#               does not need package", and SOURCE-mode govulncheck does not
+#               report it at all — i.e. it is linked into the binary but is not
+#               reachable from our code. This is precisely the binary-mode
+#               false-positive class described above.
+#               Re-evaluate if we ever call openpgp directly.
+GOVULNCHECK_ALLOW      ?= GO-2026-5932
 
 # Install a pinned tool only when the required version is not already present,
 # so a warm GOPATH/bin (see the CI cache) skips the download entirely.
@@ -75,14 +84,60 @@ lint:
 	@if [ "$(GOVULNCHECK_ENABLED)" = "1" ]; then \
 		$(MAKE) --no-print-directory govulncheck; \
 	else \
-		echo "govulncheck SKIPPED (GOVULNCHECK_ENABLED=0) — OOMs at the runner's 4Gi ceiling; re-enable in binary mode after compile. See the Makefile header."; \
+		echo "govulncheck source mode skipped here — CI runs it in BINARY mode after compile (make govulncheck-binary). Set GOVULNCHECK_ENABLED=1 for source mode locally; budget ~13 GiB."; \
 	fi
 
-# Separated so it can be run on its own — locally, or from a post-compile CI job
-# once it moves to binary mode.
+# SOURCE mode. Local use only — measured 12.51 GiB peak RSS on this module, so
+# it does not fit any runner we have. Kept because its call-graph reachability
+# analysis is more precise than binary mode's, which makes it the tool to reach
+# for when triaging whether a binary-mode finding is real.
 govulncheck:
 	$(call ensure_tool,govulncheck,golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
 	GOMAXPROCS=$(GOVULNCHECK_GOMAXPROCS) GOMEMLIMIT=$(GOVULNCHECK_GOMEMLIMIT) govulncheck ./...
+
+# BINARY mode. This is what CI runs, in the `vulncheck` job after `compile`.
+# Scans every artefact `make build` produced, so the gencerts binary that ships
+# alongside the service is covered too.
+#
+# Findings on GOVULNCHECK_ALLOW are reported and skipped; anything else fails.
+# We deliberately do not use govulncheck's exit code directly, because it does
+# not distinguish an allowed finding from a new one.
+govulncheck-binary:
+	$(call ensure_tool,govulncheck,golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+	@export PATH="$$(go env GOPATH)/bin:$$PATH"; \
+	command -v govulncheck >/dev/null 2>&1 || { \
+		echo "ERROR: govulncheck is not on PATH after install — refusing to report a pass"; \
+		exit 1; \
+	}; \
+	bins=$$(find ./dist -type f -name 'flomation-*-amd64-linux-*' 2>/dev/null); \
+	if [ -z "$$bins" ]; then \
+		echo "ERROR: no binaries under ./dist — run 'make build' first (CI: needs the compile job's artifacts)"; \
+		exit 1; \
+	fi; \
+	status=0; \
+	for bin in $$bins; do \
+		echo "── govulncheck -mode=binary $$bin"; \
+		out=$$(govulncheck -mode=binary "$$bin" 2>&1); rc=$$?; \
+		echo "$$out"; \
+		if [ $$rc -ne 0 ] && [ $$rc -ne 3 ]; then \
+			echo "ERROR: govulncheck could not scan $$bin (exit $$rc). Failing — a tool that did not run is not a pass."; \
+			exit 1; \
+		fi; \
+		ids=$$(echo "$$out" | sed -n 's/^Vulnerability #[0-9]*: \(GO-[0-9][0-9-]*\).*/\1/p' | sort -u); \
+		if [ $$rc -eq 3 ] && [ -z "$$ids" ]; then \
+			echo "ERROR: govulncheck reported findings (exit 3) but none could be parsed from its output."; \
+			echo "       The output format has probably changed — fix the parser rather than trusting this."; \
+			exit 1; \
+		fi; \
+		for id in $$ids; do \
+			case " $(GOVULNCHECK_ALLOW) " in \
+				*" $$id "*) echo "  ALLOWED  $$id (see GOVULNCHECK_ALLOW in the Makefile)";; \
+				*)          echo "  BLOCKING $$id"; status=1;; \
+			esac; \
+		done; \
+	done; \
+	if [ $$status -eq 0 ]; then echo "govulncheck: no unaccepted findings"; fi; \
+	exit $$status
 
 build:
 	rm -rf dist/
