@@ -19,6 +19,16 @@ type Account struct {
 	Locked      bool       `json:"locked"`
 	LastLogin   *time.Time `json:"last_login"`
 	Type        int64      `json:"type"`
+
+	// Marketing consent as recorded at sign-up. Sentinel owns the point of
+	// collection, so this is the decision the user actually gave; we seed our
+	// own copy from it rather than asking again. MarketingConsentAt is nil for
+	// accounts created before the sign-up question existed, and for SSO
+	// sign-ups, where there is no form of ours to put the question on.
+	MarketingOptIn          bool       `json:"marketing_opt_in"`
+	MarketingConsentAt      *time.Time `json:"marketing_consent_at"`
+	MarketingConsentSource  *string    `json:"marketing_consent_source"`
+	MarketingConsentVersion *string    `json:"marketing_consent_version"`
 }
 
 type Connector struct {

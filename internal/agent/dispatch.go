@@ -4,11 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	api "flomation.app/automate/api"
 	"flomation.app/automate/api/internal/persistence"
 	log "github.com/sirupsen/logrus"
 )
+
+// ExtractionCurrentTime is the "now" handed to the extraction prompt as
+// ${current_time}. Without it the model dates commitments from its
+// training era — every absolute_time commitment created before this
+// existed was due in 2024 or 2025 and fired the moment it was written.
+// The weekday is spelled out because assistants phrase promises as
+// "Friday the 13th", and the ISO form removes any doubt about the year.
+func ExtractionCurrentTime(now time.Time) string {
+	return now.Format("Monday, 2 January 2006 15:04 MST") + " (" + now.Format(time.RFC3339) + ")"
+}
 
 // ExecutionNotifier wakes long-polling runners.
 type ExecutionNotifier interface {
@@ -227,9 +238,10 @@ func DispatchExtraction(
 	}
 
 	triggerData := map[string]interface{}{
-		"agent_id": agentID,
-		"role":     role,
-		"content":  content,
+		"agent_id":     agentID,
+		"role":         role,
+		"content":      content,
+		"current_time": ExtractionCurrentTime(time.Now()),
 	}
 	if msgID != nil {
 		triggerData["message_id"] = *msgID

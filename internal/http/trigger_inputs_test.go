@@ -220,3 +220,18 @@ func TestTriggerFlo_ValidInput_CreatesExecution(t *testing.T) {
 	Expect(rec.Code).To(Equal(http.StatusCreated))
 	Expect(mock.triggerExecCalls).To(Equal(1))
 }
+
+func TestFormTriggerData_ReStampsNodeID(t *testing.T) {
+	RegisterTestingT(t)
+	// The form_definition becomes the root trigger data, and __node_id must
+	// survive so the executor injects a submission into THIS form trigger node.
+	in := map[string]interface{}{"form_definition": `{"title":"T","pages":[]}`}
+	out := formTriggerData(in, "node-abc")
+	Expect(out["__node_id"]).To(Equal("node-abc"))
+	Expect(out["title"]).To(Equal("T"))
+	Expect(out).NotTo(HaveKey("form_definition")) // replaced by the parsed definition
+
+	// No form_definition → data unchanged.
+	plain := map[string]interface{}{"foo": "bar"}
+	Expect(formTriggerData(plain, "node-abc")).To(Equal(plain))
+}

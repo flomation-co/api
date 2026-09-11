@@ -47,7 +47,7 @@ func TestBlobHandleByteLen_Is16(t *testing.T) {
 func TestBlobTTLs_PurposeDrivenAndCorrect(t *testing.T) {
 	RegisterTestingT(t)
 	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeInbound, 30*24*time.Hour))
-	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeToolOutput, 1*time.Hour))
+	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeToolOutput, 24*time.Hour))
 	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeManual, 30*24*time.Hour))
 	// Assets are permanent: a 0 duration signals "no expiry" (expires_at NULL).
 	Expect(blobTTLByPurpose).To(HaveKeyWithValue(BlobPurposeAsset, time.Duration(0)))

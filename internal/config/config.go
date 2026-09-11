@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+
 	goconfig "github.com/flomation-co/go-config"
 
 	"flomation.app/automate/api/internal/mtls"
@@ -109,6 +111,36 @@ type Config struct {
 	OAuth            map[string]OAuthProviderConfig `json:"oauth,omitempty"`
 	EmailOctopus     *EmailOctopusConfig            `json:"email_octopus,omitempty"`
 	AWS              *AWSConfig                     `json:"aws,omitempty"`
+	OCIHosting       *OCIHostingConfig              `json:"oci_hosting,omitempty"`
+}
+
+// OCIHostingConfig is Flomation's OWN OCI signing-key identity + bucket used to
+// host the per-credential "Connect Oracle Cloud" provisioning stacks. OCI Resource
+// Manager only fetches stack zips from supported providers (Object Storage /
+// GitHub / GitLab), so the connector uploads each stack to this bucket and hands
+// RM a pre-authenticated request (PAR) URL. Lives ONLY on the API.
+type OCIHostingConfig struct {
+	Tenancy     string `json:"tenancy"`
+	User        string `json:"user"`
+	Region      string `json:"region"`
+	Fingerprint string `json:"fingerprint"`
+	PrivateKey  string `json:"private_key"`
+	Passphrase  string `json:"passphrase,omitempty"`
+	Bucket      string `json:"bucket"`
+	Namespace   string `json:"namespace,omitempty"` // optional; resolved via GetNamespace when blank
+}
+
+// String redacts the signing key and passphrase so an accidental %v/%+v dump of the
+// config (directly or via a parent struct) never leaks the private key.
+func (c OCIHostingConfig) String() string {
+	redact := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		return "***redacted***"
+	}
+	return fmt.Sprintf("{Tenancy:%s User:%s Region:%s Fingerprint:%s PrivateKey:%s Passphrase:%s Bucket:%s Namespace:%s}",
+		c.Tenancy, c.User, c.Region, c.Fingerprint, redact(c.PrivateKey), redact(c.Passphrase), c.Bucket, c.Namespace)
 }
 
 // AWSConfig holds platform-level AWS settings.

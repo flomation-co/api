@@ -87,13 +87,51 @@ func (s *Service) getMyFlos(c *gin.Context) {
 		orgID = user.Organisations[0].ID
 	}
 
-	flos, count, err := s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
+	var (
+		flos  []*api.Flo
+		count int64
+	)
+	// The Flows-page grouped view fetches flows one project at a time via
+	// ?project_id=<id> (or ?project_id=none for ungrouped). Absent → the flat
+	// list, unchanged.
+	if projectFilter, ok := c.GetQuery("project_id"); ok {
+		var pid *string
+		if projectFilter != "" && projectFilter != "none" {
+			pid = &projectFilter
+		}
+		var org *string
+		if orgID != "" {
+			org = &orgID
+		}
+		flos, count, err = s.persistence.GetProjectFlos(user.ID, org, pid, offset, limit, searchQuery)
+	} else {
+		flos, count, err = s.persistence.GetMyFlos(user.ID, offset, limit, searchQuery, orgID)
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Error("unable to get flos")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	// Phase 2: hide flows that live in a restricted project the user can't
+	// access. Covers the flat list AND the per-project fetch (every page flow
+	// shares the requested project, so an inaccessible one yields an empty page).
+	if len(flos) > 0 {
+		var orgPtr *string
+		if orgID != "" {
+			orgPtr = &orgID
+		}
+		if access, aerr := s.persistence.GetProjectAccess(user.ID, orgPtr, s.isOrgAdmin(user)); aerr == nil {
+			visible := flos[:0]
+			for _, f := range flos {
+				if f.ProjectID == nil || access[*f.ProjectID].Accessible {
+					visible = append(visible, f)
+				}
+			}
+			flos = visible
+		}
 	}
 
 	if len(flos) == 0 {
@@ -442,16 +480,10 @@ func (s *Service) createFloRevision(c *gin.Context) {
 			// Store the flow node ID so the executor can be started from the correct entry node
 			triggerData["__node_id"] = node.ID
 
-			// For form triggers, extract and parse form_definition as the root trigger data
+			// For form triggers, the form_definition becomes the root trigger data
+			// (with __node_id preserved for routing).
 			if typeName == "form" {
-				if fd, ok := triggerData["form_definition"]; ok {
-					if fdStr, ok := fd.(string); ok && fdStr != "" {
-						var formDef map[string]interface{}
-						if err := json.Unmarshal([]byte(fdStr), &formDef); err == nil {
-							triggerData = formDef
-						}
-					}
-				}
+				triggerData = formTriggerData(triggerData, node.ID)
 			}
 		}
 
@@ -629,6 +661,26 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		return
 	}
 
+	// Gate organisation-owned executions on completed legal details (see
+	// executeFlo). Applies to every trigger path; personal flows are exempt.
+	if flo, ferr := s.persistence.GetFloByID(floID); ferr == nil && flo != nil &&
+		flo.OrganisationID != nil && *flo.OrganisationID != "" {
+		if complete, missing := s.organisationLegalComplete(*flo.OrganisationID); !complete {
+			log.WithFields(log.Fields{
+				"flo_id":     floID,
+				"trigger_id": triggerID,
+				"org":        *flo.OrganisationID,
+				"missing":    missing,
+			}).Info("trigger blocked — organisation legal details incomplete")
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":                "organisation_legal_details_required",
+				"message":              "This organisation must complete its legal details before its flows can run. An administrator can add them in Organisation settings.",
+				"missing_legal_fields": missing,
+			})
+			return
+		}
+	}
+
 	var data interface{}
 	err := c.ShouldBindJSON(&data)
 	if err != nil {
@@ -734,6 +786,27 @@ func (s *Service) executeFlo(c *gin.Context) {
 		log.WithField("flo_id", floID).Info("execution blocked — agent is paused")
 		c.JSON(http.StatusConflict, gin.H{"error": "agent is paused"})
 		return
+	}
+
+	// Gate organisation-owned executions on completed legal details. An
+	// organisation must provide its registered legal identity (used for its
+	// Data Processing Agreement) before any of its flows may run, via any
+	// path — manual, trigger, agent or form. Personal flows are unaffected.
+	if flo, ferr := s.persistence.GetFloByID(floID); ferr == nil && flo != nil &&
+		flo.OrganisationID != nil && *flo.OrganisationID != "" {
+		if complete, missing := s.organisationLegalComplete(*flo.OrganisationID); !complete {
+			log.WithFields(log.Fields{
+				"flo_id":  floID,
+				"org":     *flo.OrganisationID,
+				"missing": missing,
+			}).Info("execution blocked — organisation legal details incomplete")
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":                "organisation_legal_details_required",
+				"message":              "This organisation must complete its legal details before its flows can run. An administrator can add them in Organisation settings.",
+				"missing_legal_fields": missing,
+			})
+			return
+		}
 	}
 
 	// Find the manual trigger for this flow

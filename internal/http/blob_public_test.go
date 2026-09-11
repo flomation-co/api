@@ -193,6 +193,43 @@ func TestBlobPublic_PersonalUser_CannotReachOrgBlob(t *testing.T) {
 	Expect(w.Code).To(Equal(http.StatusNotFound))
 }
 
+// TestBlobPublic_MultiOrg_NonFirstOrgBlob is the regression guard for the bug
+// where a user belonging to several orgs 404'd on a blob owned by any org other
+// than Organisations[0] — which broke execution-view media previews for
+// multi-org users (e.g. a Desktop Screenshot's image output). The blob here is
+// owned by the user's SECOND org; it must still be served.
+func TestBlobPublic_MultiOrg_NonFirstOrgBlob(t *testing.T) {
+	t.Parallel()
+	RegisterTestingT(t)
+	svc, mp := newBlobService()
+
+	userID := "multi-org-user"
+	now := time.Now()
+	if mp.users == nil {
+		mp.users = map[string]*api.User{}
+	}
+	mp.users[userID] = &api.User{
+		ID:   userID,
+		Name: "Multi Org User",
+		Organisations: []api.Organisation{
+			{ID: "org-first", Name: "First Org", CreatedAt: &now},
+			{ID: "org-second", Name: "Second Org", CreatedAt: &now},
+		},
+	}
+
+	imageBytes := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	handle := seedBlob(mp, persistence.OrgScope("org-second"), imageBytes, "image/png")
+
+	r := setupBlobPublicRouter(svc, userID)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/blob/"+handle, nil)
+	r.ServeHTTP(w, req)
+
+	Expect(w.Code).To(Equal(http.StatusOK))
+	Expect(w.Header().Get("Content-Type")).To(Equal("image/png"))
+	Expect(w.Body.Bytes()).To(Equal(imageBytes))
+}
+
 // TestBlobPublic_MalformedHandle_404 keeps the route's response shape
 // consistent. Anything that doesn't parse as a proper handle is 404,
 // not 400 — the path is opaque to the caller and "invalid" and

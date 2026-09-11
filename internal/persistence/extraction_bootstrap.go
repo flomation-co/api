@@ -20,6 +20,8 @@ package persistence
 //     initial copy; it does not overwrite subsequent revisions.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -52,6 +54,11 @@ You will receive a message with one of three roles:
 - "role": "user" — an incoming user message. Extract memories and proposed actions.
 - "role": "assistant" — the agent's reply. Extract commitments only (not memories).
 - "role": "summary" — a completed conversation transcript. Extract a session_summary memory and any task_completed confirmations.
+
+━━━ Current time ━━━
+${current_time}
+
+Resolve every date you output against that. The year is part of it: "1st October" means the next 1 October from the current time, never a year that has already passed. This block is platform context, not part of the message — never extract it as a memory or a fact.
 
 Analyse it and return a JSON object with these arrays:
 
@@ -304,6 +311,9 @@ Output:
 - When extracting commitments from assistant turns, set "made_by": "assistant".
 - ANY assistant reply that promises to do something later, remind the user, follow up, or check back MUST produce a commitment. Examples: "I'll remind you", "Got it, I'll ping you", "I'll check on that", "Sure, setting a reminder". Even very short confirmations are commitments if they imply a future action.
 - Reminders can be set for any duration, including 1 minute or less. Do not refuse or modify the user's requested timeframe.
+- COMMITMENT TIMING — do not do date arithmetic yourself. If the message expresses the timing as a DURATION or a relative phrase ("in 72 hours", "in 30 minutes", "tomorrow", "tomorrow at 9am", "next Monday"), copy that phrase VERBATIM into "due_in" and leave "due_at" empty. The platform resolves it against the real clock, correctly, including British Summer Time. Converting it to a calendar date yourself is how reminders end up on the wrong day.
+- Only set "due_at" when the message names an explicit calendar date or clock time ("on 1 October", "at 09:00 on the 14th", "on Christmas Eve"). Resolve it against the current time above, include the correct year, and format it as ISO-8601 with a time zone.
+- NEVER emit a "due_at" earlier than the current time. A reminder cannot be due before it was made. If your arithmetic produces one, you have the year wrong — recheck it against the current time above.
 - RECURRING COMMITMENTS: When the user asks for "every day", "every Monday", "weekly", "daily", "monthly", "every weekday", or "every N hours/days" — set the "recurrence" field to the pattern. The platform will automatically schedule the next occurrence after each firing. Examples: "remind me every morning at 9am" → recurrence: "daily", due_at for 9am today or tomorrow. "Weekly standup reminder on Mondays" → recurrence: "every Monday". One-off reminders should have recurrence: null.
 - For identity_link proposed_actions, the payload MUST contain "channel_type" (the OTHER platform they claim to be on, NOT the current channel) and "external_id" (their handle/address on that other platform). Example: if a Telegram user says "I'm also andy@flomation.co on email", payload must be {"channel_type": "email", "external_id": "andy@flomation.co"} — NOT {"channel_type": "telegram", ...}.
 - identity_link proposed_actions should ONLY be created when the user EXPLICITLY states they have an identity on another channel and wants to link it. Trigger phrases: "I'm also X on Y", "link my X account", "you can reach me at X", "connect my X". Simply MENTIONING an email address or handle (e.g. "Becky's email is bex@yahoo.com", "CC sarah@example.com", "email Bob at bob@test.com", "send it to ada@flomation.co") is NOT an identity claim — store those as facts or connection memories, never as identity_link actions. The bar for identity_link is HIGH: the user must be claiming the identity is THEIRS and expressing intent to link channels.
@@ -318,6 +328,121 @@ Output:
 - SCHEDULE TIMEZONE: ALWAYS include the timezone field when creating schedules. Use the user's known timezone from their memories/facts (e.g. "Europe/London" for a UK-based user). If unknown, use "Europe/London" as the default. NEVER leave timezone empty — an empty timezone defaults to UTC which will fire at the wrong time for most users.
 - SCHEDULE DEDUPLICATION: If a schedule with a similar purpose already exists (same mode and time), do NOT create a new one. The platform handles deduplication but you should avoid it at the extraction level too.
 - SCHEDULE vs COMMITMENT: If the user says "remind me every day at 8am" and the assistant agrees, create a SCHEDULE (not a commitment with recurrence). Schedules are the preferred mechanism for recurring tasks.`
+
+// supersededExtractionPrompts holds the SHA-256 of every extraction
+// prompt this codebase has previously shipped. An installation whose
+// stored prompt hashes to one of these has never been edited by an
+// admin, so replacing it is safe and is the only way a prompt fix ever
+// reaches a deployment that already bootstrapped. Anything else is
+// treated as customised and left alone.
+//
+// Add the outgoing prompt's hash here whenever extractionSystemPrompt
+// changes. TestSupersededPromptsExcludesCurrent keeps the list honest.
+var supersededExtractionPrompts = []string{
+	// v1, shipped from Phase 2d-γ until 2026-09-10. Carried no notion
+	// of the current date, so the model dated commitments from its
+	// training era: every absolute_time commitment ever created was
+	// due in 2024 or 2025 and fired the instant it was written.
+	"dd80558d2b5500ab7d00635187ce2daf52c697dd7348db2f4ab9fd2bacd95afa",
+}
+
+func promptFingerprint(prompt string) string {
+	sum := sha256.Sum256([]byte(prompt))
+	return hex.EncodeToString(sum[:])
+}
+
+// extractionPromptOf digs the ai/anthropic node's system_prompt input
+// out of a stored revision. Returns "" when the revision is not the
+// shape this bootstrap creates, which is itself a reason not to touch
+// it.
+func extractionPromptOf(data []byte) string {
+	var revision struct {
+		Nodes []struct {
+			Data struct {
+				Label  string `json:"label"`
+				Config struct {
+					Inputs []struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"inputs"`
+				} `json:"config"`
+			} `json:"data"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(data, &revision); err != nil {
+		return ""
+	}
+	for _, node := range revision.Nodes {
+		if node.Data.Label != "ai/anthropic" {
+			continue
+		}
+		for _, input := range node.Data.Config.Inputs {
+			if input.Name == "system_prompt" {
+				return input.Value
+			}
+		}
+	}
+	return ""
+}
+
+// upgradeExtractionPrompt replaces an untouched extraction flow's
+// revision when the shipped prompt has moved on. A customised prompt
+// is never overwritten — the admin's edit wins, and the mismatch is
+// logged so it is visible rather than silent.
+func (s *Service) upgradeExtractionPrompt(floID string) {
+	var data []byte
+	if err := s.conn.Get(&data,
+		`SELECT data FROM revision WHERE flo_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		floID,
+	); err != nil {
+		log.WithError(err).Warn("unable to read extraction flow revision, leaving it alone")
+		return
+	}
+
+	stored := extractionPromptOf(data)
+	if stored == "" {
+		log.WithField("flow_id", floID).Warn("extraction flow revision has no recognisable prompt, leaving it alone")
+		return
+	}
+
+	fingerprint := promptFingerprint(stored)
+	if fingerprint == promptFingerprint(extractionSystemPrompt) {
+		return
+	}
+
+	superseded := false
+	for _, hash := range supersededExtractionPrompts {
+		if hash == fingerprint {
+			superseded = true
+			break
+		}
+	}
+	if !superseded {
+		log.WithFields(log.Fields{
+			"flow_id":     floID,
+			"fingerprint": fingerprint,
+		}).Info("extraction prompt has been customised, leaving it alone")
+		return
+	}
+
+	revisionData, err := json.Marshal(buildExtractionFlowJSON())
+	if err != nil {
+		log.WithError(err).Warn("unable to build the upgraded extraction revision")
+		return
+	}
+	if _, err := s.CreateFloRevision(Revision{
+		FloID: floID,
+		Data:  json.RawMessage(revisionData),
+	}); err != nil {
+		log.WithError(err).Warn("unable to write the upgraded extraction revision")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"flow_id": floID,
+		"from":    fingerprint,
+	}).Info("upgraded the extraction prompt to the current shipped version")
+}
 
 // BootstrapExtractionFlow ensures the canonical extraction System Flow
 // exists. It is idempotent: re-running after the flow already exists is
@@ -344,6 +469,10 @@ func (s *Service) BootstrapExtractionFlow() error {
 		log.WithFields(log.Fields{
 			"flow_id": existingID,
 		}).Info("extraction system flow already exists, skipping bootstrap")
+
+		// An existing flow still needs the prompt kept current, or a
+		// fix like the missing-date one can never reach it.
+		s.upgradeExtractionPrompt(existingID)
 
 		// Still backfill agents that were created since last restart
 		// and might have NULL extraction_flow_id.

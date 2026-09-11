@@ -19,6 +19,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"aws":            {Key: "aws", Name: "AWS", Icon: "cloud", Description: "Amazon Web Services integrations"},
 	"common":         {Key: "common", Name: "Common", Icon: "toolbox", Description: "General-purpose data utilities"},
 	"conditional":    {Key: "conditional", Name: "Conditional", Icon: "code-branch", Description: "Control flow based on conditions"},
+	"document":       {Key: "document", Name: "Document", Icon: "file-lines", Description: "Generate and populate documents: fill PDF forms, templates and export"},
 	"humanintheloop": {Key: "humanintheloop", Name: "Human in the Loop", Icon: "user-check", Description: "Pause a flow for a human decision, then branch on their response"},
 	"file":           {Key: "file", Name: "File", Icon: "file", Description: "Read and write files"},
 	"git":            {Key: "git", Name: "Git", Icon: "code-branch", Description: "Version control operations"},
@@ -32,6 +33,7 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"nosql":          {Key: "nosql", Name: "NoSQL", Icon: "layer-group", Description: "NoSQL database operations"},
 	"sql":            {Key: "sql", Name: "SQL", Icon: "database", Description: "Relational database queries"},
 	"script":         {Key: "script", Name: "Script", Icon: "terminal", Description: "Execute scripts and commands"},
+	"desktop":        {Key: "desktop", Name: "Desktop", Icon: "display", Description: "Drive and record a desktop VM over SSH (screenshots, mouse, keyboard, screen recording)"},
 	"trigger":        {Key: "trigger", Name: "Triggers", Icon: "bolt-lightning", Description: "Start a Flow"},
 	"error":          {Key: "error", Name: "Error Handling", Icon: "triangle-exclamation", Description: "Handle and recover from flow errors"},
 	"agent":          {Key: "agent", Name: "Agent", Icon: "robot", Description: "Interact with Flomation Agents"},
@@ -48,17 +50,21 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"quickbooks":     {Key: "quickbooks", Name: "QuickBooks Online", Icon: "quickbooks", Description: "Manage customers, invoices, bills, payments and the ledger in QuickBooks Online"},
 	"xero":           {Key: "xero", Name: "Xero", Icon: "xero", Description: "Manage contacts, invoices, bills, payments and the ledger in Xero"},
 	"elevenlabs":     {Key: "elevenlabs", Name: "ElevenLabs", Icon: "microphone", Description: "AI voice synthesis and speech recognition"},
-	"subflow":        {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
-	"string":         {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
-	"social":         {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
-	"google":         {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
-	"mailchimp":      {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email", SubKey: "mailchimp", SubName: "Mailchimp", SubIcon: "mailchimp", SubDescription: "Manage audiences, members, tags, and campaigns in Mailchimp"},
-	"makefile":       {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
-	"twilio":         {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
-	"microsoft":      {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
-	"webflow":        {Key: "webflow", Name: "Webflow", Icon: "webflow", Description: "Manage Webflow sites, CMS collections, pages, and forms"},
-	"journey":        {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
-	"plan":           {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
+	// Name/Description match executor/actions/heygen/category.go. Icon uses the
+	// HeyGen brand mark added to the editor icon set; the executor manifest's
+	// category icon is ignored at serve time, so the palette icon lives here.
+	"heygen":    {Key: "heygen", Name: "HeyGen", Icon: "heygen", Description: "Generate AI avatar videos, voices and translations with HeyGen"},
+	"subflow":   {Key: "subflow", Name: "Sub-Flow", Icon: "layer-group", Description: "Reusable sub-flow subroutines"},
+	"string":    {Key: "string", Name: "String", Icon: "font", Description: "String manipulation and text operations"},
+	"social":    {Key: "social", Name: "Social Media", Icon: "comments", Description: "Publish and manage content on social media platforms"},
+	"google":    {Key: "google", Name: "Google", Icon: "google", Description: "Google Workspace integrations"},
+	"mailchimp": {Key: "marketing", Name: "Marketing", Icon: "bullhorn", Description: "Email and marketing platforms — contacts, campaigns, and transactional email", SubKey: "mailchimp", SubName: "Mailchimp", SubIcon: "mailchimp", SubDescription: "Manage audiences, members, tags, and campaigns in Mailchimp"},
+	"makefile":  {Key: "makefile", Name: "Makefile", Icon: "gears", Description: "Parse and execute Makefile targets"},
+	"twilio":    {Key: "twilio", Name: "Twilio", Icon: "phone", Description: "Twilio voice call and SMS actions"},
+	"microsoft": {Key: "microsoft", Name: "Microsoft", Icon: "microsoft", Description: "Microsoft 365 integrations"},
+	"webflow":   {Key: "webflow", Name: "Webflow", Icon: "webflow", Description: "Manage Webflow sites, CMS collections, pages, and forms"},
+	"journey":   {Key: "journey", Name: "Journey", Icon: "route", Description: "Route planning, journey optimisation, and printable itineraries"},
+	"plan":      {Key: "plan", Name: "Plan", Icon: "list-check", Description: "Create and manage autonomous multi-step plans the agent progresses on its own"},
 	// OpenTofu predates the infrastructure/ directory and still uses two-segment
 	// action IDs (opentofu/apply), so its sub-group is carried inline here rather
 	// than resolved from subCategoryMetadata: getCategoryForAction only populates
@@ -71,6 +77,22 @@ var categoryMetadata = map[string]api.ActionCategory{
 	"opentofu":   {Key: "infrastructure", Name: "Infrastructure", Icon: "server", Description: "Provision and operate your infrastructure — Kubernetes clusters, Helm releases, and infrastructure as code", SubKey: "opentofu", SubName: "OpenTofu", SubIcon: "cubes", SubDescription: "Infrastructure as Code — run OpenTofu plan, apply, and destroy"},
 	"databricks": {Key: "data-warehouse", Name: "Data Warehouse", Icon: "cubes-stacked", Description: "Query and orchestrate data warehouses and lakehouses", SubKey: "databricks", SubName: "Databricks", SubIcon: "database", SubDescription: "Run SQL, jobs, and models against a Databricks lakehouse"},
 	"hubspot":    {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets", SubKey: "hubspot", SubName: "HubSpot", SubIcon: "hubspot", SubDescription: "Manage contacts, companies, deals, and tickets in the HubSpot CRM"},
+	// CRM uses 3-segment action IDs (crm/salesforce/lead_create), so the
+	// sub-group (Salesforce) is resolved from subCategoryMetadata below and no
+	// Sub* fields belong here — getCategoryForAction would overwrite them.
+	//
+	// HubSpot's 2-segment remap entry above duplicates this entry's
+	// Key/Name/Icon/Description verbatim; keep them byte-identical or the CRM
+	// group header changes depending on which action the editor happened to
+	// read first. Same trap as Mailchimp/Marketing and OpenTofu/Infrastructure.
+	//
+	// HubSpot deliberately stays at actions/hubspot/ rather than moving under
+	// actions/crm/: action IDs are derived from the executor directory path, so
+	// relocating it would rename all 28 of its actions, and the api DELETES
+	// actions rows absent from a freshly-ingested manifest — every saved flow
+	// with a HubSpot node would fail to resolve. The remap gets the shared
+	// palette header at none of that cost.
+	"crm": {Key: "crm", Name: "CRM", Icon: "people-group", Description: "Customer relationship management — contacts, companies, deals, and tickets"},
 	// E-Commerce uses 3-segment action IDs (ecommerce/shopify/order_create),
 	// so the sub-group (Shopify) is resolved from subCategoryMetadata below —
 	// no inline Sub* fields here (getCategoryForAction would overwrite them).
@@ -131,39 +153,51 @@ var subCategoryMetadata = map[string]struct {
 	Icon        string
 	Description string
 }{
-	"aws/s3":                         {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
-	"aws/ec2":                        {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
-	"aws/rds":                        {Name: "RDS", Icon: "database", Description: "Relational Database Service operations"},
-	"aws/vpc":                        {Name: "VPC", Icon: "circle-nodes", Description: "Virtual Private Cloud networking — subnets, route tables, gateways, peering and VPN"},
-	"aws/elbv2":                      {Name: "Elastic Load Balancing", Icon: "arrows-split-up-and-left", Description: "Application, Network and Gateway load balancers — target groups, listeners, rules and target health"},
-	"aws/autoscaling":                {Name: "Auto Scaling", Icon: "arrows-up-down", Description: "EC2 Auto Scaling groups — desired capacity, scaling policies, scheduled actions and instance refresh"},
-	"aws/route53":                    {Name: "Route 53", Icon: "globe", Description: "DNS and traffic management — hosted zones, records, health checks and query logging"},
-	"aws/route53domains":             {Name: "Route 53 Domains", Icon: "id-badge", Description: "Domain registration — register, transfer, renew and manage domains, contacts and nameservers"},
-	"aws/cloudwatch":                 {Name: "CloudWatch", Icon: "chart-line", Description: "Metrics, alarms and dashboards — publish metric data, manage alarms and build dashboards"},
-	"aws/cloudwatchlogs":             {Name: "CloudWatch Logs", Icon: "file-lines", Description: "Log groups, streams and events — write and query logs, and manage metric and subscription filters"},
-	"aws/eventbridge":                {Name: "EventBridge", Icon: "bolt", Description: "Event rules and targets — route events with rules, manage targets and publish custom events"},
-	"aws/iam":                        {Name: "IAM", Icon: "shield-halved", Description: "Identity and Access Management — users, groups, roles, policies, access keys and instance profiles"},
-	"aws/kms":                        {Name: "KMS", Icon: "key", Description: "Key Management Service — keys, aliases, encryption, data keys, signing and grants"},
-	"aws/secretsmanager":             {Name: "Secrets Manager", Icon: "lock", Description: "Store, retrieve and rotate secrets — secret values, versions, rotation and resource policies"},
-	"social/linkedin":                {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
-	"social/facebook":                {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
-	"google/drive":                   {Name: "Drive", Icon: "folder", Description: "Google Drive file storage and management"},
-	"google/sheets":                  {Name: "Sheets", Icon: "table", Description: "Google Sheets spreadsheet operations"},
-	"google/docs":                    {Name: "Docs", Icon: "file-lines", Description: "Google Docs document operations"},
-	"google/slides":                  {Name: "Slides", Icon: "display", Description: "Google Slides presentation operations"},
-	"microsoft/outlook":              {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
-	"microsoft/teams":                {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
-	"microsoft/calendar":             {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
-	"microsoft/excel":                {Name: "Excel", Icon: "table", Description: "Microsoft Excel Online spreadsheet operations"},
-	"microsoft/onedrive":             {Name: "OneDrive", Icon: "folder", Description: "Microsoft OneDrive file storage and management"},
-	"microsoft/sharepoint":           {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
-	"microsoft/word":                 {Name: "Word", Icon: "file-lines", Description: "Microsoft Word Online document operations"},
-	"microsoft/powerpoint":           {Name: "PowerPoint", Icon: "display", Description: "Microsoft PowerPoint Online presentation operations"},
-	"google/gmail":                   {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
-	"google/calendar":                {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
-	"messaging/telegram":             {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
-	"messaging/discord":              {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
-	"ecommerce/shopify":              {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	"aws/s3":               {Name: "S3", Icon: "box-archive", Description: "Simple Storage Service operations"},
+	"aws/ec2":              {Name: "EC2", Icon: "server", Description: "Elastic Compute Cloud operations"},
+	"aws/rds":              {Name: "RDS", Icon: "database", Description: "Relational Database Service operations"},
+	"aws/vpc":              {Name: "VPC", Icon: "circle-nodes", Description: "Virtual Private Cloud networking — subnets, route tables, gateways, peering and VPN"},
+	"aws/elbv2":            {Name: "Elastic Load Balancing", Icon: "arrows-split-up-and-left", Description: "Application, Network and Gateway load balancers — target groups, listeners, rules and target health"},
+	"aws/autoscaling":      {Name: "Auto Scaling", Icon: "arrows-up-down", Description: "EC2 Auto Scaling groups — desired capacity, scaling policies, scheduled actions and instance refresh"},
+	"aws/route53":          {Name: "Route 53", Icon: "globe", Description: "DNS and traffic management — hosted zones, records, health checks and query logging"},
+	"aws/route53domains":   {Name: "Route 53 Domains", Icon: "id-badge", Description: "Domain registration — register, transfer, renew and manage domains, contacts and nameservers"},
+	"aws/cloudwatch":       {Name: "CloudWatch", Icon: "chart-line", Description: "Metrics, alarms and dashboards — publish metric data, manage alarms and build dashboards"},
+	"aws/cloudwatchlogs":   {Name: "CloudWatch Logs", Icon: "file-lines", Description: "Log groups, streams and events — write and query logs, and manage metric and subscription filters"},
+	"aws/eventbridge":      {Name: "EventBridge", Icon: "bolt", Description: "Event rules and targets — route events with rules, manage targets and publish custom events"},
+	"aws/iam":              {Name: "IAM", Icon: "shield-halved", Description: "Identity and Access Management — users, groups, roles, policies, access keys and instance profiles"},
+	"aws/kms":              {Name: "KMS", Icon: "key", Description: "Key Management Service — keys, aliases, encryption, data keys, signing and grants"},
+	"aws/secretsmanager":   {Name: "Secrets Manager", Icon: "lock", Description: "Store, retrieve and rotate secrets — secret values, versions, rotation and resource policies"},
+	"social/linkedin":      {Name: "LinkedIn", Icon: "linkedin", Description: "Publish posts, manage content, and read analytics on LinkedIn"},
+	"social/facebook":      {Name: "Facebook", Icon: "facebook", Description: "Publish posts, manage pages, and read insights on Facebook"},
+	"google/drive":         {Name: "Drive", Icon: "googledrive", Description: "Google Drive file storage and management"},
+	"google/sheets":        {Name: "Sheets", Icon: "googlesheets", Description: "Google Sheets spreadsheet operations"},
+	"google/docs":          {Name: "Docs", Icon: "googledocs", Description: "Google Docs document operations"},
+	"google/slides":        {Name: "Slides", Icon: "googleslides", Description: "Google Slides presentation operations"},
+	"microsoft/outlook":    {Name: "Outlook", Icon: "envelope", Description: "Microsoft Outlook email operations"},
+	"microsoft/teams":      {Name: "Teams", Icon: "user-group", Description: "Microsoft Teams messaging and channel operations"},
+	"microsoft/calendar":   {Name: "Calendar", Icon: "calendar", Description: "Microsoft Outlook calendar event management"},
+	"microsoft/excel":      {Name: "Excel", Icon: "msexcel", Description: "Microsoft Excel Online spreadsheet operations"},
+	"microsoft/onedrive":   {Name: "OneDrive", Icon: "onedrive", Description: "Microsoft OneDrive file storage and management"},
+	"microsoft/sharepoint": {Name: "SharePoint", Icon: "globe", Description: "Microsoft SharePoint sites, lists, and document libraries"},
+	"microsoft/word":       {Name: "Word", Icon: "msword", Description: "Microsoft Word Online document operations"},
+	"microsoft/powerpoint": {Name: "PowerPoint", Icon: "mspowerpoint", Description: "Microsoft PowerPoint Online presentation operations"},
+	"google/gmail":         {Name: "Gmail", Icon: "gmail", Description: "Google Gmail email operations"},
+	"google/calendar":      {Name: "Calendar", Icon: "calendar", Description: "Google Calendar event management"},
+	"messaging/telegram":   {Name: "Telegram", Icon: "telegram", Description: "Telegram Bot messaging operations"},
+	"messaging/discord":    {Name: "Discord", Icon: "discord", Description: "Discord messaging and webhook operations"},
+	"ecommerce/shopify":    {Name: "Shopify", Icon: "shopify", Description: "Manage orders and products in your Shopify store"},
+	// Description must stay byte-identical to CategoryDescription in
+	// executor/actions/crm/salesforce/category.go.
+	"crm/salesforce": {Name: "Salesforce", Icon: "salesforce", Description: "Manage Salesforce leads, contacts, accounts, opportunities, cases, tasks, and any custom object"},
+	"crm/apollo":     {Name: "Apollo", Icon: "apollo", Description: "Enrich, search and manage Apollo.io contacts, accounts, deals and sequences"},
+	"crm/freshsales": {Name: "Freshsales", Icon: "freshworks", Description: "Manage Freshsales contacts, accounts, deals, activities, lists and products"},
+	// Sub-category metadata must match executor/actions/heygen/<group>/category.go.
+	"heygen/videos":                  {Name: "Videos", Icon: "video", Description: "Generate and retrieve HeyGen avatar videos"},
+	"heygen/avatars":                 {Name: "Avatars", Icon: "user", Description: "Browse HeyGen avatars and looks"},
+	"heygen/voices":                  {Name: "Voices", Icon: "microphone", Description: "Browse HeyGen voices"},
+	"heygen/account":                 {Name: "Account", Icon: "gauge", Description: "HeyGen account and credit balance"},
+	"heygen/templates":               {Name: "Templates", Icon: "copy", Description: "Generate branded videos from HeyGen Studio templates"},
+	"heygen/translation":             {Name: "Translation", Icon: "globe", Description: "Translate and dub existing videos into other languages with HeyGen"},
 	"ecommerce/woocommerce":          {Name: "WooCommerce", Icon: "woocommerce", Description: "Manage customers, orders, products, and coupons in your WooCommerce store"},
 	"cms/wordpress":                  {Name: "WordPress", Icon: "wordpress", Description: "Manage posts, pages, users, comments, categories, and tags on your WordPress site"},
 	"scheduling/calendly":            {Name: "Calendly", Icon: "calendly", Description: "Manage Calendly event types, scheduled events, invitees, and scheduling links"},
@@ -173,10 +207,10 @@ var subCategoryMetadata = map[string]struct {
 	"helpdesk/intercom":              {Name: "Intercom", Icon: "intercom", Description: "Manage contacts, companies, conversations, tickets, tags, notes, and articles in Intercom"},
 	"devops/jenkins":                 {Name: "Jenkins", Icon: "jenkins", Description: "Trigger and manage Jenkins jobs and builds, and control the Jenkins server"},
 	"devops/azuredevops":             {Name: "Azure DevOps", Icon: "azure", Description: "Azure DevOps — work items, repositories, pull requests, pipelines and builds"},
-	"forms/typeform":                 {Name: "Typeform", Icon: "clipboard-list", Description: "Create Typeform forms, read responses and manage webhooks"},
-	"forms/jotform":                  {Name: "JotForm", Icon: "clipboard-list", Description: "Create JotForm forms, read submissions and manage webhooks"},
-	"forms/surveymonkey":             {Name: "SurveyMonkey", Icon: "clipboard-list", Description: "Create SurveyMonkey surveys, read responses, manage collectors and webhooks"},
-	"forms/googleforms":              {Name: "Google Forms", Icon: "clipboard-list", Description: "Create Google Forms, add questions and read responses (uses your Google connection)"},
+	"forms/typeform":                 {Name: "Typeform", Icon: "typeform", Description: "Create Typeform forms, read responses and manage webhooks"},
+	"forms/jotform":                  {Name: "JotForm", Icon: "jotform", Description: "Create JotForm forms, read submissions and manage webhooks"},
+	"forms/surveymonkey":             {Name: "SurveyMonkey", Icon: "surveymonkey", Description: "Create SurveyMonkey surveys, read responses, manage collectors and webhooks"},
+	"forms/googleforms":              {Name: "Google Forms", Icon: "googleforms", Description: "Create Google Forms, add questions and read responses (uses your Google connection)"},
 	"messagebrokers/mqtt":            {Name: "MQTT", Icon: "tower-broadcast", Description: "Publish messages to an MQTT broker, read retained values, and wait for messages on a topic"},
 	"messagebrokers/azureservicebus": {Name: "Azure Service Bus", Icon: "azure", Description: "Azure Service Bus — send and receive messages, work through queues and topics, and schedule messages for later"},
 	"ukgov/companieshouse":           {Name: "Companies House", Icon: "briefcase", Description: "UK company registry — search companies, officers, filings, PSCs and charges"},
@@ -192,6 +226,7 @@ var subCategoryMetadata = map[string]struct {
 	"ukgov/bankholidays":             {Name: "Bank Holidays", Icon: "calendar", Description: "UK bank holiday dates by region"},
 	"ukgov/landregistry":             {Name: "Land Registry", Icon: "house", Description: "UK property sold-price data (Price Paid)"},
 	"marketing/sendgrid":             {Name: "SendGrid", Icon: "sendgrid", Description: "Send transactional email and manage contacts, lists, templates, and suppressions in SendGrid"},
+	"marketing/meta_ads":             {Name: "Meta Ads", Icon: "facebook", Description: "Create, adjust and report on Facebook and Instagram advertising via the Meta Marketing API"},
 	"infrastructure/kubernetes":      {Name: "Kubernetes", Icon: "kubernetes", Description: "Operate a Kubernetes cluster — restart and scale deployments, read pod logs, run jobs, manage config, and drain nodes"},
 	"infrastructure/helm":            {Name: "Helm", Icon: "helm", Description: "Install, upgrade, roll back and inspect Helm releases on a Kubernetes cluster"},
 	// Mirrors executor/actions/infrastructure/awx/category.go's consts — this map,
@@ -253,6 +288,155 @@ var subCategoryMetadata = map[string]struct {
 	"vectordatabase/azureaisearch": {Name: "Azure AI Search", Icon: "magnifying-glass", Description: "Azure AI Search — manage indexes and documents, and run keyword, vector, and hybrid queries"},
 }
 
+// subSubCategoryMetadata maps 3-segment sub-paths (e.g. "crm/apollo/enrichment")
+// to display metadata for the third grouping level, used by 4-segment action IDs
+// like "crm/apollo/enrichment/people_match". Mirrors the executor category.go
+// files under actions/crm/apollo/<type>/.
+var subSubCategoryMetadata = map[string]struct {
+	Name        string
+	Icon        string
+	Description string
+}{
+	"crm/apollo/enrichment":        {Name: "Enrichment", Icon: "bolt", Description: "Enrich people and companies with Apollo's data"},
+	"marketing/meta_ads/accounts":  {Name: "Accounts", Icon: "facebook", Description: "Ad accounts reachable by the connected token"},
+	"marketing/meta_ads/campaigns": {Name: "Campaigns", Icon: "facebook", Description: "Campaign objectives, budgets and state"},
+	"marketing/meta_ads/adsets":    {Name: "Ad Sets", Icon: "facebook", Description: "Targeting, schedule, optimisation and bidding"},
+	"marketing/meta_ads/ads":       {Name: "Ads", Icon: "facebook", Description: "Individual ads and their state"},
+	"marketing/meta_ads/insights":  {Name: "Insights", Icon: "facebook", Description: "Performance reporting at any level of the hierarchy"},
+	"marketing/meta_ads/creatives": {Name: "Creatives", Icon: "facebook", Description: "Ad creatives — the image, copy and destination an ad shows"},
+	"marketing/meta_ads/media":     {Name: "Media", Icon: "facebook", Description: "Upload images and video for use in ad creatives"},
+	"marketing/meta_ads/audiences": {Name: "Audiences", Icon: "facebook", Description: "Custom and lookalike audiences"},
+	"crm/apollo/search":            {Name: "Search", Icon: "magnifying-glass", Description: "Search Apollo's people and company database"},
+	"crm/apollo/contacts":          {Name: "Contacts", Icon: "user", Description: "Create, update and search Apollo CRM contacts"},
+	"crm/apollo/accounts":          {Name: "Accounts", Icon: "briefcase", Description: "Create, update and search Apollo CRM accounts"},
+	"crm/apollo/deals":             {Name: "Deals", Icon: "dollar-sign", Description: "Create, update and list Apollo CRM deals (opportunities)"},
+	"crm/apollo/sequences":         {Name: "Sequences", Icon: "paper-plane", Description: "Manage Apollo sequences, tasks and engagement"},
+	"crm/apollo/emailer":           {Name: "Emailer", Icon: "envelope", Description: "Apollo email accounts and one-off outbound email (draft + send)"},
+
+	"crm/freshsales/contacts":         {Name: "Contacts", Icon: "user", Description: "Create, find and manage Freshsales contacts"},
+	"crm/freshsales/accounts":         {Name: "Accounts", Icon: "briefcase", Description: "Create, find and manage Freshsales sales accounts"},
+	"crm/freshsales/deals":            {Name: "Deals", Icon: "dollar-sign", Description: "Create, find and manage Freshsales deals"},
+	"crm/freshsales/notes":            {Name: "Notes", Icon: "file", Description: "Attach notes to Freshsales records"},
+	"crm/freshsales/tasks":            {Name: "Tasks", Icon: "check", Description: "Create and complete Freshsales tasks"},
+	"crm/freshsales/appointments":     {Name: "Appointments", Icon: "calendar", Description: "Schedule and manage Freshsales appointments"},
+	"crm/freshsales/sales_activities": {Name: "Sales Activities", Icon: "phone", Description: "Log and manage Freshsales sales activities"},
+	"crm/freshsales/lists":            {Name: "Marketing Lists", Icon: "people-group", Description: "Manage Freshsales marketing lists and their contacts"},
+	"crm/freshsales/products":         {Name: "Products", Icon: "box", Description: "Manage Freshsales CPQ products"},
+	"crm/freshsales/files":            {Name: "Files & Links", Icon: "file", Description: "Attach files and links to Freshsales records"},
+	"crm/freshsales/search":           {Name: "Search", Icon: "magnifying-glass", Description: "Search and look up Freshsales records"},
+	"crm/freshsales/settings":         {Name: "Settings", Icon: "bolt", Description: "Read Freshsales configuration — owners, stages, currencies and more"},
+	"crm/freshsales/bulk":             {Name: "Bulk & GDPR", Icon: "rotate", Description: "Bulk upsert, bulk delete and GDPR erase across Freshsales"},
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Palette groups
+//
+// A fourteenth-of-a-catalogue is not browsable: there are 66 top-level
+// categories and 3,660 actions, and Oracle plus AWS alone are 59% of them. The
+// group layer sits above categoryMetadata purely for the Add Node menu, so the
+// everyday surface can be read at a glance and the cloud providers can be put
+// where they belong for most people, which is last.
+//
+// Groups are named for the job, not the vendor — somebody looking for Slack
+// thinks "messaging", not "communications platform". "Building blocks" leads
+// because triggers, conditionals and outputs are the editor's own vocabulary
+// and the most-reached-for things in the product, not miscellany.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type paletteGroup struct {
+	Name        string
+	Icon        string
+	Description string
+	Order       int
+}
+
+var groupMetadata = map[string]paletteGroup{
+	"building-blocks": {Name: "Building blocks", Icon: "bolt", Description: "Triggers, branches, outputs and the pieces every flow is made of", Order: 1},
+	"messaging":       {Name: "Messaging & email", Icon: "comments", Description: "Send and receive messages, email, SMS and voice", Order: 2},
+	"documents":       {Name: "Documents & files", Icon: "file-lines", Description: "Documents, spreadsheets, slides and file storage", Order: 3},
+	"calendars":       {Name: "Calendars & scheduling", Icon: "calendar", Description: "Bookings, appointments and calendars", Order: 4},
+	"crm":             {Name: "Sales & CRM", Icon: "people-group", Description: "Contacts, accounts, deals and marketing", Order: 5},
+	"work":            {Name: "Work tracking", Icon: "list-check", Description: "Tasks, tickets, boards and support queues", Order: 6},
+	"finance":         {Name: "Finance & commerce", Icon: "dollar-sign", Description: "Payments, invoicing, accounting and online shops", Order: 7},
+	"developer":       {Name: "Developer tools", Icon: "code", Description: "Source control, pipelines, scripts and machines", Order: 8},
+	"ai":              {Name: "AI & agents", Icon: "brain", Description: "Models, agents and generation", Order: 9},
+	"media":           {Name: "Media", Icon: "image", Description: "Images, video, audio and generated media", Order: 10},
+	"forms":           {Name: "Forms & surveys", Icon: "clipboard-list", Description: "Collect answers from people", Order: 11},
+	"content":         {Name: "Websites & content", Icon: "globe", Description: "Sites, content management and structured data", Order: 12},
+	"government":      {Name: "UK Government", Icon: "landmark", Description: "Public data from UK government services", Order: 13},
+	// Last on purpose: 59% of the catalogue, and irrelevant to most people.
+	"cloud": {Name: "Cloud & data", Icon: "cloud", Description: "Cloud providers, databases, queues and infrastructure", Order: 14},
+}
+
+// groupByCategory maps every top-level category to its palette group. It is
+// exhaustive by test (TestEveryCategoryHasAGroup) rather than by hope: a new
+// category with no entry would otherwise fall out of the menu silently.
+var groupByCategory = map[string]string{
+	"trigger": "building-blocks", "common": "building-blocks", "conditional": "building-blocks",
+	"output": "building-blocks", "subflow": "building-blocks", "string": "building-blocks",
+	"arithmetic": "building-blocks", "file": "building-blocks", "error": "building-blocks",
+	"humanintheloop": "building-blocks", "journey": "building-blocks", "plan": "building-blocks",
+	"makefile": "building-blocks",
+
+	"slack": "messaging", "messaging": "messaging", "twilio": "messaging",
+	"elevenlabs": "messaging", "social": "messaging",
+
+	"google": "documents", "microsoft": "documents", "notion": "documents", "document": "documents",
+
+	"scheduling": "calendars",
+
+	"crm": "crm", "hubspot": "crm", "marketing": "crm", "mailchimp": "crm",
+
+	"asana": "work", "trello": "work", "monday": "work", "jira": "work",
+	"linear": "work", "helpdesk": "work",
+
+	"stripe": "finance", "xero": "finance", "quickbooks": "finance", "ecommerce": "finance",
+
+	"github": "developer", "gitlab": "developer", "git": "developer", "devops": "developer",
+	"script": "developer", "desktop": "developer", "security": "developer",
+
+	"ai": "ai", "agent": "ai",
+
+	"image": "media", "video": "media", "graphics": "media", "heygen": "media",
+
+	"forms": "forms",
+
+	"cms": "content", "webflow": "content", "web": "content", "airtable": "content",
+
+	"ukgov": "government",
+
+	"aws": "cloud", "azure": "cloud", "oracle": "cloud", "infrastructure": "cloud",
+	"opentofu": "cloud", "databricks": "cloud", "nosql": "cloud", "sql": "cloud",
+	"vectordatabase": "cloud", "messagebrokers": "cloud", "filetransfer": "cloud",
+}
+
+// groupBySubPath moves individual services out of their category's group where
+// the job differs from the vendor. Google Calendar is a calendar even though
+// Google's other actions are documents; Outlook and Gmail are email.
+var groupBySubPath = map[string]string{
+	"google/calendar":    "calendars",
+	"microsoft/calendar": "calendars",
+	"google/gmail":       "messaging",
+	"microsoft/outlook":  "messaging",
+	"microsoft/teams":    "messaging",
+}
+
+// groupForAction resolves the palette group for an action id, preferring a
+// service-level override over its category's group.
+func groupForAction(parts []string) (string, paletteGroup, bool) {
+	if len(parts) >= 2 {
+		if key, ok := groupBySubPath[parts[0]+"/"+parts[1]]; ok {
+			return key, groupMetadata[key], true
+		}
+	}
+	if len(parts) >= 1 {
+		if key, ok := groupByCategory[parts[0]]; ok {
+			return key, groupMetadata[key], true
+		}
+	}
+	return "", paletteGroup{}, false
+}
+
 func getCategoryForAction(actionID string) *api.ActionCategory {
 	parts := strings.Split(actionID, "/")
 	if len(parts) == 0 {
@@ -261,6 +445,14 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 	cat, ok := categoryMetadata[parts[0]]
 	if !ok {
 		return nil
+	}
+
+	if key, group, ok := groupForAction(parts); ok {
+		cat.GroupKey = key
+		cat.GroupName = group.Name
+		cat.GroupIcon = group.Icon
+		cat.GroupDescription = group.Description
+		cat.GroupOrder = group.Order
 	}
 
 	// For 3+ segment action IDs, populate sub-category fields
@@ -275,6 +467,21 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 			// Auto-generate from directory name
 			cat.SubKey = subPath
 			cat.SubName = strings.ToUpper(parts[1][:1]) + parts[1][1:]
+		}
+	}
+
+	// For 4+ segment action IDs, populate sub-sub-category fields (third level)
+	if len(parts) >= 4 {
+		subSubPath := parts[0] + "/" + parts[1] + "/" + parts[2]
+		if subSub, ok := subSubCategoryMetadata[subSubPath]; ok {
+			cat.SubSubKey = subSubPath
+			cat.SubSubName = subSub.Name
+			cat.SubSubIcon = subSub.Icon
+			cat.SubSubDescription = subSub.Description
+		} else {
+			// Auto-generate from directory name
+			cat.SubSubKey = subSubPath
+			cat.SubSubName = strings.ToUpper(parts[2][:1]) + parts[2][1:]
 		}
 	}
 
@@ -293,7 +500,50 @@ func getCategoryForAction(actionID string) *api.ActionCategory {
 // a wall of near-identical literals — see kubernetes_options.go (~120 markers)
 // and pgvector_options.go (~50). Grep the endpoint name to find them.
 var dynamicOptionsMetadata = map[string]api.InputDynamicOptions{
+	// HeyGen live Avatar/Voice pickers. Each resolves from a proxy that lists
+	// the account's avatars/voices server-side, forwarding the node's api_key
+	// (a secret resolved from the environment — the plaintext never transits
+	// the browser). The action's static (empty) options remain the manual-entry
+	// fallback. See heygen_options.go.
+	"heygen/videos/generate_avatar_video#avatar_id": {
+		Endpoint: "/api/v1/action/options/heygen-avatars",
+		Params:   []string{"api_key"},
+	},
+	"heygen/videos/generate_avatar_video#voice_id": {
+		Endpoint: "/api/v1/action/options/heygen-voices",
+		Params:   []string{"api_key"},
+	},
+	"heygen/videos/generate_from_image#voice_id": {
+		Endpoint: "/api/v1/action/options/heygen-voices",
+		Params:   []string{"api_key"},
+	},
 	"ai/openrouter#model": {Endpoint: "/api/v1/action/options/openrouter-models"},
+	// Live "Model" dropdowns for the paste-a-key AI providers, resolved from a
+	// proxy that fetches each provider's models list server-side (the api_key
+	// secret is resolved from the environment — the plaintext never transits
+	// the browser). The action's static Options remain the fallback when the
+	// fetch fails. See ai_models.go. (Azure OpenAI is intentionally absent: its
+	// "model" is a user-named deployment, not enumerable from a data-plane key.)
+	"ai/anthropic#model": {
+		Endpoint: "/api/v1/action/options/anthropic-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/openai#model": {
+		Endpoint: "/api/v1/action/options/openai-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/gemini#model": {
+		Endpoint: "/api/v1/action/options/gemini-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/groq#model": {
+		Endpoint: "/api/v1/action/options/groq-models",
+		Params:   []string{"api_key"},
+	},
+	"ai/openwebui#model": {
+		Endpoint: "/api/v1/action/options/openwebui-models",
+		Params:   []string{"endpoint", "api_key"},
+	},
 	// Zendesk live dropdowns: the Groups and Organizations pickers each resolve
 	// from a proxy endpoint, forwarding the node's subdomain/email/api_token so
 	// the api can call the account's API server-side (api_token is a secret,

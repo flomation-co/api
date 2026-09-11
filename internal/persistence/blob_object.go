@@ -98,8 +98,11 @@ func OwnerScope(ownerID string) BlobScope { return BlobScope{OwnerID: ownerID} }
 // to override these. See plans/file_attachments.md M0.
 // A duration of 0 means NO expiry (a permanent blob with expires_at = NULL).
 var blobTTLByPurpose = map[string]time.Duration{
-	BlobPurposeInbound:    30 * 24 * time.Hour,
-	BlobPurposeToolOutput: 1 * time.Hour,
+	BlobPurposeInbound: 30 * 24 * time.Hour,
+	// 24h (was 1h): tool-output blobs (screenshots, chart renders, offloaded
+	// large outputs) are surfaced in the execution view, so they must outlive
+	// the in-flight tool loop long enough to be previewed after the run.
+	BlobPurposeToolOutput: 24 * time.Hour,
 	BlobPurposeManual:     30 * 24 * time.Hour,
 	BlobPurposeAsset:      0, // permanent — cleaned up by orphan sweep, not TTL
 }

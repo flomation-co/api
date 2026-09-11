@@ -127,12 +127,14 @@ func (s *Service) oracleIamClient(c *gin.Context) (identity.IdentityClient, bool
 }
 
 // iamCompartment resolves the compartment for a picker: the supplied compartment_ocid, or
-// the tenancy root when blank (IAM resources live in the tenancy).
-func iamCompartment(c *gin.Context) string {
-	if v := strings.TrimSpace(c.Query("compartment_ocid")); v != "" {
+// the tenancy root when blank (IAM resources live in the tenancy). Connect-mode nodes
+// pass these as ${credentials.NAME.field} references, so resolve them to the credential's
+// metadata rather than forwarding the literal text to OCI.
+func (s *Service) iamCompartment(c *gin.Context) string {
+	if v := s.ociResolveQuery(c, "compartment_ocid"); v != "" && !strings.HasPrefix(v, "${") {
 		return v
 	}
-	return strings.TrimSpace(c.Query("tenancy_ocid"))
+	return s.ociResolveQuery(c, "tenancy_ocid")
 }
 
 func (s *Service) getOracleIamUsers(c *gin.Context) {
@@ -140,7 +142,7 @@ func (s *Service) getOracleIamUsers(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListUsersRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
@@ -165,7 +167,7 @@ func (s *Service) getOracleIamGroups(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListGroupsRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
@@ -190,7 +192,7 @@ func (s *Service) getOracleIamPolicies(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListPoliciesRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
@@ -215,7 +217,7 @@ func (s *Service) getOracleIamDynamicGroups(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListDynamicGroupsRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
@@ -240,7 +242,7 @@ func (s *Service) getOracleIamNetworkSources(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListNetworkSourcesRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
@@ -265,7 +267,7 @@ func (s *Service) getOracleIamTagNamespaces(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListTagNamespacesRequest{CompartmentId: &compartment}
 	for page := 0; page < ociOptionsMaxPages; page++ {
@@ -290,7 +292,7 @@ func (s *Service) getOracleIamIdentityProviders(c *gin.Context) {
 	if !ok {
 		return
 	}
-	compartment := iamCompartment(c)
+	compartment := s.iamCompartment(c)
 	opts := []api.InputOption{}
 	req := identity.ListIdentityProvidersRequest{CompartmentId: &compartment, Protocol: identity.ListIdentityProvidersProtocolSaml2}
 	for page := 0; page < ociOptionsMaxPages; page++ {
