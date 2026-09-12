@@ -26,7 +26,7 @@ func TestFetchGoogleAdsCustomers_ResolvesNamesForEachAccessibleAccount(t *testin
 			Expect(r.Header.Get("Authorization")).To(Equal("Bearer tok"))
 			// Developer tokens were sunset on 9 September 2026.
 			Expect(r.Header.Get("developer-token")).To(Equal(""))
-			fmt.Fprint(w, `{"resourceNames":["customers/1111111111","customers/2222222222"]}`)
+			_, _ = fmt.Fprint(w, `{"resourceNames":["customers/1111111111","customers/2222222222"]}`)
 			return
 		}
 
@@ -35,7 +35,7 @@ func TestFetchGoogleAdsCustomers_ResolvesNamesForEachAccessibleAccount(t *testin
 		logins = append(logins, r.Header.Get("login-customer-id"))
 		id := strings.Split(r.URL.Path, "/")[2]
 		manager := id == "1111111111"
-		fmt.Fprintf(w, `{"results":[{"customer":{"id":"%s","descriptiveName":"Account %s","manager":%t,"currencyCode":"GBP","timeZone":"Europe/London"}}]}`, id, id, manager)
+		_, _ = fmt.Fprintf(w, `{"results":[{"customer":{"id":"%s","descriptiveName":"Account %s","manager":%t,"currencyCode":"GBP","timeZone":"Europe/London"}}]}`, id, id, manager)
 	}))
 	defer server.Close()
 
@@ -63,15 +63,15 @@ func TestFetchGoogleAdsCustomers_KeepsGoingPastAnUnreadableAccount(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/customers:listAccessibleCustomers" {
-			fmt.Fprint(w, `{"resourceNames":["customers/1111111111","customers/2222222222"]}`)
+			_, _ = fmt.Fprint(w, `{"resourceNames":["customers/1111111111","customers/2222222222"]}`)
 			return
 		}
 		if strings.Contains(r.URL.Path, "1111111111") {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprint(w, `{"error":{"message":"The caller does not have permission"}}`)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"The caller does not have permission"}}`)
 			return
 		}
-		fmt.Fprint(w, `{"results":[{"customer":{"id":"2222222222","descriptiveName":"Live Account","manager":false}}]}`)
+		_, _ = fmt.Fprint(w, `{"results":[{"customer":{"id":"2222222222","descriptiveName":"Live Account","manager":false}}]}`)
 	}))
 	defer server.Close()
 
@@ -97,7 +97,7 @@ func TestFetchGoogleAdsCustomers_ErrorsWhenTheListingFails(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":{"message":"Invalid credentials"}}`)
+		_, _ = fmt.Fprint(w, `{"error":{"message":"Invalid credentials"}}`)
 	}))
 	defer server.Close()
 
