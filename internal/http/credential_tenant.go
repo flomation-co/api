@@ -87,6 +87,15 @@ func (s *Service) captureProviderTenant(c *gin.Context, credID, providerSlug str
 			"connections": conns,
 		}
 
+	case "google_ads":
+		customers, err := fetchGoogleAdsCustomers(accessToken)
+		if err != nil || len(customers) == 0 {
+			log.WithFields(log.Fields{"credential_id": credID, "error": err}).
+				Warn("unable to list accessible Google Ads customers — ad accounts not captured")
+			return
+		}
+		kv = googleAdsTenantMetadata(customers)
+
 	case "salesforce":
 		if tokenResp.InstanceURL == "" {
 			log.WithField("credential_id", credID).
