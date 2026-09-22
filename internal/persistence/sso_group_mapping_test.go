@@ -15,15 +15,15 @@ func mapping(idp, team string) *api.SSOGroupMapping {
 func TestReconcileDecision_AddsMappedRemovesUnmapped(t *testing.T) {
 	RegisterTestingT(t)
 	mappings := []*api.SSOGroupMapping{
-		mapping("aad-eng", "team-eng"),   // engineering
-		mapping("aad-fin", "team-fin"),   // finance
+		mapping("aad-eng", "team-eng"), // engineering
+		mapping("aad-fin", "team-fin"), // finance
 	}
 	// User is in the eng IdP group; currently a member of finance (SSO-managed)
 	// but no longer qualifies, and of a manually-managed team.
 	add, remove := ssoGroupReconcileDecision(mappings, []string{"aad-eng"}, []string{"team-fin", "team-manual"})
 
-	Expect(add).To(Equal([]string{"team-eng"}))       // qualifies now, not a member → add
-	Expect(remove).To(Equal([]string{"team-fin"}))    // no longer qualifies → remove
+	Expect(add).To(Equal([]string{"team-eng"}))    // qualifies now, not a member → add
+	Expect(remove).To(Equal([]string{"team-fin"})) // no longer qualifies → remove
 	// team-manual is NOT a mapping target → untouched (not in add or remove).
 	Expect(add).ToNot(ContainElement("team-manual"))
 	Expect(remove).ToNot(ContainElement("team-manual"))
