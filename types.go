@@ -24,6 +24,18 @@ type Organisation struct {
 	Role               string     `json:"role,omitempty" db:"role"`
 	AllowPublicRunners bool       `json:"allow_public_runners" db:"allow_public_runners"`
 	CreatedAt          *time.Time `json:"created_at" db:"created_at"`
+	// Legal-entity details used to identify the organisation as the Controller
+	// on the generated Data Processing Agreement. All nullable — completed via
+	// the Organisation settings form. See migrations 143 and 144.
+	CompanyType   *string `json:"company_type,omitempty" db:"company_type"`
+	LegalName     *string `json:"legal_name,omitempty" db:"legal_name"`
+	CompanyNumber *string `json:"company_number,omitempty" db:"company_number"`
+	AddressLine1  *string `json:"address_line_1,omitempty" db:"address_line_1"`
+	AddressLine2  *string `json:"address_line_2,omitempty" db:"address_line_2"`
+	City          *string `json:"city,omitempty" db:"city"`
+	Region        *string `json:"region,omitempty" db:"region"`
+	Postcode      *string `json:"postcode,omitempty" db:"postcode"`
+	Country       *string `json:"country,omitempty" db:"country"`
 }
 
 type OrganisationMember struct {
@@ -47,6 +59,25 @@ type OrganisationInvite struct {
 	ExpiresAt      time.Time  `json:"expires_at" db:"expires_at"`
 }
 
+const (
+	// MarketingConsentSourceRegistration is a decision made on Sentinel's
+	// sign-up form, seeded into the product when the account is first
+	// provisioned here.
+	MarketingConsentSourceRegistration = "registration_form"
+
+	// MarketingConsentSourceWelcomeModal is the post-EULA welcome modal.
+	MarketingConsentSourceWelcomeModal = "welcome_modal"
+
+	// MarketingConsentSourceProfile is the profile Communications toggle,
+	// which is also how a user withdraws consent.
+	MarketingConsentSourceProfile = "profile_settings"
+
+	// MarketingConsentWordingV1 identifies the wording shown alongside the
+	// question. Bump when that copy changes materially, so existing records
+	// still name the text they were given against.
+	MarketingConsentWordingV1 = "marketing-v1"
+)
+
 type User struct {
 	ID                    string     `json:"id" db:"id"`
 	Name                  string     `json:"name" db:"name"`
@@ -67,6 +98,14 @@ type User struct {
 	// that need re-sync; clears it on success and stamps synced_at.
 	MarketingSyncedAt  *time.Time `json:"-" db:"marketing_synced_at"`
 	MarketingSyncError *string    `json:"-" db:"marketing_sync_error"`
+	// Consent evidence for MarketingOptIn. UK GDPR Art 7(1) requires us
+	// to be able to demonstrate consent, which the boolean alone cannot:
+	// these record when the decision was last made, on which surface, and
+	// against which wording. A NULL MarketingConsentAt means the user has
+	// never been asked — distinct from a recorded refusal.
+	MarketingConsentAt      *time.Time `json:"marketing_consent_at,omitempty" db:"marketing_consent_at"`
+	MarketingConsentSource  *string    `json:"-" db:"marketing_consent_source"`
+	MarketingConsentVersion *string    `json:"-" db:"marketing_consent_version"`
 	// Extended profile fields surfaced in flows as ${user.X} variables.
 	// All nullable — empty/NULL collapses to "" at substitution time.
 	Salutation    *string        `json:"salutation,omitempty" db:"salutation"`
@@ -352,8 +391,23 @@ type InputDynamicOptions struct {
 }
 
 type InputDefinition struct {
-	Name           string               `json:"name" db:"name"`
-	Value          string               `json:"value" db:"value"`
+	Name string `json:"name" db:"name"`
+
+	// Value is an input's DEFAULT, and it is deliberately not a string.
+	//
+	// It mirrors the executor's core.Connection.Value, which is interface{} —
+	// an input's default takes the shape of its own type, so a boolean input
+	// defaults to a real `true` and a numeric one to a number. Typing this as
+	// string meant the first action to ship a non-string default made
+	// json.Unmarshal fail for the WHOLE action list, and getActions answers 400
+	// on any unmarshal error, so a single boolean anywhere in the tree emptied
+	// the entire palette rather than degrading that one field.
+	//
+	// Keep it interface{}: the API only passes this through to the editor, and
+	// narrowing it again would reintroduce a total outage for a single field's
+	// sake.
+	Value any `json:"value" db:"value"`
+
 	Type           string               `json:"type" db:"type"`
 	Label          string               `json:"label"`
 	Placeholder    string               `json:"placeholder"`
@@ -378,6 +432,23 @@ type ActionCategory struct {
 	SubName        string `json:"sub_name,omitempty"`
 	SubIcon        string `json:"sub_icon,omitempty"`
 	SubDescription string `json:"sub_description,omitempty"`
+	// Sub-sub-category: a third grouping level for 4-segment action IDs
+	// (e.g. crm/apollo/enrichment/people_match → CRM ▸ Apollo ▸ Enrichment).
+	SubSubKey         string `json:"sub_sub_key,omitempty"`
+	SubSubName        string `json:"sub_sub_name,omitempty"`
+	SubSubIcon        string `json:"sub_sub_icon,omitempty"`
+	SubSubDescription string `json:"sub_sub_description,omitempty"`
+
+	// Palette group: the top tier of the Add Node menu, above the 66
+	// categories. Names a job ("Messaging & email") rather than a vendor, so
+	// somebody can find Slack without knowing which category it lives in.
+	// GroupOrder is explicit because the useful order is neither alphabetical
+	// nor by size — Building blocks leads and Cloud & data is deliberately last.
+	GroupKey         string `json:"group_key,omitempty"`
+	GroupName        string `json:"group_name,omitempty"`
+	GroupIcon        string `json:"group_icon,omitempty"`
+	GroupDescription string `json:"group_description,omitempty"`
+	GroupOrder       int    `json:"group_order,omitempty"`
 }
 
 type Action struct {

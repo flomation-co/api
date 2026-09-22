@@ -38,10 +38,34 @@ func (s *Service) getUser(c *gin.Context) {
 				"error": err,
 			}).Warn("unable to get identity account, returning user without email")
 		} else if a != nil {
+			// Whether we already held an address has to be read before the
+			// response is patched, since the patch overwrites it in place.
+			missingLocally := user.EmailAddress == nil
+
 			user.EmailAddress = &a.Username
 
 			if a.DisplayName != nil && *a.DisplayName != "" {
 				user.Name = *a.DisplayName
+			}
+
+			// Top up the stored copy. This handler has always patched the
+			// address into the response without writing it down, which is how
+			// users.email_address came to be NULL for most accounts while the
+			// editor happily displayed an email. The marketing sync reads the
+			// stored column, so those users could never be subscribed or
+			// unsubscribed — it failed with "missing email address" instead.
+			//
+			// Gated on the address being absent, so this is one write per
+			// account rather than a write on every profile load. Best-effort:
+			// the response is already correct either way, and a failure just
+			// means the next request tries again.
+			if missingLocally && a.Username != "" {
+				if _, err := s.persistence.SetUserEmailAddressIfMissing(user.ID, a.Username); err != nil {
+					log.WithFields(log.Fields{
+						"error":   err,
+						"user_id": user.ID,
+					}).Warn("unable to persist email address from identity service")
+				}
 			}
 		}
 	}

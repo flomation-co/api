@@ -60,7 +60,7 @@ func (s *Service) corsMiddleware(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Total-Items, X-Flomation-Runner-Signature")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Total-Items, Content-Disposition")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
 		c.Writer.Header().Set("Vary", "Origin")
 	}
@@ -465,6 +465,15 @@ func (s *Service) registerRoutes(config *config.Config) {
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
 
+	// Compliance: customer-specific Data Processing Agreement plus metadata.
+	// Org-scoped via the shared ?organisation query param (personal mode when
+	// absent). The DPA is regenerated from the current template on every
+	// download, so template changes take effect immediately.
+	compliance := v1.Group("compliance")
+	compliance.Use(s.jwtMiddleware)
+	compliance.GET("/status", s.getComplianceStatus)
+	compliance.GET("/dpa", s.getDPA)
+
 	actions := v1.Group("action")
 	actions.GET("", s.getActions)
 	// Dynamic dropdown options for action inputs; see dynamicOptionsMetadata
@@ -472,6 +481,18 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// auth-gated like the other editor option-fetch proxies.
 	actions.GET("/options/openrouter-models", s.jwtMiddleware, s.getOpenRouterModels)
 	actions.GET("/options/ollama-models", s.jwtMiddleware, s.getOllamaModels)
+	// HeyGen live Avatar/Voice dropdowns — proxy /v3/avatars and /v3/voices,
+	// resolving a ${secrets.X} api_key server-side. See heygen_options.go.
+	actions.GET("/options/heygen-avatars", s.jwtMiddleware, s.getHeyGenAvatars)
+	actions.GET("/options/heygen-voices", s.jwtMiddleware, s.getHeyGenVoices)
+	// Live model dropdowns for the paste-a-key AI providers. Each proxies the
+	// provider's models endpoint, resolving a ${secrets.X} api_key server-side
+	// (openwebui additionally forwards its endpoint). See ai_models.go.
+	actions.GET("/options/anthropic-models", s.jwtMiddleware, s.getAnthropicModels)
+	actions.GET("/options/openai-models", s.jwtMiddleware, s.getOpenAIModels)
+	actions.GET("/options/gemini-models", s.jwtMiddleware, s.getGeminiModels)
+	actions.GET("/options/groq-models", s.jwtMiddleware, s.getGroqModels)
+	actions.GET("/options/openwebui-models", s.jwtMiddleware, s.getOpenWebUIModels)
 	actions.GET("/options/zendesk-groups", s.jwtMiddleware, s.getZendeskGroups)
 	actions.GET("/options/zendesk-organizations", s.jwtMiddleware, s.getZendeskOrganizations)
 	actions.GET("/options/woocommerce-categories", s.jwtMiddleware, s.getWooCommerceCategories)
@@ -955,6 +976,7 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// See plans/agent_memory.md.
 	internal.POST("/agent/:id/resolve-identity", s.resolveAgentIdentityInternal)
 	internal.POST("/agent/:id/conversation", s.resolveAgentConversationInternal)
+	internal.POST("/agent/:id/history/search", s.searchAgentHistoryInternal)
 	internal.GET("/conversation/:id", s.getAgentConversationInternal)
 	internal.GET("/conversation/:id/history", s.getAgentConversationHistoryInternal)
 	internal.POST("/conversation/:id/message", s.createAgentConversationMessageInternal)
@@ -1186,10 +1208,13 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 	}
 
 	if u == nil {
-		userID, err := s.persistence.CreateUser(&api.User{
+		newUser := &api.User{
 			ID:   userIDFromContext.(string),
 			Name: "auto-generate",
-		})
+		}
+		s.seedFromIdentity(c, newUser)
+
+		userID, err := s.persistence.CreateUser(newUser)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -1220,6 +1245,53 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 // user's current org context. In personal mode (no org selected), only
 // resources with null organisation_id are accessible. In org mode, only
 // resources belonging to that organisation are accessible.
+// seedFromIdentity fills in what Sentinel already knows about an account we are
+// about to provision: the email address, and the marketing decision given on
+// the sign-up form.
+//
+// Seeding the consent matters because the alternative — asking again in the
+// welcome modal — is both a worse experience and worse evidence, since it would
+// overwrite the timestamp and surface of the consent actually given. Accounts
+// created before the sign-up question existed, and SSO sign-ups (which have no
+// form of ours), carry no decision; those are left unasked and the welcome
+// modal asks as before.
+//
+// Seeding the email matters because it is the only copy the product has.
+// Sentinel holds the address encrypted and the marketing sync needs it to
+// subscribe or unsubscribe anyone at all.
+//
+// Best-effort by design. A slow or unreachable Sentinel must not stop a user
+// being provisioned, so a failure here logs and leaves both unset.
+func (s *Service) seedFromIdentity(c *gin.Context, user *api.User) {
+	token := s.getTokenFromContext(c)
+	if token == nil {
+		return
+	}
+
+	account, err := s.identity.GetAccount(*token)
+	if err != nil || account == nil {
+		log.WithFields(log.Fields{
+			"error":   err,
+			"user_id": user.ID,
+		}).Warn("unable to read account from identity service - user will be asked in the product")
+		return
+	}
+
+	if account.Username != "" {
+		email := account.Username
+		user.EmailAddress = &email
+	}
+
+	if account.MarketingConsentAt == nil {
+		return
+	}
+
+	user.MarketingOptIn = account.MarketingOptIn
+	user.MarketingConsentAt = account.MarketingConsentAt
+	user.MarketingConsentSource = account.MarketingConsentSource
+	user.MarketingConsentVersion = account.MarketingConsentVersion
+}
+
 func (s *Service) verifyOrgAccess(user *api.User, resourceOrgID *string) bool {
 	if len(user.Organisations) > 0 {
 		// Org mode — resource must belong to this org

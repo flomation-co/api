@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -57,6 +58,7 @@ type Service struct {
 	stmtAcceptEula                    *sqlx.NamedStmt
 	stmtCompleteUserWelcome           *sqlx.NamedStmt
 	stmtSetUserMarketingOptIn         *sqlx.NamedStmt
+	stmtSetUserEmailIfMissing         *sqlx.NamedStmt
 	stmtMarkUserMarketingSynced       *sqlx.NamedStmt
 	stmtMarkUserMarketingSyncFailed   *sqlx.NamedStmt
 	stmtListUsersNeedingMarketingSync *sqlx.NamedStmt
@@ -109,6 +111,7 @@ type Service struct {
 	stmtUpdateFloExecutionStatus  *sqlx.NamedStmt
 	stmtUpdateFloCompletionStatus *sqlx.NamedStmt
 	stmtUpdateExecutionResult     *sqlx.NamedStmt
+	stmtCompleteExecution         *sqlx.NamedStmt
 	stmtUpdateExecutionRunnerID   *sqlx.NamedStmt
 	stmtGetExecutionByID          *sqlx.NamedStmt
 
@@ -304,6 +307,19 @@ func NewService(config *config.Config) (*Service, error) {
 	db.SetMaxOpenConns(config.Database.MaxOpenConnections)
 	db.SetMaxIdleConns(config.Database.MaxIdleConnections)
 
+	// Mark the connection Unsafe so that `SELECT *` queries tolerate table
+	// columns that have no matching field on the destination struct, instead
+	// of failing the whole scan with "missing destination name <column>".
+	//
+	// This guards against a whole class of silent regression: adding a column
+	// to a table (e.g. agent_message.content_tsv / agent_message.embedding for
+	// conversation search) would otherwise break every `SELECT *` reader of
+	// that table — including GetAgentConversationMessages, which loads an
+	// agent's history. That failure was swallowed by callers, leaving agents
+	// with no conversation memory. Unsafe propagates to statements prepared
+	// from this connection below, so it must be set before any PrepareNamed.
+	db = db.Unsafe()
+
 	s := Service{
 		config: config,
 		conn:   db,
@@ -318,6 +334,15 @@ func NewService(config *config.Config) (*Service, error) {
 		    o.icon,
 		    o.created_at,
 		    o.allow_public_runners,
+		    o.company_type,
+		    o.legal_name,
+		    o.company_number,
+		    o.address_line_1,
+		    o.address_line_2,
+		    o.city,
+		    o.region,
+		    o.postcode,
+		    o.country,
 		    ou.role
 		FROM
 		    organisation o
@@ -338,7 +363,16 @@ func NewService(config *config.Config) (*Service, error) {
 		    name,
 		    icon,
 		    allow_public_runners,
-		    created_at
+		    created_at,
+		    company_type,
+		    legal_name,
+		    company_number,
+		    address_line_1,
+		    address_line_2,
+		    city,
+		    region,
+		    postcode,
+		    country
 		FROM
 		    organisation
 		WHERE
@@ -367,7 +401,16 @@ func NewService(config *config.Config) (*Service, error) {
 		SET
 			name = :name,
 			icon = :icon,
-			allow_public_runners = :allow_public_runners
+			allow_public_runners = :allow_public_runners,
+			company_type = :company_type,
+			legal_name = :legal_name,
+			company_number = :company_number,
+			address_line_1 = :address_line_1,
+			address_line_2 = :address_line_2,
+			city = :city,
+			region = :region,
+			postcode = :postcode,
+			country = :country
 		WHERE
 		    id = :id
 	`)
@@ -513,6 +556,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    welcome_completed_at,
 		    marketing_synced_at,
 		    marketing_sync_error,
+		    marketing_consent_at,
+		    marketing_consent_source,
+		    marketing_consent_version,
 		    salutation,
 		    first_name,
 		    last_name,
@@ -549,12 +595,18 @@ func NewService(config *config.Config) (*Service, error) {
 		    id,
 			name,
 		    email_address,
-		    marketing_opt_in
+		    marketing_opt_in,
+		    marketing_consent_at,
+		    marketing_consent_source,
+		    marketing_consent_version
 		) VALUES (
 		  	:id,
 			:name,
 		    PGP_SYM_ENCRYPT(:email_address, :encrypt_key),
-		    :marketing_opt_in
+		    :marketing_opt_in,
+		    :marketing_consent_at,
+		    :marketing_consent_source,
+		    :marketing_consent_version
 		) ON CONFLICT (id) DO NOTHING RETURNING id;
 	`)
 	if err != nil {
@@ -613,11 +665,14 @@ func NewService(config *config.Config) (*Service, error) {
 	// value on the next tick.
 	s.stmtCompleteUserWelcome, err = s.conn.PrepareNamed(`
 		UPDATE users
-		SET name                 = :name,
-		    marketing_opt_in     = :marketing_opt_in,
-		    welcome_completed_at = NOW(),
-		    marketing_synced_at  = NULL,
-		    marketing_sync_error = NULL
+		SET name                      = :name,
+		    marketing_opt_in          = CASE WHEN :marketing_answered THEN :marketing_opt_in          ELSE marketing_opt_in          END,
+		    marketing_consent_at      = CASE WHEN :marketing_answered THEN NOW()                      ELSE marketing_consent_at      END,
+		    marketing_consent_source  = CASE WHEN :marketing_answered THEN :marketing_consent_source  ELSE marketing_consent_source  END,
+		    marketing_consent_version = CASE WHEN :marketing_answered THEN :marketing_consent_version ELSE marketing_consent_version END,
+		    welcome_completed_at      = NOW(),
+		    marketing_synced_at       = CASE WHEN :marketing_answered THEN NULL ELSE marketing_synced_at  END,
+		    marketing_sync_error      = CASE WHEN :marketing_answered THEN NULL ELSE marketing_sync_error END
 		WHERE id = :id
 	`)
 	if err != nil {
@@ -629,10 +684,27 @@ func NewService(config *config.Config) (*Service, error) {
 	// tick. Used by the profile Communications section.
 	s.stmtSetUserMarketingOptIn, err = s.conn.PrepareNamed(`
 		UPDATE users
-		SET marketing_opt_in     = :marketing_opt_in,
-		    marketing_synced_at  = NULL,
-		    marketing_sync_error = NULL
+		SET marketing_opt_in          = :marketing_opt_in,
+		    marketing_consent_at      = NOW(),
+		    marketing_consent_source  = :marketing_consent_source,
+		    marketing_consent_version = :marketing_consent_version,
+		    marketing_synced_at       = NULL,
+		    marketing_sync_error      = NULL
 		WHERE id = :id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lazy top-up of the stored email address from the identity service.
+	//
+	// The IS NULL guard is what makes this safe to call from a read path: it
+	// is idempotent, it cannot clobber an address the user has since changed
+	// through us, and concurrent requests cannot race each other.
+	s.stmtSetUserEmailIfMissing, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET email_address = PGP_SYM_ENCRYPT(:email_address, :encrypt_key)
+		WHERE id = :id AND email_address IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -678,7 +750,8 @@ func NewService(config *config.Config) (*Service, error) {
 		    marketing_opt_in
 		FROM users
 		WHERE marketing_sync_error IS NOT NULL
-		   OR (welcome_completed_at IS NOT NULL AND marketing_synced_at IS NULL)
+		   OR ((welcome_completed_at IS NOT NULL OR marketing_consent_at IS NOT NULL)
+		       AND marketing_synced_at IS NULL)
 		ORDER BY marketing_synced_at ASC NULLS FIRST
 		LIMIT :limit
 	`)
@@ -1508,6 +1581,16 @@ func NewService(config *config.Config) (*Service, error) {
 		WHERE
 		    id = :id;
 	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// stmtCompleteExecution writes the whole completion outcome — execution
+	// status, completion status and result — in ONE atomic statement. This
+	// replaces three separate round-trips on the completion hot path and, more
+	// importantly, closes the window where a /wait long-poll could observe
+	// execution_status='executed' before the result column was written.
+	s.stmtCompleteExecution, err = s.conn.PrepareNamed(completeExecutionSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -3328,11 +3411,13 @@ func NewService(config *config.Config) (*Service, error) {
 		INSERT INTO agent_commitment (
 			agent_id, agent_user_id, conversation_id, kind, description,
 			payload, trigger_type, due_at, condition, status,
-			source_conversation, source_message, made_by, expires_at
+			source_conversation, source_message, made_by, expires_at,
+			recurrence
 		) VALUES (
 			:agent_id, :agent_user_id, :conversation_id, :kind, :description,
 			:payload, :trigger_type, :due_at, :condition, :status,
-			:source_conversation, :source_message, :made_by, :expires_at
+			:source_conversation, :source_message, :made_by, :expires_at,
+			:recurrence
 		)
 		RETURNING id
 	`)
@@ -3765,15 +3850,31 @@ func (s *Service) AcceptEula(userID string, version int) error {
 // re-appearing on subsequent logins. Resets EmailOctopus sync state
 // so the retry poller pushes the new opt-in value out on its next
 // tick (fire-and-forget per the design decision).
-func (s *Service) CompleteUserWelcome(userID, name string, marketingOptIn bool) error {
+// marketingOptIn is nil when the modal did not ask — which is the case for a
+// user who already answered on the sign-up form. Their existing decision, and
+// the evidence behind it, is then left exactly as recorded rather than being
+// restamped with this surface and this moment.
+func (s *Service) CompleteUserWelcome(userID, name string, marketingOptIn *bool) error {
+	answered := marketingOptIn != nil
+	optIn := false
+	if answered {
+		optIn = *marketingOptIn
+	}
+
 	_, err := s.stmtCompleteUserWelcome.Exec(struct {
 		ID             string `db:"id"`
 		Name           string `db:"name"`
+		Answered       bool   `db:"marketing_answered"`
 		MarketingOptIn bool   `db:"marketing_opt_in"`
+		ConsentSource  string `db:"marketing_consent_source"`
+		ConsentVersion string `db:"marketing_consent_version"`
 	}{
 		ID:             userID,
 		Name:           name,
-		MarketingOptIn: marketingOptIn,
+		Answered:       answered,
+		MarketingOptIn: optIn,
+		ConsentSource:  api.MarketingConsentSourceWelcomeModal,
+		ConsentVersion: api.MarketingConsentWordingV1,
 	})
 	return err
 }
@@ -3786,11 +3887,37 @@ func (s *Service) SetUserMarketingOptIn(userID string, optIn bool) error {
 	_, err := s.stmtSetUserMarketingOptIn.Exec(struct {
 		ID             string `db:"id"`
 		MarketingOptIn bool   `db:"marketing_opt_in"`
+		ConsentSource  string `db:"marketing_consent_source"`
+		ConsentVersion string `db:"marketing_consent_version"`
 	}{
 		ID:             userID,
 		MarketingOptIn: optIn,
+		ConsentSource:  api.MarketingConsentSourceProfile,
+		ConsentVersion: api.MarketingConsentWordingV1,
 	})
 	return err
+}
+
+// SetUserEmailAddressIfMissing writes an address the product does not yet hold.
+//
+// Sentinel owns the authoritative copy; this fills our own in when it is
+// absent, and does nothing at all when it is already set. Returns the number of
+// rows written so a caller can tell a genuine top-up from a no-op.
+func (s *Service) SetUserEmailAddressIfMissing(userID, email string) (int64, error) {
+	res, err := s.stmtSetUserEmailIfMissing.Exec(struct {
+		ID            string `db:"id"`
+		EmailAddress  string `db:"email_address"`
+		EncryptionKey string `db:"encrypt_key"`
+	}{
+		ID:            userID,
+		EmailAddress:  email,
+		EncryptionKey: s.config.Database.EncryptionKey,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
 }
 
 // MarkUserMarketingSynced is called by the retry poller after a
@@ -4675,12 +4802,117 @@ func (s *Service) UpdateExecutionResult(ID string, result interface{}) error {
 		Result interface{} `db:"result"`
 	}{
 		ID:     ID,
-		Result: result,
+		Result: SanitiseJSONBValue(result),
 	}); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// completeExecutionSQL sets every completion column on the execution row in a
+// single statement. Kept as a package constant so its shape can be pinned by a
+// test (guards against a column silently dropping out of the atomic write).
+const completeExecutionSQL = `
+		UPDATE execution
+		SET
+		    execution_status = :execution_status,
+		    completion_status = :completion_status,
+		    result = :result,
+			updated_at = CURRENT_TIMESTAMP,
+			completed_at = CURRENT_TIMESTAMP
+		WHERE
+		    id = :id;
+	`
+
+// CompleteExecution writes execution status, completion status and result in a
+// single atomic UPDATE, replacing the three-round-trip UpdateExecutionStatus →
+// UpdateCompletionStatus → UpdateExecutionResult sequence on the completion hot
+// path. Atomicity matters: a /wait long-poll wakes on execution_status flipping
+// to 'executed', so the result must land in the same statement or a waiter could
+// read a finished execution whose result is still NULL.
+func (s *Service) CompleteExecution(ID, executionStatus, completionStatus string, result interface{}) error {
+	if _, err := s.stmtCompleteExecution.Exec(struct {
+		ID               string      `db:"id"`
+		ExecutionStatus  string      `db:"execution_status"`
+		CompletionStatus string      `db:"completion_status"`
+		Result           interface{} `db:"result"`
+	}{
+		ID:               ID,
+		ExecutionStatus:  executionStatus,
+		CompletionStatus: completionStatus,
+		// Same jsonb hazard as UpdateExecutionResult: a single NUL byte
+		// anywhere in a flow's outputs is rejected by Postgres, and on this
+		// path it would fail the whole atomic completion write.
+		Result: SanitiseJSONBValue(result),
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// nulEscapeSeq is the six-character JSON escape a NUL byte marshals to
+// (backslash, u, 0, 0, 0, 0). PostgreSQL's jsonb type CANNOT store it — the
+// write is rejected with "pq: unsupported Unicode escape sequence" — even
+// though it is valid JSON per the spec. A single NUL anywhere in a flow's node
+// outputs therefore fails the whole result write, leaving the execution row
+// marked success but with a NULL result/completed_at (so the editor renders no
+// node state or logs). Strip NULs (raw 0x00 and the escaped form) before any
+// jsonb write.
+var nulEscapeSeq = []byte("\\u0000")
+
+// SanitiseJSONBValue removes NUL bytes and their JSON escape from a value bound
+// for a jsonb column. It handles the marshalled-JSON forms the API actually
+// passes (json.RawMessage / []byte / string); any other type passes through
+// untouched (pq marshals it itself).
+func SanitiseJSONBValue(v interface{}) interface{} {
+	switch b := v.(type) {
+	case json.RawMessage:
+		return json.RawMessage(sanitiseJSONBytes(b))
+	case []byte:
+		return sanitiseJSONBytes(b)
+	case string:
+		return string(sanitiseJSONBytes([]byte(b)))
+	default:
+		return v
+	}
+}
+
+// sanitiseJSONBytes strips raw NUL bytes and REAL NUL escapes from marshalled
+// JSON. It is backslash-aware: a naive substring strip of the six-byte NUL
+// escape is WRONG, because a literal backslash-then-u0000 in the data marshals
+// to two backslashes, whose second backslash begins a sequence the strip would
+// remove, leaving a lone backslash and thus invalid JSON ("pq: invalid input
+// syntax for type json"). We walk escape pairs so only a genuine NUL escape
+// (an odd run of backslashes) is removed. Only allocates when a NUL is present.
+func sanitiseJSONBytes(b []byte) []byte {
+	if bytes.IndexByte(b, 0) >= 0 {
+		b = bytes.ReplaceAll(b, []byte{0}, nil)
+	}
+	if !bytes.Contains(b, nulEscapeSeq) {
+		return b
+	}
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); {
+		if b[i] == '\\' {
+			// A real NUL escape (backslash u 0 0 0 0): drop all six bytes.
+			if i+5 < len(b) && b[i+1] == 'u' && b[i+2] == '0' && b[i+3] == '0' && b[i+4] == '0' && b[i+5] == '0' {
+				i += 6
+				continue
+			}
+			// Any other escape pair: emit both bytes verbatim so an escaped
+			// backslash is never reinterpreted as the start of a NUL escape.
+			if i+1 < len(b) {
+				out = append(out, b[i], b[i+1])
+				i += 2
+				continue
+			}
+		}
+		out = append(out, b[i])
+		i++
+	}
+	return out
 }
 
 func (s *Service) UpdateExecutionRunnerID(ID string, runnerID string) error {

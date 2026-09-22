@@ -291,6 +291,7 @@ func (s *Service) CreateAgentCommitment(c api.AgentCommitment) (*string, error) 
 		"source_message":      c.SourceMessage,
 		"made_by":             madeBy,
 		"expires_at":          c.ExpiresAt,
+		"recurrence":          c.Recurrence,
 	}); err != nil {
 		return nil, err
 	}

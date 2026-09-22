@@ -181,14 +181,6 @@ func (s *Service) updateExecution(c *gin.Context) {
 		return
 	}
 
-	if err := s.persistence.UpdateExecutionStatus(id, "executed"); err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-		}).Error("unable to update execution status")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
 	completion := "success"
 	if result.Cancelled {
 		completion = "cancel"
@@ -197,14 +189,6 @@ func (s *Service) updateExecution(c *gin.Context) {
 	}
 
 	appmetrics.ExecutionsTotal.WithLabelValues(completion).Inc()
-
-	if err := s.persistence.UpdateCompletionStatus(id, completion); err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-		}).Error("unable to update execution status")
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
 
 	j, err := json.Marshal(result.State)
 	if err != nil {
@@ -217,10 +201,14 @@ func (s *Service) updateExecution(c *gin.Context) {
 
 	result.State = j
 
-	if err := s.persistence.UpdateExecutionResult(id, result.State); err != nil {
+	// Write status, completion status and result atomically in a single UPDATE.
+	// This is the completion hot path (one round-trip instead of three) and, more
+	// importantly, guarantees a /wait long-poll never observes execution_status
+	// flip to 'executed' before the result column is populated.
+	if err := s.persistence.CompleteExecution(id, "executed", completion, result.State); err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
-		}).Error("unable to update execution result")
+		}).Error("unable to complete execution")
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
