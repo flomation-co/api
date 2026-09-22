@@ -28,6 +28,9 @@ type DatabaseConfig struct {
 type SecurityConfig struct {
 	IdentityService string `json:"identity_service" env:"IDENTITY_SERVICE" arg:"identity-service"`
 	AllowedOrigins  string `json:"allowed_origins" env:"ALLOWED_ORIGINS" arg:"allowed-origins"`
+	// ServiceToken is the shared secret presented to Sentinel's internal SSO
+	// admin API (must match Sentinel's Security.ServiceToken).
+	ServiceToken string `json:"service_token" env:"SERVICE_TOKEN" arg:"service-token"`
 }
 
 type LaunchConfig struct {

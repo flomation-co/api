@@ -419,6 +419,18 @@ func (m *mockPersistence) RemoveProjectGroup(string, string) error {
 func (m *mockPersistence) GetUserGroupIDs(string, string) ([]string, error) {
 	panic("not implemented")
 }
+func (m *mockPersistence) GetSSOGroupMappings(string) ([]*api.SSOGroupMapping, error) {
+	panic("not implemented")
+}
+func (m *mockPersistence) CreateSSOGroupMapping(string, string, string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) DeleteSSOGroupMapping(string, string) error {
+	panic("not implemented")
+}
+func (m *mockPersistence) ReconcileSSOGroups(string, string, []string) error {
+	panic("not implemented")
+}
 func (m *mockPersistence) GetProjectByID(string) (*api.Project, error) {
 	panic("not implemented")
 }

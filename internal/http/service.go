@@ -11,6 +11,7 @@ import (
 	"flomation.app/automate/api/internal/agent"
 	"flomation.app/automate/api/internal/connector/identity"
 	launchconnector "flomation.app/automate/api/internal/connector/launch"
+	sentinelconnector "flomation.app/automate/api/internal/connector/sentinel"
 	"flomation.app/automate/api/internal/embedding"
 	appmetrics "flomation.app/automate/api/internal/metrics"
 	"flomation.app/automate/api/internal/mtls"
@@ -34,6 +35,7 @@ type Service struct {
 	persistence       Persistence
 	identity          *identity.Connector
 	launch            *launchconnector.Connector
+	ssoSentinel       *sentinelconnector.Connector
 	migrator          *actions.Migrator
 	logHub            *LogHub
 	allowedOrigins    []string
@@ -300,6 +302,7 @@ func NewService(config *config.Config, persistence *persistence.Service) *Servic
 		persistence:        persistence,
 		identity:           identity.NewConnector(config),
 		launch:             launchconnector.NewConnector(config),
+		ssoSentinel:        sentinelconnector.NewConnector(config),
 		migrator:           m,
 		logHub:             NewLogHub(),
 		allowedOrigins:     allowedOrigins,
@@ -365,6 +368,11 @@ func (s *Service) registerRoutes(config *config.Config) {
 	// v1 Group
 	v1 := a.Group("v1")
 
+	// Service-to-service SSO sync (Sentinel → API), token-guarded.
+	v1.POST("/sso/ensure-membership", s.serviceTokenGuardAPI, s.ensureOrgMembershipInternal)
+	v1.POST("/sso/reconcile", s.serviceTokenGuardAPI, s.reconcileSSOGroupsInternal)
+	v1.GET("/sso/is-org-admin", s.serviceTokenGuardAPI, s.isOrgAdminInternal)
+
 	v1.GET("dashboard", s.jwtMiddleware, s.getDashboardData)
 	v1.GET("quota", s.jwtMiddleware, s.getQuota)
 	v1.GET("config/platform", s.jwtMiddleware, s.getPlatformConfig)
@@ -397,6 +405,21 @@ func (s *Service) registerRoutes(config *config.Config) {
 	orgs.DELETE("/:ID/group/:groupID/agent/:agentID", s.removeAgentFromGroup)
 	orgs.POST("/:ID/group/:groupID/permission", s.setGroupPermissions)
 	orgs.GET("/:ID/permissions", s.getMyPermissions)
+
+	// Enterprise SSO config (forwarded to Sentinel's internal admin API).
+	orgs.GET("/:ID/sso/redirect-uri", s.getSSORedirectURI)
+	orgs.GET("/:ID/sso/connection", s.listSSOConnections)
+	orgs.POST("/:ID/sso/connection", s.createSSOConnection)
+	orgs.PUT("/:ID/sso/connection/:connID", s.updateSSOConnection)
+	orgs.DELETE("/:ID/sso/connection/:connID", s.deleteSSOConnection)
+	orgs.GET("/:ID/sso/connection/:connID/domain", s.listSSODomains)
+	orgs.POST("/:ID/sso/connection/:connID/domain", s.addSSODomain)
+	orgs.POST("/:ID/sso/connection/:connID/domain/:domainID/verify", s.verifySSODomain)
+	orgs.DELETE("/:ID/sso/connection/:connID/domain/:domainID", s.deleteSSODomain)
+	orgs.GET("/:ID/sso/connection/:connID/groups", s.searchSSOGroups)
+	orgs.GET("/:ID/sso/group-mapping", s.listSSOGroupMappings)
+	orgs.POST("/:ID/sso/group-mapping", s.createSSOGroupMapping)
+	orgs.DELETE("/:ID/sso/group-mapping/:mappingID", s.deleteSSOGroupMapping)
 
 	// Invite preview (public, no auth required)
 	v1.GET("invite/:code", s.getInvitePreview)
