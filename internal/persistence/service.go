@@ -14,6 +14,7 @@ import (
 
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/config"
+	"flomation.app/automate/api/internal/orglegal"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -5067,6 +5068,26 @@ func (s *Service) GetExecutionForRunnerID(ID string) (*api.Execution, error) {
 
 	var execution api.Execution
 	if organisationID != nil {
+		// An organisation that has not provided the legal identity its
+		// Data Processing Agreement needs has its work HELD, not
+		// refused. The executions are created as normal and simply are
+		// not claimed, so nothing is lost and they start flowing the
+		// moment an admin completes the details — no release job, no
+		// separate state to get stuck in.
+		org, err := s.GetOrganisationByID(*organisationID)
+		if err != nil || org == nil {
+			log.WithFields(log.Fields{"error": err, "org": *organisationID}).
+				Warn("unable to load organisation for the legal-details hold, holding work")
+			return nil, nil
+		}
+		if missing := orglegal.Missing(org); len(missing) > 0 {
+			log.WithFields(log.Fields{
+				"org":     *organisationID,
+				"missing": missing,
+			}).Debug("holding executions — organisation legal details incomplete")
+			return nil, nil
+		}
+
 		if err := s.stmtGetPendingExecutionByOrganisationID.Get(&execution, struct {
 			OrganisationID string `db:"organisation_id"`
 		}{

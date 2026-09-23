@@ -661,26 +661,6 @@ func (s *Service) triggerFlo(c *gin.Context) {
 		return
 	}
 
-	// Gate organisation-owned executions on completed legal details (see
-	// executeFlo). Applies to every trigger path; personal flows are exempt.
-	if flo, ferr := s.persistence.GetFloByID(floID); ferr == nil && flo != nil &&
-		flo.OrganisationID != nil && *flo.OrganisationID != "" {
-		if complete, missing := s.organisationLegalComplete(*flo.OrganisationID); !complete {
-			log.WithFields(log.Fields{
-				"flo_id":     floID,
-				"trigger_id": triggerID,
-				"org":        *flo.OrganisationID,
-				"missing":    missing,
-			}).Info("trigger blocked — organisation legal details incomplete")
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":                "organisation_legal_details_required",
-				"message":              "This organisation must complete its legal details before its flows can run. An administrator can add them in Organisation settings.",
-				"missing_legal_fields": missing,
-			})
-			return
-		}
-	}
-
 	var data interface{}
 	err := c.ShouldBindJSON(&data)
 	if err != nil {
@@ -786,27 +766,6 @@ func (s *Service) executeFlo(c *gin.Context) {
 		log.WithField("flo_id", floID).Info("execution blocked — agent is paused")
 		c.JSON(http.StatusConflict, gin.H{"error": "agent is paused"})
 		return
-	}
-
-	// Gate organisation-owned executions on completed legal details. An
-	// organisation must provide its registered legal identity (used for its
-	// Data Processing Agreement) before any of its flows may run, via any
-	// path — manual, trigger, agent or form. Personal flows are unaffected.
-	if flo, ferr := s.persistence.GetFloByID(floID); ferr == nil && flo != nil &&
-		flo.OrganisationID != nil && *flo.OrganisationID != "" {
-		if complete, missing := s.organisationLegalComplete(*flo.OrganisationID); !complete {
-			log.WithFields(log.Fields{
-				"flo_id":  floID,
-				"org":     *flo.OrganisationID,
-				"missing": missing,
-			}).Info("execution blocked — organisation legal details incomplete")
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":                "organisation_legal_details_required",
-				"message":              "This organisation must complete its legal details before its flows can run. An administrator can add them in Organisation settings.",
-				"missing_legal_fields": missing,
-			})
-			return
-		}
 	}
 
 	// Find the manual trigger for this flow
@@ -926,9 +885,26 @@ func (s *Service) executeFlo(c *gin.Context) {
 	// Wake any long-polling runners
 	s.executionNotifier.Notify()
 
-	c.JSON(http.StatusCreated, gin.H{
-		"id": i,
-	})
+	response := gin.H{"id": i}
+
+	// The execution is created either way — an organisation without its
+	// legal details has its work held in the dispatch queue rather than
+	// refused, so nothing is lost. Say so, or the run looks stuck.
+	if flo, ferr := s.persistence.GetFloByID(floID); ferr == nil && flo != nil &&
+		flo.OrganisationID != nil && *flo.OrganisationID != "" {
+		if complete, missing := s.organisationLegalComplete(*flo.OrganisationID); !complete {
+			log.WithFields(log.Fields{
+				"flo_id":  floID,
+				"org":     *flo.OrganisationID,
+				"missing": missing,
+			}).Info("execution queued — organisation legal details incomplete")
+			response["held"] = "organisation_legal_details_required"
+			response["message"] = "Queued. This organisation must complete its legal details before its flows can run; an administrator can add them in Organisation settings, and queued runs will start automatically."
+			response["missing_legal_fields"] = missing
+		}
+	}
+
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s *Service) exportFlos(c *gin.Context) {
