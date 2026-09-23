@@ -7,6 +7,7 @@ import (
 
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/dpa"
+	"flomation.app/automate/api/internal/orglegal"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -125,46 +126,26 @@ func buildDPAParams(user *api.User, org *api.Organisation) dpa.Params {
 
 // organisationLegalComplete reports whether an organisation has provided the
 // legal details it needs before its flows may run, and lists any still missing.
-// A missing organisation record is treated as incomplete. Used to gate flow
-// execution for organisation-owned flows.
+// A missing organisation record is treated as incomplete.
+//
+// This reports; it does not refuse. The dispatch queue is what actually holds
+// an incomplete organisation's executions back (see GetExecutionForRunnerID),
+// so the work queues rather than being lost.
 func (s *Service) organisationLegalComplete(orgID string) (bool, []string) {
 	org, err := s.persistence.GetOrganisationByID(orgID)
 	if err != nil || org == nil {
 		log.WithFields(log.Fields{"error": err, "org": orgID}).Warn("unable to load organisation for legal-details gate")
-		return false, []string{"company_type", "legal_name", "city", "postcode", "country"}
+		return false, orglegal.RequiredFields()
 	}
 	missing := missingOrgLegalFields(org)
 	return len(missing) == 0, missing
 }
 
-// missingOrgLegalFields lists the legal fields an organisation still needs to
-// complete before its flows may run and for a fully-populated DPA. A company
-// number is required only for registered entity types (Ltd, LLP, PLC); a sole
-// trader or partnership has none. Address line 1 is optional (city, postcode
-// and country give a usable registered address). This is the single source of
-// truth the editor's Save-button completeness check mirrors.
+// missingOrgLegalFields defers to orglegal, which is shared with the
+// execution dispatch queue so an organisation cannot be told it is
+// compliant while its flows are being held back.
 func missingOrgLegalFields(org *api.Organisation) []string {
-	var missing []string
-	companyType := strings.TrimSpace(deref(org.CompanyType))
-	if companyType == "" {
-		missing = append(missing, "company_type")
-	}
-	if strings.TrimSpace(deref(org.LegalName)) == "" {
-		missing = append(missing, "legal_name")
-	}
-	if dpa.RequiresCompanyNumber(companyType) && strings.TrimSpace(deref(org.CompanyNumber)) == "" {
-		missing = append(missing, "company_number")
-	}
-	if strings.TrimSpace(deref(org.City)) == "" {
-		missing = append(missing, "city")
-	}
-	if strings.TrimSpace(deref(org.Postcode)) == "" {
-		missing = append(missing, "postcode")
-	}
-	if strings.TrimSpace(deref(org.Country)) == "" {
-		missing = append(missing, "country")
-	}
-	return missing
+	return orglegal.Missing(org)
 }
 
 func userFullName(user *api.User) string {
