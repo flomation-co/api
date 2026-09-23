@@ -106,45 +106,52 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 
 	var id string
 	if err := s.stmtCreateAgent.Get(&id, struct {
-		Name                    string          `db:"name"`
-		Description             *string         `db:"description"`
-		OwnerID                 string          `db:"owner_id"`
-		OrganisationID          *string         `db:"organisation_id"`
-		EnvironmentID           *string         `db:"environment_id"`
-		QueueID                 *string         `db:"queue_id"`
-		SystemPrompt            *string         `db:"system_prompt"`
-		OrchestratorFlowID      *string         `db:"orchestrator_flow_id"`
-		ExtractionFlowID        *string         `db:"extraction_flow_id"`
-		AIAPIKey                *string         `db:"ai_api_key"`
-		EncryptKey              string          `db:"encrypt_key"`
-		MaxConcurrentExecutions int             `db:"max_concurrent_executions"`
-		IdleTimeoutSeconds      int             `db:"idle_timeout_seconds"`
-		Channels                json.RawMessage `db:"channels"`
-		RequiresApproval        bool            `db:"requires_approval"`
-		MaxExecutionsPerHour    int             `db:"max_executions_per_hour"`
-		PriorConversationCount  int             `db:"prior_conversation_count"`
+		Name                   string          `db:"name"`
+		Description            *string         `db:"description"`
+		OwnerID                string          `db:"owner_id"`
+		OrganisationID         *string         `db:"organisation_id"`
+		EnvironmentID          *string         `db:"environment_id"`
+		QueueID                *string         `db:"queue_id"`
+		SystemPrompt           *string         `db:"system_prompt"`
+		OrchestratorFlowID     *string         `db:"orchestrator_flow_id"`
+		ExtractionFlowID       *string         `db:"extraction_flow_id"`
+		AIAPIKey               *string         `db:"ai_api_key"`
+		EncryptKey             string          `db:"encrypt_key"`
+		ExtractionProvider     string          `db:"extraction_provider"`
+		IdleTimeoutSeconds     int             `db:"idle_timeout_seconds"`
+		Channels               json.RawMessage `db:"channels"`
+		PriorConversationCount int             `db:"prior_conversation_count"`
 	}{
-		Name:                    agent.Name,
-		Description:             agent.Description,
-		OwnerID:                 agent.OwnerID,
-		OrganisationID:          agent.OrganisationID,
-		EnvironmentID:           agent.EnvironmentID,
-		QueueID:                 agent.QueueID,
-		SystemPrompt:            agent.SystemPrompt,
-		OrchestratorFlowID:      agent.OrchestratorFlowID,
-		ExtractionFlowID:        agent.ExtractionFlowID,
-		AIAPIKey:                agent.AIAPIKey,
-		EncryptKey:              s.config.Database.EncryptionKey,
-		MaxConcurrentExecutions: agent.MaxConcurrentExecutions,
-		IdleTimeoutSeconds:      agent.IdleTimeoutSeconds,
-		Channels:                channelsJSON,
-		RequiresApproval:        agent.RequiresApproval,
-		MaxExecutionsPerHour:    agent.MaxExecutionsPerHour,
-		PriorConversationCount:  clampPriorConversationCount(agent.PriorConversationCount),
+		Name:                   agent.Name,
+		Description:            agent.Description,
+		OwnerID:                agent.OwnerID,
+		OrganisationID:         agent.OrganisationID,
+		EnvironmentID:          agent.EnvironmentID,
+		QueueID:                agent.QueueID,
+		SystemPrompt:           agent.SystemPrompt,
+		OrchestratorFlowID:     agent.OrchestratorFlowID,
+		ExtractionFlowID:       agent.ExtractionFlowID,
+		AIAPIKey:               agent.AIAPIKey,
+		EncryptKey:             s.config.Database.EncryptionKey,
+		ExtractionProvider:     extractionProviderOrDefault(agent.ExtractionProvider),
+		IdleTimeoutSeconds:     agent.IdleTimeoutSeconds,
+		Channels:               channelsJSON,
+		PriorConversationCount: clampPriorConversationCount(agent.PriorConversationCount),
 	}); err != nil {
 		return nil, err
 	}
 	return &id, nil
+}
+
+// extractionProviderOrDefault keeps the column honest when a caller
+// omits the provider. A blank here would build an "ai/" node label
+// that matches no action, so the extraction flow would fail at the
+// switch rather than at anything that names the cause.
+func extractionProviderOrDefault(provider string) string {
+	if provider == "" {
+		return api.DefaultExtractionProvider
+	}
+	return provider
 }
 
 // clampPriorConversationCount enforces the 0..50 range the editor's
@@ -169,37 +176,33 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 	}
 
 	_, err := s.stmtUpdateAgent.Exec(struct {
-		ID                      string          `db:"id"`
-		Name                    string          `db:"name"`
-		Description             *string         `db:"description"`
-		EnvironmentID           *string         `db:"environment_id"`
-		QueueID                 *string         `db:"queue_id"`
-		SystemPrompt            *string         `db:"system_prompt"`
-		OrchestratorFlowID      *string         `db:"orchestrator_flow_id"`
-		AIAPIKey                *string         `db:"ai_api_key"`
-		EncryptKey              string          `db:"encrypt_key"`
-		MaxConcurrentExecutions int             `db:"max_concurrent_executions"`
-		IdleTimeoutSeconds      int             `db:"idle_timeout_seconds"`
-		Channels                json.RawMessage `db:"channels"`
-		RequiresApproval        bool            `db:"requires_approval"`
-		MaxExecutionsPerHour    int             `db:"max_executions_per_hour"`
-		PriorConversationCount  int             `db:"prior_conversation_count"`
+		ID                     string          `db:"id"`
+		Name                   string          `db:"name"`
+		Description            *string         `db:"description"`
+		EnvironmentID          *string         `db:"environment_id"`
+		QueueID                *string         `db:"queue_id"`
+		SystemPrompt           *string         `db:"system_prompt"`
+		OrchestratorFlowID     *string         `db:"orchestrator_flow_id"`
+		AIAPIKey               *string         `db:"ai_api_key"`
+		EncryptKey             string          `db:"encrypt_key"`
+		ExtractionProvider     string          `db:"extraction_provider"`
+		IdleTimeoutSeconds     int             `db:"idle_timeout_seconds"`
+		Channels               json.RawMessage `db:"channels"`
+		PriorConversationCount int             `db:"prior_conversation_count"`
 	}{
-		ID:                      agent.ID,
-		Name:                    agent.Name,
-		Description:             agent.Description,
-		EnvironmentID:           agent.EnvironmentID,
-		QueueID:                 agent.QueueID,
-		SystemPrompt:            agent.SystemPrompt,
-		OrchestratorFlowID:      agent.OrchestratorFlowID,
-		AIAPIKey:                agent.AIAPIKey,
-		EncryptKey:              s.config.Database.EncryptionKey,
-		MaxConcurrentExecutions: agent.MaxConcurrentExecutions,
-		IdleTimeoutSeconds:      agent.IdleTimeoutSeconds,
-		Channels:                channelsJSON,
-		RequiresApproval:        agent.RequiresApproval,
-		MaxExecutionsPerHour:    agent.MaxExecutionsPerHour,
-		PriorConversationCount:  clampPriorConversationCount(agent.PriorConversationCount),
+		ID:                     agent.ID,
+		Name:                   agent.Name,
+		Description:            agent.Description,
+		EnvironmentID:          agent.EnvironmentID,
+		QueueID:                agent.QueueID,
+		SystemPrompt:           agent.SystemPrompt,
+		OrchestratorFlowID:     agent.OrchestratorFlowID,
+		AIAPIKey:               agent.AIAPIKey,
+		EncryptKey:             s.config.Database.EncryptionKey,
+		ExtractionProvider:     extractionProviderOrDefault(agent.ExtractionProvider),
+		IdleTimeoutSeconds:     agent.IdleTimeoutSeconds,
+		Channels:               channelsJSON,
+		PriorConversationCount: clampPriorConversationCount(agent.PriorConversationCount),
 	})
 	return err
 }
@@ -430,51 +433,31 @@ func (s *Service) GetAgentExecutions(agentID string, limit int, offset int) ([]*
 func (s *Service) CreateAgentExecution(exec api.AgentExecution) (*string, error) {
 	var id string
 	if err := s.stmtCreateAgentExecution.Get(&id, struct {
-		AgentID          string  `db:"agent_id"`
-		SessionID        *string `db:"session_id"`
-		MessageID        *string `db:"message_id"`
-		ExecutionID      string  `db:"execution_id"`
-		FlowID           string  `db:"flow_id"`
-		Status           string  `db:"status"`
-		RequiresApproval bool    `db:"requires_approval"`
+		AgentID     string  `db:"agent_id"`
+		SessionID   *string `db:"session_id"`
+		MessageID   *string `db:"message_id"`
+		ExecutionID string  `db:"execution_id"`
+		FlowID      string  `db:"flow_id"`
+		Status      string  `db:"status"`
 	}{
-		AgentID:          exec.AgentID,
-		SessionID:        exec.SessionID,
-		MessageID:        exec.MessageID,
-		ExecutionID:      exec.ExecutionID,
-		FlowID:           exec.FlowID,
-		Status:           exec.Status,
-		RequiresApproval: exec.RequiresApproval,
+		AgentID:     exec.AgentID,
+		SessionID:   exec.SessionID,
+		MessageID:   exec.MessageID,
+		ExecutionID: exec.ExecutionID,
+		FlowID:      exec.FlowID,
+		Status:      exec.Status,
 	}); err != nil {
 		return nil, err
 	}
 	return &id, nil
 }
 
-// UpdateAgentExecutionStatus updates the status of an agent execution (approve/reject/complete).
-func (s *Service) UpdateAgentExecutionStatus(id string, status string, approvedBy *string, completedAt *time.Time) error {
-	var approvedAt *time.Time
-	if approvedBy != nil {
-		now := time.Now()
-		approvedAt = &now
-	}
+// UpdateAgentExecutionStatus updates the status of an agent execution.
+func (s *Service) UpdateAgentExecutionStatus(id string, status string, completedAt *time.Time) error {
 	_, err := s.stmtUpdateAgentExecutionStatus.Exec(struct {
 		ID          string     `db:"id"`
 		Status      string     `db:"status"`
-		ApprovedBy  *string    `db:"approved_by"`
-		ApprovedAt  *time.Time `db:"approved_at"`
 		CompletedAt *time.Time `db:"completed_at"`
-	}{ID: id, Status: status, ApprovedBy: approvedBy, ApprovedAt: approvedAt, CompletedAt: completedAt})
+	}{ID: id, Status: status, CompletedAt: completedAt})
 	return err
-}
-
-// CountAgentExecutionsInHour returns the number of executions dispatched in the last hour.
-func (s *Service) CountAgentExecutionsInHour(agentID string) (int64, error) {
-	var count int64
-	if err := s.stmtCountAgentExecutionsInHour.Get(&count, struct {
-		AgentID string `db:"agent_id"`
-	}{AgentID: agentID}); err != nil {
-		return 0, err
-	}
-	return count, nil
 }

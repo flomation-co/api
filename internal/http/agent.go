@@ -111,14 +111,8 @@ func (s *Service) createAgent(c *gin.Context) {
 	}
 
 	// Defaults
-	if agent.MaxConcurrentExecutions <= 0 {
-		agent.MaxConcurrentExecutions = 3
-	}
 	if agent.IdleTimeoutSeconds <= 0 {
 		agent.IdleTimeoutSeconds = 3600
-	}
-	if agent.MaxExecutionsPerHour <= 0 {
-		agent.MaxExecutionsPerHour = 100
 	}
 
 	id, err := s.persistence.CreateAgent(agent)
@@ -251,7 +245,7 @@ func (s *Service) startAgent(c *gin.Context) {
 	// trigger types (e.g. Telegram + Slack in the same flow).
 	if s.launch != nil {
 		if err := s.launch.RegisterAgent(id, agent.OrchestratorFlowID, nil,
-			agent.Channels, agent.EnvironmentID, agent.MaxExecutionsPerHour, agent.RequiresApproval, agent.SystemPrompt); err != nil {
+			agent.Channels, agent.EnvironmentID, agent.SystemPrompt); err != nil {
 			log.WithFields(log.Fields{"error": err, "id": id}).Warn("unable to register agent with launch service")
 			// Non-fatal — agent is started locally even if Launch registration fails
 		}

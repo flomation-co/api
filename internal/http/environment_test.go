@@ -675,10 +675,9 @@ func (m *mockPersistence) GetAgentExecutions(string, int, int) ([]*api.AgentExec
 	return nil, nil
 }
 func (m *mockPersistence) CreateAgentExecution(api.AgentExecution) (*string, error) { return nil, nil }
-func (m *mockPersistence) UpdateAgentExecutionStatus(string, string, *string, *time.Time) error {
+func (m *mockPersistence) UpdateAgentExecutionStatus(string, string, *time.Time) error {
 	return nil
 }
-func (m *mockPersistence) CountAgentExecutionsInHour(string) (int64, error) { return 0, nil }
 
 // Agent Memory Phase 1 stubs.
 func (m *mockPersistence) ResolveOrCreateAgentIdentity(string, *string, string, string, *string, *string) (*api.AgentIdentity, *api.AgentUser, error) {

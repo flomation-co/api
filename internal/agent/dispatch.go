@@ -255,6 +255,13 @@ func DispatchExtraction(
 	if agent.AIAPIKey != nil && *agent.AIAPIKey != "" {
 		triggerData["api_key"] = *agent.AIAPIKey
 	}
+	// Picks the switch branch in the shared extraction flow. Falls back
+	// rather than sending "", which would match no case and route every
+	// extraction to the switch's dead-end default.
+	triggerData["provider"] = api.DefaultExtractionProvider
+	if agent.ExtractionProvider != "" {
+		triggerData["provider"] = agent.ExtractionProvider
+	}
 
 	raw, err := json.Marshal(triggerData)
 	if err != nil {
