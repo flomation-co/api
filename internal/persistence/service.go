@@ -233,7 +233,6 @@ type Service struct {
 	stmtGetAgentExecutions         *sqlx.NamedStmt
 	stmtCreateAgentExecution       *sqlx.NamedStmt
 	stmtUpdateAgentExecutionStatus *sqlx.NamedStmt
-	stmtCountAgentExecutionsInHour *sqlx.NamedStmt
 
 	// User-declared channel identities (migration 83). Methods live in
 	// internal/persistence/user_identity.go.
@@ -2879,15 +2878,15 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCreateAgent, err = s.conn.PrepareNamed(`
-		INSERT INTO agent (name, description, owner_id, organisation_id, environment_id, queue_id,
+		INSERT INTO agent (name, description, avatar, owner_id, organisation_id, environment_id, queue_id,
 			system_prompt, orchestrator_flow_id, extraction_flow_id, ai_api_key,
-			max_concurrent_executions, idle_timeout_seconds,
-			channels, requires_approval, max_executions_per_hour, prior_conversation_count)
-		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
+			extraction_provider, idle_timeout_seconds,
+			channels, prior_conversation_count)
+		VALUES (:name, :description, :avatar, :owner_id, :organisation_id, :environment_id, :queue_id,
 			:system_prompt, :orchestrator_flow_id, :extraction_flow_id,
 			PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
-			:max_concurrent_executions, :idle_timeout_seconds,
-			:channels, :requires_approval, :max_executions_per_hour, :prior_conversation_count)
+			:extraction_provider, :idle_timeout_seconds,
+			:channels, :prior_conversation_count)
 		RETURNING id
 	`)
 	if err != nil {
@@ -2896,14 +2895,13 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtUpdateAgent, err = s.conn.PrepareNamed(`
 		UPDATE agent SET
-			name = :name, description = :description, environment_id = :environment_id,
+			name = :name, description = :description, avatar = :avatar,
+			environment_id = :environment_id,
 			queue_id = :queue_id, system_prompt = :system_prompt,
 			orchestrator_flow_id = :orchestrator_flow_id,
 			ai_api_key = PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
-			max_concurrent_executions = :max_concurrent_executions,
+			extraction_provider = :extraction_provider,
 			idle_timeout_seconds = :idle_timeout_seconds, channels = :channels,
-			requires_approval = :requires_approval,
-			max_executions_per_hour = :max_executions_per_hour,
 			prior_conversation_count = :prior_conversation_count,
 			updated_at = NOW()
 		WHERE id = :id
@@ -3051,8 +3049,8 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCreateAgentExecution, err = s.conn.PrepareNamed(`
-		INSERT INTO agent_execution (agent_id, session_id, message_id, execution_id, flow_id, status, requires_approval)
-		VALUES (:agent_id, :session_id, :message_id, :execution_id, :flow_id, :status, :requires_approval)
+		INSERT INTO agent_execution (agent_id, session_id, message_id, execution_id, flow_id, status)
+		VALUES (:agent_id, :session_id, :message_id, :execution_id, :flow_id, :status)
 		RETURNING id
 	`)
 	if err != nil {
@@ -3060,15 +3058,8 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtUpdateAgentExecutionStatus, err = s.conn.PrepareNamed(`
-		UPDATE agent_execution SET status = :status, approved_by = :approved_by, approved_at = :approved_at, completed_at = :completed_at
+		UPDATE agent_execution SET status = :status, completed_at = :completed_at
 		WHERE id = :id
-	`)
-	if err != nil {
-		return nil, err
-	}
-
-	s.stmtCountAgentExecutionsInHour, err = s.conn.PrepareNamed(`
-		SELECT COUNT(1) FROM agent_execution WHERE agent_id = :agent_id AND created_at > NOW() - INTERVAL '1 hour'
 	`)
 	if err != nil {
 		return nil, err

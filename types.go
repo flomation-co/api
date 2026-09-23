@@ -728,12 +728,25 @@ const (
 	AgentMessageInbound  = "inbound"
 	AgentMessageOutbound = "outbound"
 	AgentMessageSystem   = "system"
+
+	// ExtractionProvider* are the AI providers the memory extraction
+	// flow can route to. Each value must name an executor ai/<value>
+	// action, because the flow's switch builds the node label from it.
+	ExtractionProviderAnthropic  = "anthropic"
+	ExtractionProviderOpenAI     = "openai"
+	ExtractionProviderGemini     = "gemini"
+	ExtractionProviderGroq       = "groq"
+	ExtractionProviderOpenRouter = "openrouter"
+
+	DefaultExtractionProvider = ExtractionProviderAnthropic
 )
 
 type Agent struct {
-	ID                 string  `json:"id" db:"id"`
-	Name               string  `json:"name" db:"name"`
-	Description        *string `json:"description,omitempty" db:"description"`
+	ID          string  `json:"id" db:"id"`
+	Name        string  `json:"name" db:"name"`
+	Description *string `json:"description,omitempty" db:"description"`
+	// Avatar is a validated data URL (see internal/http/agent_avatar.go).
+	Avatar             *string `json:"avatar,omitempty" db:"avatar"`
 	OwnerID            string  `json:"owner_id" db:"owner_id"`
 	OrganisationID     *string `json:"organisation_id,omitempty" db:"organisation_id"`
 	EnvironmentID      *string `json:"environment_id,omitempty" db:"environment_id"`
@@ -753,21 +766,24 @@ type Agent struct {
 	// agent can pass to the get_conversation tool when it needs
 	// the full message history behind a summary. 0 disables the
 	// feature; range enforced at 0..50 by the editor.
-	PriorConversationCount  int             `json:"prior_conversation_count" db:"prior_conversation_count"`
-	MaxConcurrentExecutions int             `json:"max_concurrent_executions" db:"max_concurrent_executions"`
-	IdleTimeoutSeconds      int             `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
-	Channels                json.RawMessage `json:"channels" db:"channels"`
-	AllowedFlowIDs          pq.StringArray  `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
-	RequiresApproval        bool            `json:"requires_approval" db:"requires_approval"`
-	MaxExecutionsPerHour    int             `json:"max_executions_per_hour" db:"max_executions_per_hour"`
-	Status                  string          `json:"status" db:"status"`
-	StartedAt               *time.Time      `json:"started_at,omitempty" db:"started_at"`
-	StoppedAt               *time.Time      `json:"stopped_at,omitempty" db:"stopped_at"`
-	CreatedAt               time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt               time.Time       `json:"updated_at" db:"updated_at"`
-	ArchivedAt              *time.Time      `json:"archived_at,omitempty" db:"archived_at"`
-	MemoryRetentionDays     *int            `json:"memory_retention_days,omitempty" db:"memory_retention_days"`
-	MaxPinnedMemories       *int            `json:"max_pinned_memories,omitempty" db:"max_pinned_memories"`
+	PriorConversationCount int `json:"prior_conversation_count" db:"prior_conversation_count"`
+	// ExtractionProvider names the AI provider the extraction flow
+	// routes to — "anthropic", "openai", "gemini", "groq" or
+	// "openrouter". It is passed as trigger data and switched on
+	// inside the shared extraction flow, so changing it does not
+	// rebuild anything per agent.
+	ExtractionProvider  string          `json:"extraction_provider" db:"extraction_provider"`
+	IdleTimeoutSeconds  int             `json:"idle_timeout_seconds" db:"idle_timeout_seconds"`
+	Channels            json.RawMessage `json:"channels" db:"channels"`
+	AllowedFlowIDs      pq.StringArray  `json:"allowed_flow_ids,omitempty" db:"allowed_flow_ids"`
+	Status              string          `json:"status" db:"status"`
+	StartedAt           *time.Time      `json:"started_at,omitempty" db:"started_at"`
+	StoppedAt           *time.Time      `json:"stopped_at,omitempty" db:"stopped_at"`
+	CreatedAt           time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at" db:"updated_at"`
+	ArchivedAt          *time.Time      `json:"archived_at,omitempty" db:"archived_at"`
+	MemoryRetentionDays *int            `json:"memory_retention_days,omitempty" db:"memory_retention_days"`
+	MaxPinnedMemories   *int            `json:"max_pinned_memories,omitempty" db:"max_pinned_memories"`
 	// Computed fields (populated at read time)
 	ActiveSessionID      *string    `json:"active_session_id,omitempty"`
 	MessageCount         int64      `json:"message_count" db:"message_count"`
@@ -1076,18 +1092,15 @@ type AgentSchedule struct {
 }
 
 type AgentExecution struct {
-	ID               string     `json:"id" db:"id"`
-	AgentID          string     `json:"agent_id" db:"agent_id"`
-	SessionID        *string    `json:"session_id,omitempty" db:"session_id"`
-	MessageID        *string    `json:"message_id,omitempty" db:"message_id"`
-	ExecutionID      string     `json:"execution_id" db:"execution_id"`
-	FlowID           string     `json:"flow_id" db:"flow_id"`
-	Status           string     `json:"status" db:"status"`
-	RequiresApproval bool       `json:"requires_approval" db:"requires_approval"`
-	ApprovedBy       *string    `json:"approved_by,omitempty" db:"approved_by"`
-	ApprovedAt       *time.Time `json:"approved_at,omitempty" db:"approved_at"`
-	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
-	CompletedAt      *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	ID          string     `json:"id" db:"id"`
+	AgentID     string     `json:"agent_id" db:"agent_id"`
+	SessionID   *string    `json:"session_id,omitempty" db:"session_id"`
+	MessageID   *string    `json:"message_id,omitempty" db:"message_id"`
+	ExecutionID string     `json:"execution_id" db:"execution_id"`
+	FlowID      string     `json:"flow_id" db:"flow_id"`
+	Status      string     `json:"status" db:"status"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty" db:"completed_at"`
 	// Computed
 	FlowName        *string `json:"flow_name,omitempty"`
 	ExecutionStatus *string `json:"execution_status,omitempty"`

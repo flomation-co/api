@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"flomation.app/automate/api"
 	log "github.com/sirupsen/logrus"
@@ -351,45 +352,149 @@ func promptFingerprint(prompt string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// extractionPromptOf digs the ai/anthropic node's system_prompt input
-// out of a stored revision. Returns "" when the revision is not the
-// shape this bootstrap creates, which is itself a reason not to touch
-// it.
-func extractionPromptOf(data []byte) string {
-	var revision struct {
-		Nodes []struct {
-			Data struct {
-				Label  string `json:"label"`
-				Config struct {
-					Inputs []struct {
-						Name  string `json:"name"`
-						Value string `json:"value"`
-					} `json:"inputs"`
-				} `json:"config"`
-			} `json:"data"`
-		} `json:"nodes"`
+// extractionRevision is the slice of a stored revision this file needs
+// to decide whether a flow is still the one it built.
+type extractionRevision struct {
+	Nodes []struct {
+		Data struct {
+			Label  string `json:"label"`
+			Config struct {
+				Inputs []struct {
+					Name  string          `json:"name"`
+					Value json.RawMessage `json:"value"`
+				} `json:"inputs"`
+			} `json:"config"`
+		} `json:"data"`
+	} `json:"nodes"`
+}
+
+// stringInput returns a node input's value when it is a JSON string.
+// Inputs are heterogeneous — the switch's cases is an array — so a
+// non-string reads as absent rather than as an error.
+func (r extractionRevision) stringInput(label, name string) (string, bool) {
+	for _, node := range r.Nodes {
+		if node.Data.Label != label {
+			continue
+		}
+		for _, input := range node.Data.Config.Inputs {
+			if input.Name != name {
+				continue
+			}
+			var value string
+			if err := json.Unmarshal(input.Value, &value); err != nil {
+				return "", false
+			}
+			return value, true
+		}
 	}
+	return "", false
+}
+
+func (r extractionRevision) hasLabel(label string) bool {
+	for _, node := range r.Nodes {
+		if node.Data.Label == label {
+			return true
+		}
+	}
+	return false
+}
+
+// extractionPromptOf digs a provider node's system_prompt input out of
+// a stored revision. Returns "" when the revision is not the shape this
+// bootstrap creates, which is itself a reason not to touch it.
+//
+// Any ai/* node will do: every provider branch carries the same prompt,
+// and matching on the label alone keeps this working for revisions
+// written before the flow gained a provider switch (which had a single
+// ai/anthropic node).
+func extractionPromptOf(data []byte) string {
+	var revision extractionRevision
 	if err := json.Unmarshal(data, &revision); err != nil {
 		return ""
 	}
 	for _, node := range revision.Nodes {
-		if node.Data.Label != "ai/anthropic" {
+		if !strings.HasPrefix(node.Data.Label, "ai/") {
 			continue
 		}
 		for _, input := range node.Data.Config.Inputs {
 			if input.Name == "system_prompt" {
-				return input.Value
+				var value string
+				if err := json.Unmarshal(input.Value, &value); err != nil {
+					return ""
+				}
+				return value
 			}
 		}
 	}
 	return ""
 }
 
-// upgradeExtractionPrompt replaces an untouched extraction flow's
-// revision when the shipped prompt has moved on. A customised prompt
-// is never overwritten — the admin's edit wins, and the mismatch is
-// logged so it is visible rather than silent.
-func (s *Service) upgradeExtractionPrompt(floID string) {
+// extractionFlowIsCurrent reports whether a stored revision is already
+// the flow this file would build for the given prompt.
+//
+// It compares what matters rather than the bytes: a byte comparison
+// would rewrite the revision on every restart the moment anything about
+// the surrounding serialisation shifted.
+func extractionFlowIsCurrent(data []byte, prompt string) bool {
+	var revision extractionRevision
+	if err := json.Unmarshal(data, &revision); err != nil {
+		return false
+	}
+	if !revision.hasLabel("conditional/switch") || !revision.hasLabel("agent/process_extraction") {
+		return false
+	}
+	for _, provider := range extractionProviders {
+		label := "ai/" + provider.Name
+		if !revision.hasLabel(label) {
+			return false
+		}
+		if model, ok := revision.stringInput(label, "model"); !ok || model != provider.Model {
+			return false
+		}
+		if stored, ok := revision.stringInput(label, "system_prompt"); !ok || stored != prompt {
+			return false
+		}
+	}
+	return true
+}
+
+// extractionFlowIsOurs reports whether every node in a stored revision
+// is one this bootstrap creates. An admin who added a node to the
+// extraction flow has made it theirs, and rewriting the revision would
+// silently delete their work — so the shape upgrade stops there and
+// says so.
+func extractionFlowIsOurs(data []byte) bool {
+	var revision extractionRevision
+	if err := json.Unmarshal(data, &revision); err != nil {
+		return false
+	}
+	if len(revision.Nodes) == 0 {
+		return false
+	}
+	for _, node := range revision.Nodes {
+		switch {
+		case node.Data.Label == "manual",
+			node.Data.Label == "conditional/switch",
+			node.Data.Label == "agent/process_extraction",
+			strings.HasPrefix(node.Data.Label, "ai/"):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// upgradeExtractionFlow brings an existing extraction flow up to the
+// current shape and prompt.
+//
+// Two things can be out of date, and they are judged separately. The
+// PROMPT belongs to whoever last edited it: a customised prompt is
+// carried forward untouched, and only a prompt matching a version we
+// shipped is replaced. The SHAPE belongs to us — it is how the flow
+// reaches a provider at all — so it is rebuilt whenever it differs,
+// which is what lets an install that predates provider switching gain
+// it without anyone recreating the flow.
+func (s *Service) upgradeExtractionFlow(floID string) {
 	var data []byte
 	if err := s.conn.Get(&data,
 		`SELECT data FROM revision WHERE flo_id = $1 ORDER BY created_at DESC LIMIT 1`,
@@ -405,27 +510,38 @@ func (s *Service) upgradeExtractionPrompt(floID string) {
 		return
 	}
 
+	prompt := extractionSystemPrompt
 	fingerprint := promptFingerprint(stored)
-	if fingerprint == promptFingerprint(extractionSystemPrompt) {
-		return
-	}
-
-	superseded := false
-	for _, hash := range supersededExtractionPrompts {
-		if hash == fingerprint {
-			superseded = true
-			break
+	if fingerprint != promptFingerprint(extractionSystemPrompt) {
+		superseded := false
+		for _, hash := range supersededExtractionPrompts {
+			if hash == fingerprint {
+				superseded = true
+				break
+			}
+		}
+		if !superseded {
+			// Their prompt, their call — but the flow around it is
+			// still rebuilt so provider routing stays current.
+			prompt = stored
+			log.WithFields(log.Fields{
+				"flow_id":     floID,
+				"fingerprint": fingerprint,
+			}).Info("extraction prompt has been customised, keeping it")
 		}
 	}
-	if !superseded {
-		log.WithFields(log.Fields{
-			"flow_id":     floID,
-			"fingerprint": fingerprint,
-		}).Info("extraction prompt has been customised, leaving it alone")
+
+	if extractionFlowIsCurrent(data, prompt) {
 		return
 	}
 
-	revisionData, err := json.Marshal(buildExtractionFlowJSON())
+	if !extractionFlowIsOurs(data) {
+		log.WithField("flow_id", floID).
+			Info("extraction flow has been edited beyond the nodes we create, leaving it alone")
+		return
+	}
+
+	revisionData, err := json.Marshal(buildExtractionFlowJSON(prompt))
 	if err != nil {
 		log.WithError(err).Warn("unable to build the upgraded extraction revision")
 		return
@@ -441,7 +557,7 @@ func (s *Service) upgradeExtractionPrompt(floID string) {
 	log.WithFields(log.Fields{
 		"flow_id": floID,
 		"from":    fingerprint,
-	}).Info("upgraded the extraction prompt to the current shipped version")
+	}).Info("upgraded the extraction flow to the current shape")
 }
 
 // BootstrapExtractionFlow ensures the canonical extraction System Flow
@@ -472,7 +588,7 @@ func (s *Service) BootstrapExtractionFlow() error {
 
 		// An existing flow still needs the prompt kept current, or a
 		// fix like the missing-date one can never reach it.
-		s.upgradeExtractionPrompt(existingID)
+		s.upgradeExtractionFlow(existingID)
 
 		// Still backfill agents that were created since last restart
 		// and might have NULL extraction_flow_id.
@@ -513,8 +629,8 @@ func (s *Service) BootstrapExtractionFlow() error {
 		)
 	}
 
-	// Build the 3-node flow revision (trigger → ai/anthropic → process_extraction).
-	revisionData := buildExtractionFlowJSON()
+	// Build the flow revision (trigger → switch → ai/<provider> → process_extraction).
+	revisionData := buildExtractionFlowJSON(extractionSystemPrompt)
 	revisionDataBytes, err := json.Marshal(revisionData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal extraction flow revision: %w", err)
@@ -555,88 +671,160 @@ func (s *Service) backfillExtractionFlowID(flowID string) error {
 	return nil
 }
 
-// buildExtractionFlowJSON constructs the 3-node flow structure. Node
-// IDs are deterministic so that edges can reference them and so that
-// re-running the bootstrap on a fresh DB produces the same flow shape.
-func buildExtractionFlowJSON() map[string]interface{} {
+// extractionProviders are the AI providers the extraction flow can
+// route to, in the order their switch cases are numbered. The order is
+// load-bearing: the switch emits handle case_<index>, so reordering
+// this list without rebuilding every stored revision would send a
+// provider's traffic to a different provider's node.
+var extractionProviders = []struct {
+	Name  string
+	Model string
+}{
+	{api.ExtractionProviderAnthropic, "claude-haiku-4-5-20251001"},
+	{api.ExtractionProviderOpenAI, "gpt-4o-mini"},
+	{api.ExtractionProviderGemini, "gemini-2.0-flash"},
+	{api.ExtractionProviderGroq, "llama-3.3-70b-versatile"},
+	{api.ExtractionProviderOpenRouter, "anthropic/claude-3.5-haiku"},
+}
+
+// buildExtractionFlowJSON constructs the extraction flow structure.
+// Node IDs are deterministic so that edges can reference them and so
+// that re-running the bootstrap on a fresh DB produces the same flow
+// shape.
+//
+// Shape: trigger → switch(${provider}) → one ai/<provider> node per
+// supported provider → agent/process_extraction.
+//
+// There is ONE extraction flow shared by every agent, so the provider
+// cannot be baked into a node — it arrives as trigger data and the
+// switch picks the branch. The engine skips parents on unmatched
+// switch branches, so only the chosen provider node runs and the
+// process node's ${response} resolves from it.
+func buildExtractionFlowJSON(prompt string) map[string]interface{} {
 	triggerNodeID := "extraction-trigger-001"
-	anthropicNodeID := "extraction-anthropic-002"
+	switchNodeID := "extraction-switch-004"
 	processNodeID := "extraction-process-003"
 
 	// The executor identifies nodes by data.config.type (int64):
 	//   1 = ActionTypeTrigger
 	//   2 = ActionTypeAction
+	//   6 = ActionTypeSwitch
 	// Inputs live inside data.config.inputs (not data.inputs).
 	// The top-level node.type (string) is used by the editor for
 	// rendering but ignored by the executor for dispatch.
-	return map[string]interface{}{
-		"nodes": []map[string]interface{}{
-			{
-				"id":   triggerNodeID,
-				"type": "trigger/manual",
-				"data": map[string]interface{}{
-					"label": "manual",
-					"config": map[string]interface{}{
-						"id":     triggerNodeID,
-						"type":   1, // ActionTypeTrigger
-						"inputs": []interface{}{},
+	nodes := []map[string]interface{}{
+		{
+			"id":   triggerNodeID,
+			"type": "trigger/manual",
+			"data": map[string]interface{}{
+				"label": "manual",
+				"config": map[string]interface{}{
+					"id":     triggerNodeID,
+					"type":   1, // ActionTypeTrigger
+					"inputs": []interface{}{},
+				},
+			},
+			"position": map[string]interface{}{"x": 250, "y": 50},
+		},
+	}
+
+	cases := make([]map[string]interface{}, 0, len(extractionProviders))
+	for _, provider := range extractionProviders {
+		cases = append(cases, map[string]interface{}{
+			"key":   provider.Name,
+			"value": provider.Name,
+		})
+	}
+
+	nodes = append(nodes, map[string]interface{}{
+		"id":   switchNodeID,
+		"type": "action",
+		"data": map[string]interface{}{
+			"label": "conditional/switch",
+			"config": map[string]interface{}{
+				"id":   switchNodeID,
+				"type": 6, // ActionTypeSwitch
+				"inputs": []map[string]interface{}{
+					// Falls back to the default provider so an agent
+					// row written before the column existed, or a
+					// caller that omits it, still extracts.
+					{"name": "value", "value": "${provider}"},
+					{"name": "operator", "value": "equals"},
+					{"name": "cases", "value": cases},
+				},
+			},
+		},
+		"position": map[string]interface{}{"x": 250, "y": 180},
+	})
+
+	edges := []map[string]interface{}{
+		{
+			"id":     "extraction-edge-001",
+			"source": triggerNodeID,
+			"target": switchNodeID,
+		},
+	}
+
+	for i, provider := range extractionProviders {
+		nodeID := fmt.Sprintf("extraction-provider-%s", provider.Name)
+		nodes = append(nodes, map[string]interface{}{
+			"id":   nodeID,
+			"type": "action",
+			"data": map[string]interface{}{
+				"label": "ai/" + provider.Name,
+				"config": map[string]interface{}{
+					"id":   nodeID,
+					"type": 2, // ActionTypeAction
+					"inputs": []map[string]interface{}{
+						{"name": "api_key", "value": "${api_key}"},
+						{"name": "model", "value": provider.Model},
+						{"name": "system_prompt", "value": prompt},
+						{"name": "prompt", "value": "${content}"},
+						{"name": "max_tokens", "value": "2048"},
+						{"name": "temperature", "value": "0"},
 					},
 				},
-				"position": map[string]interface{}{"x": 250, "y": 50},
 			},
-			{
-				"id":   anthropicNodeID,
-				"type": "action",
-				"data": map[string]interface{}{
-					"label": "ai/anthropic",
-					"config": map[string]interface{}{
-						"id":   anthropicNodeID,
-						"type": 2, // ActionTypeAction
-						"inputs": []map[string]interface{}{
-							{"name": "api_key", "value": "${api_key}"},
-							{"name": "model", "value": "claude-haiku-4-5-20251001"},
-							{"name": "system_prompt", "value": extractionSystemPrompt},
-							{"name": "prompt", "value": "${content}"},
-							{"name": "max_tokens", "value": "2048"},
-							{"name": "temperature", "value": "0"},
-						},
-					},
-				},
-				"position": map[string]interface{}{"x": 250, "y": 200},
-			},
-			{
+			"position": map[string]interface{}{"x": 60 + (i * 320), "y": 320},
+		})
+
+		edges = append(edges, map[string]interface{}{
+			"id":           fmt.Sprintf("extraction-edge-in-%s", provider.Name),
+			"source":       switchNodeID,
+			"target":       nodeID,
+			"sourceHandle": fmt.Sprintf("case_%d", i),
+		})
+		edges = append(edges, map[string]interface{}{
+			"id":     fmt.Sprintf("extraction-edge-out-%s", provider.Name),
+			"source": nodeID,
+			"target": processNodeID,
+		})
+	}
+
+	nodes = append(nodes, map[string]interface{}{
+		"id":   processNodeID,
+		"type": "action",
+		"data": map[string]interface{}{
+			"label": "agent/process_extraction",
+			"config": map[string]interface{}{
 				"id":   processNodeID,
-				"type": "action",
-				"data": map[string]interface{}{
-					"label": "agent/process_extraction",
-					"config": map[string]interface{}{
-						"id":   processNodeID,
-						"type": 2, // ActionTypeAction
-						"inputs": []map[string]interface{}{
-							{"name": "agent_id", "value": "${flow.agent_id}"},
-							{"name": "extraction_json", "value": "${response}"},
-							{"name": "agent_user_id", "value": "${flow.agent_user_id}"},
-							{"name": "conversation_id", "value": "${flow.conversation_id}"},
-							{"name": "source_message_id", "value": ""},
-							{"name": "role", "value": "${flow.role}"},
-						},
-					},
+				"type": 2, // ActionTypeAction
+				"inputs": []map[string]interface{}{
+					{"name": "agent_id", "value": "${flow.agent_id}"},
+					{"name": "extraction_json", "value": "${response}"},
+					{"name": "agent_user_id", "value": "${flow.agent_user_id}"},
+					{"name": "conversation_id", "value": "${flow.conversation_id}"},
+					{"name": "source_message_id", "value": ""},
+					{"name": "role", "value": "${flow.role}"},
 				},
-				"position": map[string]interface{}{"x": 250, "y": 400},
 			},
 		},
-		"edges": []map[string]interface{}{
-			{
-				"id":     "extraction-edge-001",
-				"source": triggerNodeID,
-				"target": anthropicNodeID,
-			},
-			{
-				"id":     "extraction-edge-002",
-				"source": anthropicNodeID,
-				"target": processNodeID,
-			},
-		},
+		"position": map[string]interface{}{"x": 250, "y": 500},
+	})
+
+	return map[string]interface{}{
+		"nodes": nodes,
+		"edges": edges,
 	}
 }
 

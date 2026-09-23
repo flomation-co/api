@@ -104,6 +104,13 @@ func (s *Service) createAgent(c *gin.Context) {
 		return
 	}
 
+	if agent.Avatar != nil {
+		if err := validateAgentAvatar(*agent.Avatar); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	agent.OwnerID = user.ID
 	if len(user.Organisations) > 0 {
 		orgID := user.Organisations[0].ID
@@ -111,14 +118,8 @@ func (s *Service) createAgent(c *gin.Context) {
 	}
 
 	// Defaults
-	if agent.MaxConcurrentExecutions <= 0 {
-		agent.MaxConcurrentExecutions = 3
-	}
 	if agent.IdleTimeoutSeconds <= 0 {
 		agent.IdleTimeoutSeconds = 3600
-	}
-	if agent.MaxExecutionsPerHour <= 0 {
-		agent.MaxExecutionsPerHour = 100
 	}
 
 	id, err := s.persistence.CreateAgent(agent)
@@ -156,6 +157,13 @@ func (s *Service) updateAgent(c *gin.Context) {
 	if err := c.BindJSON(&agent); err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	if agent.Avatar != nil {
+		if err := validateAgentAvatar(*agent.Avatar); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	agent.ID = id
@@ -251,7 +259,7 @@ func (s *Service) startAgent(c *gin.Context) {
 	// trigger types (e.g. Telegram + Slack in the same flow).
 	if s.launch != nil {
 		if err := s.launch.RegisterAgent(id, agent.OrchestratorFlowID, nil,
-			agent.Channels, agent.EnvironmentID, agent.MaxExecutionsPerHour, agent.RequiresApproval, agent.SystemPrompt); err != nil {
+			agent.Channels, agent.EnvironmentID, agent.SystemPrompt); err != nil {
 			log.WithFields(log.Fields{"error": err, "id": id}).Warn("unable to register agent with launch service")
 			// Non-fatal — agent is started locally even if Launch registration fails
 		}
