@@ -144,31 +144,27 @@ func (c *Connector) DisableTrigger(id string, authToken string) error {
 
 // agentRegistrationPayload is the JSON body sent to Launch when registering an agent.
 type agentRegistrationPayload struct {
-	AgentID              string          `json:"agent_id"`
-	OrchestratorFlowID   *string         `json:"orchestrator_flow_id"`
-	TriggerID            *string         `json:"trigger_id"`
-	Channels             json.RawMessage `json:"channels"`
-	EnvironmentID        *string         `json:"environment_id"`
-	MaxExecutionsPerHour int             `json:"max_executions_per_hour"`
-	RequiresApproval     bool            `json:"requires_approval"`
-	SystemPrompt         *string         `json:"system_prompt,omitempty"`
-	APIURL               string          `json:"api_url"`
+	AgentID            string          `json:"agent_id"`
+	OrchestratorFlowID *string         `json:"orchestrator_flow_id"`
+	TriggerID          *string         `json:"trigger_id"`
+	Channels           json.RawMessage `json:"channels"`
+	EnvironmentID      *string         `json:"environment_id"`
+	SystemPrompt       *string         `json:"system_prompt,omitempty"`
+	APIURL             string          `json:"api_url"`
 }
 
 // RegisterAgent registers an agent with the Launch service for runtime management.
 func (c *Connector) RegisterAgent(agentID string, orchestratorFlowID *string, triggerID *string,
-	channels json.RawMessage, environmentID *string, maxExecPerHour int, requiresApproval bool, systemPrompt *string) error {
+	channels json.RawMessage, environmentID *string, systemPrompt *string) error {
 
 	payload := agentRegistrationPayload{
-		AgentID:              agentID,
-		OrchestratorFlowID:   orchestratorFlowID,
-		TriggerID:            triggerID,
-		Channels:             channels,
-		EnvironmentID:        environmentID,
-		MaxExecutionsPerHour: maxExecPerHour,
-		RequiresApproval:     requiresApproval,
-		SystemPrompt:         systemPrompt,
-		APIURL:               c.config.Launch.APIURL,
+		AgentID:            agentID,
+		OrchestratorFlowID: orchestratorFlowID,
+		TriggerID:          triggerID,
+		Channels:           channels,
+		EnvironmentID:      environmentID,
+		SystemPrompt:       systemPrompt,
+		APIURL:             c.config.Launch.APIURL,
 	}
 
 	if payload.Channels == nil {

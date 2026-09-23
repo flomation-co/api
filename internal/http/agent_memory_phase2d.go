@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"time"
 
+	api "flomation.app/automate/api"
 	agentdispatch "flomation.app/automate/api/internal/agent"
 
 	"github.com/gin-gonic/gin"
@@ -169,10 +170,17 @@ func (s *Service) extractAgentInternal(c *gin.Context) {
 	if body.ConversationID != nil {
 		triggerData["conversation_id"] = *body.ConversationID
 	}
-	// Pass the agent's AI API key so the extraction flow's Anthropic
+	// Pass the agent's AI API key so the extraction flow's provider
 	// node can authenticate without depending on a user environment.
 	if agent.AIAPIKey != nil && *agent.AIAPIKey != "" {
 		triggerData["api_key"] = *agent.AIAPIKey
+	}
+	// Picks the switch branch in the shared extraction flow. Falls back
+	// rather than sending "", which would match no case and route every
+	// extraction to the switch's dead-end default.
+	triggerData["provider"] = api.DefaultExtractionProvider
+	if agent.ExtractionProvider != "" {
+		triggerData["provider"] = agent.ExtractionProvider
 	}
 
 	// Marshal once so the shape is fixed; TriggerExecution accepts
