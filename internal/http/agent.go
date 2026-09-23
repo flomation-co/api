@@ -104,6 +104,13 @@ func (s *Service) createAgent(c *gin.Context) {
 		return
 	}
 
+	if agent.Avatar != nil {
+		if err := validateAgentAvatar(*agent.Avatar); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	agent.OwnerID = user.ID
 	if len(user.Organisations) > 0 {
 		orgID := user.Organisations[0].ID
@@ -150,6 +157,13 @@ func (s *Service) updateAgent(c *gin.Context) {
 	if err := c.BindJSON(&agent); err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
+	}
+
+	if agent.Avatar != nil {
+		if err := validateAgentAvatar(*agent.Avatar); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	agent.ID = id

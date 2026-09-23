@@ -742,9 +742,11 @@ const (
 )
 
 type Agent struct {
-	ID                 string  `json:"id" db:"id"`
-	Name               string  `json:"name" db:"name"`
-	Description        *string `json:"description,omitempty" db:"description"`
+	ID          string  `json:"id" db:"id"`
+	Name        string  `json:"name" db:"name"`
+	Description *string `json:"description,omitempty" db:"description"`
+	// Avatar is a validated data URL (see internal/http/agent_avatar.go).
+	Avatar             *string `json:"avatar,omitempty" db:"avatar"`
 	OwnerID            string  `json:"owner_id" db:"owner_id"`
 	OrganisationID     *string `json:"organisation_id,omitempty" db:"organisation_id"`
 	EnvironmentID      *string `json:"environment_id,omitempty" db:"environment_id"`

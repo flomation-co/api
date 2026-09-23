@@ -2878,11 +2878,11 @@ func NewService(config *config.Config) (*Service, error) {
 	}
 
 	s.stmtCreateAgent, err = s.conn.PrepareNamed(`
-		INSERT INTO agent (name, description, owner_id, organisation_id, environment_id, queue_id,
+		INSERT INTO agent (name, description, avatar, owner_id, organisation_id, environment_id, queue_id,
 			system_prompt, orchestrator_flow_id, extraction_flow_id, ai_api_key,
 			extraction_provider, idle_timeout_seconds,
 			channels, prior_conversation_count)
-		VALUES (:name, :description, :owner_id, :organisation_id, :environment_id, :queue_id,
+		VALUES (:name, :description, :avatar, :owner_id, :organisation_id, :environment_id, :queue_id,
 			:system_prompt, :orchestrator_flow_id, :extraction_flow_id,
 			PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),
 			:extraction_provider, :idle_timeout_seconds,
@@ -2895,7 +2895,8 @@ func NewService(config *config.Config) (*Service, error) {
 
 	s.stmtUpdateAgent, err = s.conn.PrepareNamed(`
 		UPDATE agent SET
-			name = :name, description = :description, environment_id = :environment_id,
+			name = :name, description = :description, avatar = :avatar,
+			environment_id = :environment_id,
 			queue_id = :queue_id, system_prompt = :system_prompt,
 			orchestrator_flow_id = :orchestrator_flow_id,
 			ai_api_key = PGP_SYM_ENCRYPT(:ai_api_key, :encrypt_key),

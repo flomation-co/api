@@ -108,6 +108,7 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 	if err := s.stmtCreateAgent.Get(&id, struct {
 		Name                   string          `db:"name"`
 		Description            *string         `db:"description"`
+		Avatar                 *string         `db:"avatar"`
 		OwnerID                string          `db:"owner_id"`
 		OrganisationID         *string         `db:"organisation_id"`
 		EnvironmentID          *string         `db:"environment_id"`
@@ -124,6 +125,7 @@ func (s *Service) CreateAgent(agent api.Agent) (*string, error) {
 	}{
 		Name:                   agent.Name,
 		Description:            agent.Description,
+		Avatar:                 agent.Avatar,
 		OwnerID:                agent.OwnerID,
 		OrganisationID:         agent.OrganisationID,
 		EnvironmentID:          agent.EnvironmentID,
@@ -179,6 +181,7 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		ID                     string          `db:"id"`
 		Name                   string          `db:"name"`
 		Description            *string         `db:"description"`
+		Avatar                 *string         `db:"avatar"`
 		EnvironmentID          *string         `db:"environment_id"`
 		QueueID                *string         `db:"queue_id"`
 		SystemPrompt           *string         `db:"system_prompt"`
@@ -193,6 +196,7 @@ func (s *Service) UpdateAgent(agent api.Agent) error {
 		ID:                     agent.ID,
 		Name:                   agent.Name,
 		Description:            agent.Description,
+		Avatar:                 agent.Avatar,
 		EnvironmentID:          agent.EnvironmentID,
 		QueueID:                agent.QueueID,
 		SystemPrompt:           agent.SystemPrompt,
