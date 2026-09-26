@@ -116,6 +116,13 @@ func buildDPAParams(user *api.User, org *api.Organisation) dpa.Params {
 	p.ControllerType = "individual"
 	p.ControllerName = userFullName(user)
 	p.ControllerLegal = userFullName(user)
+	// A contract's effective date must not move. It used to be time.Now() at
+	// download, so the agreement re-dated itself every time anyone fetched it.
+	// Accounts provisioned before this was recorded fall back to now, which is
+	// the old behaviour rather than a wrong date.
+	if user.DPAEffectiveFrom != nil {
+		p.EffectiveDate = *user.DPAEffectiveFrom
+	}
 	p.AddressLines = assembleAddress(
 		deref(user.AddressLine1), deref(user.AddressLine2),
 		deref(user.City), deref(user.Region), deref(user.Postcode), deref(user.Country),
@@ -148,17 +155,31 @@ func missingOrgLegalFields(org *api.Organisation) []string {
 	return orglegal.Missing(org)
 }
 
+// PlaceholderUserName is the literal value written into users.name when an
+// account is provisioned before the person has set anything. It is a marker,
+// not a name, and must never reach a document or a message.
+const PlaceholderUserName = "auto-generate"
+
+// userFullName resolves the best available human name for an account.
+//
+// The order matters on a legal document. A real first/last name wins; then the
+// username the person chose; then their email address, which is always present
+// and is at least unambiguously them.
+//
+// The placeholder guard is the point of this function. users.name is set to
+// the literal string "auto-generate" at provisioning, and 25 of 69 live
+// accounts still carry it — without this check, every one of their Data
+// Processing Agreements named the Controller as "auto-generate".
 func userFullName(user *api.User) string {
 	first := strings.TrimSpace(deref(user.FirstName))
 	last := strings.TrimSpace(deref(user.LastName))
-	full := strings.TrimSpace(first + " " + last)
-	if full != "" {
+	if full := strings.TrimSpace(first + " " + last); full != "" {
 		return full
 	}
-	if strings.TrimSpace(user.Name) != "" {
-		return user.Name
+	if name := strings.TrimSpace(user.Name); name != "" && name != PlaceholderUserName {
+		return name
 	}
-	return deref(user.EmailAddress)
+	return strings.TrimSpace(deref(user.EmailAddress))
 }
 
 func assembleAddress(parts ...string) []string {

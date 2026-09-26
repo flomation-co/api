@@ -36,7 +36,7 @@ func (s *Service) sendShareEmail(c *gin.Context) {
 	}
 
 	senderName := u.Name
-	if senderName == "" || senderName == "auto-generate" {
+	if senderName == "" || senderName == PlaceholderUserName {
 		senderName = "A colleague"
 	}
 

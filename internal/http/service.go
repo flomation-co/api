@@ -23,6 +23,7 @@ import (
 
 	"flomation.app/automate/api"
 	"flomation.app/automate/api/internal/config"
+	"flomation.app/automate/api/internal/dpa"
 	"flomation.app/automate/api/internal/persistence"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -1210,9 +1211,23 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 	if u == nil {
 		newUser := &api.User{
 			ID:   userIDFromContext.(string),
-			Name: "auto-generate",
+			Name: PlaceholderUserName,
 		}
 		s.seedFromIdentity(c, newUser)
+
+		// A personal account's Data Processing Agreement exists from the
+		// moment the account does. Nothing is rendered here — the PDF is
+		// still generated on demand — but the date it became effective and
+		// the template it began under are recorded now, because neither can
+		// be re-derived later. This is the only moment we know them.
+		//
+		// Registration itself happens in Sentinel; this lazy provisioning is
+		// the first time the product hears about the account, so it is the
+		// earliest honest point to date the agreement from.
+		now := time.Now()
+		version := dpa.TemplateVersion
+		newUser.DPAEffectiveFrom = &now
+		newUser.DPATemplateVersion = &version
 
 		userID, err := s.persistence.CreateUser(newUser)
 		if err != nil {
