@@ -79,12 +79,20 @@ const (
 )
 
 type User struct {
-	ID                    string     `json:"id" db:"id"`
-	Name                  string     `json:"name" db:"name"`
-	EmailAddress          *string    `json:"email_address" db:"email_address"`
-	MarketingOptIn        bool       `json:"marketing_opt_in" db:"marketing_opt_in"`
-	EulaVersion           int        `json:"eula_version" db:"eula_version"`
-	EulaAcceptedAt        *time.Time `json:"eula_accepted_at,omitempty" db:"eula_accepted_at"`
+	ID             string     `json:"id" db:"id"`
+	Name           string     `json:"name" db:"name"`
+	EmailAddress   *string    `json:"email_address" db:"email_address"`
+	MarketingOptIn bool       `json:"marketing_opt_in" db:"marketing_opt_in"`
+	EulaVersion    int        `json:"eula_version" db:"eula_version"`
+	EulaAcceptedAt *time.Time `json:"eula_accepted_at,omitempty" db:"eula_accepted_at"`
+	// DPAEffectiveFrom is when this account's Data Processing Agreement came
+	// into being — set at provisioning, not on first download. Before this
+	// existed the agreement's effective date was time.Now() at download, so
+	// the contract re-dated itself every time anybody fetched it.
+	DPAEffectiveFrom *time.Time `json:"dpa_effective_from,omitempty" db:"dpa_effective_from"`
+	// DPATemplateVersion is the template the agreement came into being under.
+	// NULL on accounts that predate this field.
+	DPATemplateVersion    *string    `json:"dpa_template_version,omitempty" db:"dpa_template_version"`
 	OnboardingStep        int        `json:"onboarding_step" db:"onboarding_step"`
 	OnboardingCompletedAt *time.Time `json:"onboarding_completed_at,omitempty" db:"onboarding_completed_at"`
 	ChecklistFlags        int        `json:"checklist_flags" db:"checklist_flags"`

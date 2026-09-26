@@ -60,6 +60,7 @@ type Service struct {
 	stmtCompleteUserWelcome           *sqlx.NamedStmt
 	stmtSetUserMarketingOptIn         *sqlx.NamedStmt
 	stmtSetUserEmailIfMissing         *sqlx.NamedStmt
+	stmtSetUserDPAIfMissing           *sqlx.NamedStmt
 	stmtMarkUserMarketingSynced       *sqlx.NamedStmt
 	stmtMarkUserMarketingSyncFailed   *sqlx.NamedStmt
 	stmtListUsersNeedingMarketingSync *sqlx.NamedStmt
@@ -598,7 +599,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    marketing_opt_in,
 		    marketing_consent_at,
 		    marketing_consent_source,
-		    marketing_consent_version
+		    marketing_consent_version,
+		    dpa_effective_from,
+		    dpa_template_version
 		) VALUES (
 		  	:id,
 			:name,
@@ -606,7 +609,9 @@ func NewService(config *config.Config) (*Service, error) {
 		    :marketing_opt_in,
 		    :marketing_consent_at,
 		    :marketing_consent_source,
-		    :marketing_consent_version
+		    :marketing_consent_version,
+		    :dpa_effective_from,
+		    :dpa_template_version
 		) ON CONFLICT (id) DO NOTHING RETURNING id;
 	`)
 	if err != nil {
@@ -705,6 +710,22 @@ func NewService(config *config.Config) (*Service, error) {
 		UPDATE users
 		SET email_address = PGP_SYM_ENCRYPT(:email_address, :encrypt_key)
 		WHERE id = :id AND email_address IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	// Belt and braces for the DPA stamp. Migration 157 backfills every row
+	// that existed, and CreateUser stamps every new one — this catches an
+	// account provisioned in the window between the two, which would
+	// otherwise have no effective date and fall back to "now" for ever.
+	// Guarded in SQL as well as in Go so it can never overwrite a date that
+	// is already recorded.
+	s.stmtSetUserDPAIfMissing, err = s.conn.PrepareNamed(`
+		UPDATE users
+		SET dpa_effective_from   = :dpa_effective_from,
+		    dpa_template_version = :dpa_template_version
+		WHERE id = :id AND dpa_effective_from IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -3888,6 +3909,28 @@ func (s *Service) SetUserMarketingOptIn(userID string, optIn bool) error {
 		ConsentVersion: api.MarketingConsentWordingV1,
 	})
 	return err
+}
+
+// SetUserDPAIfMissing records when an account's Data Processing Agreement came
+// into being, and does nothing when it is already recorded.
+//
+// The effective date of a contract must not move. Before this existed it was
+// time.Now() at download, so the agreement re-dated itself on every fetch.
+func (s *Service) SetUserDPAIfMissing(userID string, effectiveFrom time.Time, templateVersion string) (int64, error) {
+	res, err := s.stmtSetUserDPAIfMissing.Exec(struct {
+		ID                 string    `db:"id"`
+		DPAEffectiveFrom   time.Time `db:"dpa_effective_from"`
+		DPATemplateVersion string    `db:"dpa_template_version"`
+	}{
+		ID:                 userID,
+		DPAEffectiveFrom:   effectiveFrom,
+		DPATemplateVersion: templateVersion,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
 }
 
 // SetUserEmailAddressIfMissing writes an address the product does not yet hold.
