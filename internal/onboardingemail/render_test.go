@@ -73,8 +73,8 @@ func TestTrailingSlashOnAppURLDoesNotDoubleUp(t *testing.T) {
 	l.AppURL = "https://app.example.com/"
 	r := Render(mustFind(KeyFirstFlow), l)
 
-	Expect(r.HTML).To(ContainSubstring(`href="https://app.example.com/editor"`))
-	Expect(r.HTML).ToNot(ContainSubstring("example.com//editor"))
+	Expect(r.HTML).To(ContainSubstring(`href="https://app.example.com/flow"`))
+	Expect(r.HTML).ToNot(ContainSubstring("example.com//flow"))
 }
 
 func TestUnsubscribeLinkIsAlwaysPresent(t *testing.T) {

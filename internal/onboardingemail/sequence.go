@@ -63,6 +63,13 @@ type Email struct {
 	ButtonText string
 	// Path is appended to the configured app URL, so the link follows the
 	// environment rather than hard-coding the live host.
+	//
+	// It must be a real route in the editor's app/routes.ts. Nothing here can
+	// check that — a wrong path renders, sends and looks correct, and only the
+	// reader finds out. "/editor" shipped once and is not a route at all (the
+	// flow canvas is "/flo", the list is "/flow"). TestPathsAreRealEditorRoutes
+	// pins every value against the route table; re-read routes.ts before
+	// changing one.
 	Path string
 }
 
@@ -83,15 +90,15 @@ var Sequence = []Email{
 			"whatever you wire up after it. The quickest way to see how it " +
 			"works is to build a small one end to end.",
 		Steps: []string{
-			"Open the editor and drop a Manual trigger onto the canvas. That gives you something you can run by hand while you are still experimenting.",
+			"Open Flows and start a new one. Drop a Manual trigger onto the canvas — that gives you something you can run by hand while you are still experimenting.",
 			"Add a step after it and drag a wire between the two handles. Try Send Message, or Format Date if you would rather see a value change.",
 			"Press Run. Each node lights up as it goes, and clicking one shows exactly what went in and what came out.",
 		},
 		Closing: "Once a flow does something useful by hand, swap the Manual " +
 			"trigger for a schedule, a webhook or an incoming email and it " +
 			"will keep doing it without you.",
-		ButtonText: "Open the editor",
-		Path:       "/editor",
+		ButtonText: "Open Flows",
+		Path:       "/flow",
 	},
 	{
 		Key:     KeyFirstAgent,
