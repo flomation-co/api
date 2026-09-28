@@ -28,6 +28,7 @@ type OnboardingEmailPersistence interface {
 	MarkOnboardingEmailSkipped(userID, emailKey, reason string) error
 	SkipRemainingOnboardingEmails(userID, reason string) error
 	RecordOnboardingEmailError(userID, emailKey, reason string) error
+	BackfillOnboardingEmails() (int, error)
 
 	HasAnyFlow(userID string) (bool, error)
 	HasAnyAgent(userID string) (bool, error)
@@ -92,6 +93,17 @@ func StartOnboardingEmailPoller(p OnboardingEmailPersistence, m *mailer.Mailer, 
 
 func (op *OnboardingEmailPoller) watch() {
 	time.Sleep(30 * time.Second)
+
+	// Enrol accounts that predate the sequence. This runs here rather than as
+	// a migration so it uses the same schedule the rest of the code does, and
+	// so it cannot enrol anybody in an environment where the poller itself
+	// declined to start. It is a no-op after the first successful run.
+	if enrolled, err := op.persistence.BackfillOnboardingEmails(); err != nil {
+		log.WithError(err).Warn("onboarding email poller: backfill of existing accounts failed; will retry on next start")
+	} else if enrolled > 0 {
+		// Nothing sends for an hour, which is the window to notice a problem.
+		log.WithField("accounts", enrolled).Info("onboarding email poller: enrolled existing accounts")
+	}
 
 	ticker := time.NewTicker(op.interval)
 	defer ticker.Stop()

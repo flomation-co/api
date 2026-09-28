@@ -85,6 +85,12 @@ func (s *Service) EnrolOnboardingEmails(userID string, enrolledAt time.Time) err
 // Opt-out and a missing address are filtered here rather than checked per-row
 // by the caller so that a user who opted out never appears in the poller's
 // logs at all.
+//
+// Anonymous rows are excluded. Those are not accounts: a message from an
+// unrecognised channel identity creates a stub user row (migration 83), so a
+// Slack person who once said hello to somebody's agent is in this table. They
+// have no email address either, so this is the second of two guards rather
+// than the only one.
 func (s *Service) ListDueOnboardingEmails(limit int) ([]OnboardingEmailDue, error) {
 	var rows []OnboardingEmailDue
 	// email_address is encrypted at rest, same as everywhere else it is read.
@@ -104,6 +110,7 @@ func (s *Service) ListDueOnboardingEmails(limit int) ([]OnboardingEmailDue, erro
 		   AND oe.due_at <= NOW()
 		   AND u.onboarding_email_opt_out_at IS NULL
 		   AND u.email_address IS NOT NULL
+		   AND u.is_anonymous = false
 		 ORDER BY oe.due_at
 		 LIMIT $1`,
 		limit, s.config.Database.EncryptionKey)
@@ -111,6 +118,49 @@ func (s *Service) ListDueOnboardingEmails(limit int) ([]OnboardingEmailDue, erro
 		return nil, err
 	}
 	return rows, nil
+}
+
+// BackfillOnboardingEmails enrols accounts that predate the sequence.
+//
+// Returns the number of accounts enrolled. Safe to call repeatedly and on
+// every instance: the predicate only matches accounts with no rows at all, and
+// the insert itself is ON CONFLICT DO NOTHING, so the second call is a no-op.
+//
+// The schedule is measured from NOW, not from when each account was created.
+// Backdating it would make all three emails due at once and a person would get
+// the whole sequence in a single sweep — the hour, three days and a week only
+// mean anything measured forward.
+//
+// "No rows at all" rather than "no row for this email" is deliberate. If a
+// fourth email is ever added to the sequence, this will not mail it to every
+// existing account: adding an email should reach people enrolled from then on,
+// and anything wider deserves its own decision rather than happening as a side
+// effect of an edit.
+func (s *Service) BackfillOnboardingEmails() (int, error) {
+	var userIDs []string
+	err := s.conn.Select(&userIDs,
+		`SELECT u.id
+		 FROM users u
+		 WHERE u.email_address IS NOT NULL
+		   AND u.is_anonymous = false
+		   AND NOT EXISTS (
+		       SELECT 1 FROM user_onboarding_email oe WHERE oe.user_id = u.id
+		   )`)
+	if err != nil {
+		return 0, err
+	}
+
+	enrolled := 0
+	at := time.Now()
+	for _, id := range userIDs {
+		if err := s.EnrolOnboardingEmails(id, at); err != nil {
+			// One bad row must not strand the rest. The account keeps no
+			// rows, so the next start tries it again.
+			return enrolled, err
+		}
+		enrolled++
+	}
+	return enrolled, nil
 }
 
 // ClaimOnboardingEmail takes exclusive ownership of a row for one send

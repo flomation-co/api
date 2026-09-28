@@ -418,3 +418,156 @@ func TestOnboardingRowsGoWithTheUser(t *testing.T) {
 }
 
 var _ = sql.ErrNoRows
+
+// makeAnonymousUser inserts the stub row that an unrecognised channel
+// identity produces — a Slack person who messaged somebody's agent, not an
+// account holder.
+func makeAnonymousUser(t *testing.T, s *Service, email string) string {
+	t.Helper()
+	var orgID string
+	if err := s.conn.Get(&orgID,
+		`INSERT INTO organisation (name) VALUES ('Acme') RETURNING id`); err != nil {
+		t.Fatalf("cannot create organisation: %v", err)
+	}
+	var id string
+	err := s.conn.Get(&id,
+		`INSERT INTO users (name, email_address, is_anonymous,
+		                    organisation_id, channel_type, channel_external_id)
+		 VALUES ('slack-person', PGP_SYM_ENCRYPT($1, $2), true, $3, 'slack', 'U123')
+		 RETURNING id`, email, testEncryptionKey, orgID)
+	if err != nil {
+		t.Fatalf("cannot create anonymous user: %v", err)
+	}
+	return id
+}
+
+func TestOnboardingBackfillEnrolsExistingAccounts(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	a := makeUser(t, s, "Grace", "grace@example.com")
+	b := makeUser(t, s, "Ada", "ada@example.com")
+
+	n, err := s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(n).To(Equal(2))
+
+	for _, id := range []string{a, b} {
+		var count int
+		Expect(s.conn.Get(&count,
+			`SELECT count(*) FROM user_onboarding_email WHERE user_id = $1`, id)).To(Succeed())
+		Expect(count).To(Equal(len(onboardingemail.Sequence)))
+	}
+}
+
+// Backdating would make all three due at once and deliver the whole sequence
+// in a single sweep. The spacing only means anything measured forward.
+func TestOnboardingBackfillSchedulesFromNowNotFromSignup(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	userID := makeUser(t, s, "Grace", "grace@example.com")
+	_, err := s.conn.Exec(
+		`UPDATE users SET created_at = NOW() - INTERVAL '2 years' WHERE id = $1`, userID)
+	Expect(err).ToNot(HaveOccurred())
+
+	_, err = s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+
+	// Nothing is due yet — not even the first one, which is an hour out.
+	rows, err := s.ListDueOnboardingEmails(50)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(rows).To(BeEmpty())
+
+	var due time.Time
+	Expect(s.conn.Get(&due,
+		`SELECT due_at FROM user_onboarding_email WHERE user_id = $1 AND email_key = $2`,
+		userID, onboardingemail.KeyInviteTeam)).To(Succeed())
+	Expect(due).To(BeTemporally(">", time.Now().Add(6*24*time.Hour)))
+}
+
+func TestOnboardingBackfillIsSafeToRunTwice(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	makeUser(t, s, "Grace", "grace@example.com")
+
+	first, err := s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(first).To(Equal(1))
+
+	// Every API instance runs this on start, and it runs on every restart.
+	second, err := s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(second).To(BeZero())
+
+	var count int
+	Expect(s.conn.Get(&count, `SELECT count(*) FROM user_onboarding_email`)).To(Succeed())
+	Expect(count).To(Equal(len(onboardingemail.Sequence)))
+}
+
+// An anonymous row is a stub for a channel identity, not an account. Emailing
+// one would mean emailing somebody who never signed up for anything.
+func TestOnboardingBackfillSkipsAnonymousRowsAndAccountsWithNoAddress(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	anon := makeAnonymousUser(t, s, "slack-person@example.com")
+	noAddress := makeUser(t, s, "No address", "temp@example.com")
+	_, err := s.conn.Exec(`UPDATE users SET email_address = NULL WHERE id = $1`, noAddress)
+	Expect(err).ToNot(HaveOccurred())
+	real := makeUser(t, s, "Grace", "grace@example.com")
+
+	n, err := s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(n).To(Equal(1), "only the real account")
+
+	for _, id := range []string{anon, noAddress} {
+		var count int
+		Expect(s.conn.Get(&count,
+			`SELECT count(*) FROM user_onboarding_email WHERE user_id = $1`, id)).To(Succeed())
+		Expect(count).To(BeZero())
+	}
+	var count int
+	Expect(s.conn.Get(&count,
+		`SELECT count(*) FROM user_onboarding_email WHERE user_id = $1`, real)).To(Succeed())
+	Expect(count).To(Equal(len(onboardingemail.Sequence)))
+}
+
+// Even if an anonymous row somehow acquired schedule rows, it must not be
+// mailed. The due query is the second of the two guards.
+func TestDueQueryExcludesAnonymousRows(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	anon := makeAnonymousUser(t, s, "slack-person@example.com")
+	Expect(s.EnrolOnboardingEmails(anon, time.Now().Add(-8*24*time.Hour))).To(Succeed())
+
+	rows, err := s.ListDueOnboardingEmails(50)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(rows).To(BeEmpty())
+}
+
+// An account that unsubscribed, or was already enrolled, is not re-enrolled
+// by a later restart.
+func TestOnboardingBackfillLeavesDecidedAccountsAlone(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	userID := makeUser(t, s, "Grace", "grace@example.com")
+	Expect(s.EnrolOnboardingEmails(userID, time.Now().Add(-8*24*time.Hour))).To(Succeed())
+
+	var token string
+	Expect(s.conn.Get(&token,
+		`SELECT onboarding_email_token FROM users WHERE id = $1`, userID)).To(Succeed())
+	_, err := s.OptOutOfOnboardingEmails(token)
+	Expect(err).ToNot(HaveOccurred())
+
+	n, err := s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(n).To(BeZero(), "an unsubscribed account keeps its rows and must not be re-enrolled")
+
+	rows, err := s.ListDueOnboardingEmails(50)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(rows).To(BeEmpty())
+}

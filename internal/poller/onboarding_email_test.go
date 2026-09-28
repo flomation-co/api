@@ -23,6 +23,10 @@ type onboardingMock struct {
 	skipped   map[string]string
 	abandoned string
 	errors    map[string]string
+
+	backfilled    int
+	backfillErr   error
+	backfillCalls int
 }
 
 func newOnboardingMock() *onboardingMock {
@@ -60,6 +64,11 @@ func (m *onboardingMock) SkipRemainingOnboardingEmails(_, reason string) error {
 func (m *onboardingMock) RecordOnboardingEmailError(_, key, reason string) error {
 	m.errors[key] = reason
 	return nil
+}
+
+func (m *onboardingMock) BackfillOnboardingEmails() (int, error) {
+	m.backfillCalls++
+	return m.backfilled, m.backfillErr
 }
 
 func (m *onboardingMock) HasAnyFlow(string) (bool, error)  { return m.hasFlow, m.checkErr }
