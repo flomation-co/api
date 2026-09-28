@@ -33,6 +33,26 @@ type SecurityConfig struct {
 	ServiceToken string `json:"service_token" env:"SERVICE_TOKEN" arg:"service-token"`
 }
 
+// AppConfig is where the product itself lives — the editor's public base URL.
+//
+// Email has to link somewhere, and hard-coding the live host (as the flow-share
+// invite does) means every non-production environment sends people to
+// production. Defaults to the live editor when unset so existing deployments
+// need no config change.
+type AppConfig struct {
+	URL string `json:"url" env:"APP_URL" arg:"app-url"`
+}
+
+const defaultAppURL = "https://www.flomation.app"
+
+// AppURL returns the configured editor URL, or the live one.
+func (c *Config) AppURL() string {
+	if c.App != nil && c.App.URL != "" {
+		return c.App.URL
+	}
+	return defaultAppURL
+}
+
 type LaunchConfig struct {
 	URL         string `json:"url" env:"LAUNCH_SERVICE_URL" arg:"launch-service-url"`
 	InternalURL string `json:"internal_url,omitempty" env:"LAUNCH_INTERNAL_URL" arg:"launch-internal-url"`
@@ -107,6 +127,7 @@ type Config struct {
 	Security         SecurityConfig                 `json:"security"`
 	Launch           LaunchConfig                   `json:"launch"`
 	SMTP             SMTPConfig                     `json:"smtp"`
+	App              *AppConfig                     `json:"app,omitempty"`
 	Embedding        *EmbeddingConfig               `json:"embedding,omitempty"`
 	TLS              *mtls.TLSConfig                `json:"tls,omitempty"`
 	Metrics          MetricsConfig                  `json:"metrics"`

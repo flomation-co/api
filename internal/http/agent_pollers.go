@@ -6,6 +6,7 @@ import (
 	"flomation.app/automate/api/internal/agent"
 	apiconfig "flomation.app/automate/api/internal/config"
 	"flomation.app/automate/api/internal/connector/emailoctopus"
+	"flomation.app/automate/api/internal/mailer"
 	"flomation.app/automate/api/internal/mtls"
 	"flomation.app/automate/api/internal/persistence"
 	"flomation.app/automate/api/internal/poller"
@@ -90,6 +91,21 @@ func (s *Service) startPollers(cfg *apiconfig.Config, p *persistence.Service) {
 	// EmailOctopus isn't configured (local dev).
 	poller.StartMarketingSyncPoller(p, emailoctopus.NewConnector(cfg))
 	log.Info("API-side marketing sync poller registered")
+
+	// Onboarding email poller (5m) — sends the three post-registration
+	// how-to emails. Each one is checked against what the reader has already
+	// done immediately before sending, so nobody is told how to create their
+	// first flow a week after creating it. Declines to start without SMTP or
+	// without the public API URL that unsubscribe links are built from.
+	if poller.StartOnboardingEmailPoller(p, mailer.New(mailer.Config{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		From:     cfg.SMTP.From,
+	}), cfg.AppURL(), cfg.Launch.APIURL) != nil {
+		log.Info("API-side onboarding email poller registered")
+	}
 
 	// Credential token refresh poller (60s) — proactively refreshes OAuth tokens.
 	poller.StartCredentialRefreshPoller(p)

@@ -466,6 +466,14 @@ func (s *Service) registerRoutes(config *config.Config) {
 	eula := v1.Group("eula")
 	eula.GET("", s.getEula)
 
+	// Onboarding email unsubscribe. Public by necessity — the reader is in a
+	// mail client, and for an abandoned account signing in is not an option.
+	// GET confirms, POST acts: link scanners follow GETs, and one that
+	// unsubscribed people would be a defect nobody could see.
+	onboardingEmail := v1.Group("onboarding/email")
+	onboardingEmail.GET("/unsubscribe/:token", s.getOnboardingEmailUnsubscribe)
+	onboardingEmail.POST("/unsubscribe/:token", s.postOnboardingEmailUnsubscribe)
+
 	// Compliance: customer-specific Data Processing Agreement plus metadata.
 	// Org-scoped via the shared ?organisation query param (personal mode when
 	// absent). The DPA is regenerated from the current template on every
@@ -1243,6 +1251,21 @@ func (s *Service) getUserFromContext(c *gin.Context) *api.User {
 				"error": err,
 			}).Error("unable to get user from context")
 			return nil
+		}
+
+		// Schedule the onboarding email sequence. This is the right moment
+		// for the same reason the DPA is stamped here: it is the first time
+		// the product hears about the account, and enrolling explicitly is
+		// what keeps every pre-existing account out of the sequence.
+		//
+		// A failure is logged and ignored. Not receiving a how-to email is a
+		// disappointment; failing the request that provisions the account
+		// would be an outage.
+		if err := s.persistence.EnrolOnboardingEmails(u.ID, now); err != nil {
+			log.WithFields(log.Fields{
+				"error":   err,
+				"user_id": u.ID,
+			}).Warn("unable to enrol user in onboarding emails")
 		}
 	}
 

@@ -169,6 +169,12 @@ type Persistence interface {
 	MarkUserMarketingSyncFailed(userID, reason string) error
 	ListUsersNeedingMarketingSync(limit int) ([]*api.User, error)
 
+	// Onboarding email sequence. The poller reaches persistence through its
+	// own narrower interface; these two are the halves the HTTP layer needs —
+	// enrolling a newly provisioned account, and the unsubscribe link.
+	EnrolOnboardingEmails(userID string, enrolledAt time.Time) error
+	OptOutOfOnboardingEmails(token string) (bool, error)
+
 	// Favourites
 	GetFloFavourites(userID string) ([]string, error)
 	AddFloFavourite(userID, floID string) error
