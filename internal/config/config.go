@@ -43,7 +43,18 @@ type AppConfig struct {
 	URL string `json:"url" env:"APP_URL" arg:"app-url"`
 }
 
-const defaultAppURL = "https://www.flomation.app"
+// defaultAppURL is the live editor.
+//
+// It is editor.flomation.app, NOT www.flomation.app — the latter does not
+// resolve at all, and flomation.app is a redirect to the former. The flow-share
+// invite in internal/http/share.go still links to www.flomation.app and has
+// therefore been pointing at a dead host; fixing that is a separate change to
+// a separate feature's copy.
+//
+// Deployments should still set app.url explicitly rather than lean on this:
+// a default that is silently wrong sends people to a broken link, which is
+// worse than an email that never arrives.
+const defaultAppURL = "https://editor.flomation.app"
 
 // AppURL returns the configured editor URL, or the live one.
 func (c *Config) AppURL() string {
