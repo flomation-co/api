@@ -572,28 +572,52 @@ func TestOnboardingBackfillLeavesDecidedAccountsAlone(t *testing.T) {
 	Expect(rows).To(BeEmpty())
 }
 
-// A cancelled sequence stays cancelled. The poller abandons a dormant
-// account's remaining emails by stamping skipped_at, and nothing clears it —
-// so if the person comes back later, those rows do not return to the due set
-// and the backfill does not re-enrol them either.
-func TestAbandonedSequenceDoesNotReviveWhenTheAccountReturns(t *testing.T) {
+// A skipped row never comes back.
+//
+// SkipRemainingOnboardingEmails is now only reached by unsubscribing — the
+// poller skips one email at a time and re-judges the next when it falls due.
+// So this is the unsubscribe guarantee: once somebody has opted out, later
+// activity on the account does not put them back in the due set, and the
+// backfill does not re-enrol them.
+func TestUnsubscribedRowsDoNotReviveWhenTheAccountReturns(t *testing.T) {
 	RegisterTestingT(t)
 	s := onboardingTestDB(t)
 
 	userID := makeUser(t, s, "Grace", "grace@example.com")
 	Expect(s.EnrolOnboardingEmails(userID, time.Now().Add(-8*24*time.Hour))).To(Succeed())
 	Expect(s.MarkOnboardingEmailSent(userID, onboardingemail.KeyFirstFlow)).To(Succeed())
-	Expect(s.SkipRemainingOnboardingEmails(userID, "no activity since sign-up")).To(Succeed())
+	Expect(s.SkipRemainingOnboardingEmails(userID, "unsubscribed")).To(Succeed())
 
-	// The account comes back.
+	// The account comes back and uses the product.
 	_, err := s.conn.Exec(`UPDATE users SET last_activity_at = NOW() WHERE id = $1`, userID)
 	Expect(err).ToNot(HaveOccurred())
 
 	rows, err := s.ListDueOnboardingEmails(50)
 	Expect(err).ToNot(HaveOccurred())
-	Expect(rows).To(BeEmpty(), "a cancelled sequence must not reappear")
+	Expect(rows).To(BeEmpty(), "an opt-out must not be undone by using the product")
 
 	n, err := s.BackfillOnboardingEmails()
 	Expect(err).ToNot(HaveOccurred())
 	Expect(n).To(BeZero(), "the backfill must not re-enrol an account that already has rows")
+}
+
+// Skipping one email leaves the others due, which is what lets a reader the
+// first email brought back still receive the rest.
+func TestSkippingOneEmailLeavesTheOthersDue(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	userID := makeUser(t, s, "Grace", "grace@example.com")
+	Expect(s.EnrolOnboardingEmails(userID, time.Now().Add(-8*24*time.Hour))).To(Succeed())
+	Expect(s.MarkOnboardingEmailSkipped(userID, onboardingemail.KeyFirstAgent,
+		"no activity since sign-up")).To(Succeed())
+
+	rows, err := s.ListDueOnboardingEmails(50)
+	Expect(err).ToNot(HaveOccurred())
+
+	keys := []string{}
+	for _, r := range rows {
+		keys = append(keys, r.EmailKey)
+	}
+	Expect(keys).To(ConsistOf(onboardingemail.KeyFirstFlow, onboardingemail.KeyInviteTeam))
 }
