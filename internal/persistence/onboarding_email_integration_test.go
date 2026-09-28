@@ -571,3 +571,29 @@ func TestOnboardingBackfillLeavesDecidedAccountsAlone(t *testing.T) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(rows).To(BeEmpty())
 }
+
+// A cancelled sequence stays cancelled. The poller abandons a dormant
+// account's remaining emails by stamping skipped_at, and nothing clears it —
+// so if the person comes back later, those rows do not return to the due set
+// and the backfill does not re-enrol them either.
+func TestAbandonedSequenceDoesNotReviveWhenTheAccountReturns(t *testing.T) {
+	RegisterTestingT(t)
+	s := onboardingTestDB(t)
+
+	userID := makeUser(t, s, "Grace", "grace@example.com")
+	Expect(s.EnrolOnboardingEmails(userID, time.Now().Add(-8*24*time.Hour))).To(Succeed())
+	Expect(s.MarkOnboardingEmailSent(userID, onboardingemail.KeyFirstFlow)).To(Succeed())
+	Expect(s.SkipRemainingOnboardingEmails(userID, "no activity since sign-up")).To(Succeed())
+
+	// The account comes back.
+	_, err := s.conn.Exec(`UPDATE users SET last_activity_at = NOW() WHERE id = $1`, userID)
+	Expect(err).ToNot(HaveOccurred())
+
+	rows, err := s.ListDueOnboardingEmails(50)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(rows).To(BeEmpty(), "a cancelled sequence must not reappear")
+
+	n, err := s.BackfillOnboardingEmails()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(n).To(BeZero(), "the backfill must not re-enrol an account that already has rows")
+}

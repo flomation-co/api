@@ -275,3 +275,51 @@ func TestPollerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 	Expect(StartOnboardingEmailPoller(m, configured, "", "https://api")).
 		To(BeNil(), "no app URL")
 }
+
+// Someone who signed up, never came back, and is then brought back BY the
+// first email gets the rest of the sequence.
+//
+// This works because the abandonment check is lazy: it runs when each row
+// falls due, against last_activity_at as it stands at that moment, not
+// against a verdict reached earlier. The JWT middleware stamps activity on
+// any authenticated request, so opening the editor from the first email's
+// button is enough.
+func TestComingBackAfterTheFirstEmailResumesTheSequence(t *testing.T) {
+	RegisterTestingT(t)
+
+	signup := time.Now().Add(-3 * 24 * time.Hour)
+
+	// Day 0: dormant. Only the first email is due, and it is exempt.
+	dormant := newOnboardingMock()
+	testPoller(dormant).process(dueRow(onboardingemail.KeyFirstFlow, signup, nil))
+	Expect(dormant.abandoned).To(BeEmpty())
+
+	// They click the button and sign in. Day 3 arrives.
+	returned := signup.Add(90 * time.Minute)
+	resumed := newOnboardingMock()
+	testPoller(resumed).process(dueRow(onboardingemail.KeyFirstAgent, signup, &returned))
+
+	Expect(resumed.abandoned).To(BeEmpty(), "coming back must not be read as absence")
+	Expect(resumed.claimCall).To(Equal(1), "the second email should go out")
+}
+
+// The deadline is real: the verdict is reached once, when the row falls due,
+// and cancelling is permanent. Coming back after that point does not revive
+// anything, because SkipRemainingOnboardingEmails has already stamped
+// skipped_at and there is no path that clears it.
+func TestComingBackTooLateDoesNotRevivetheSequence(t *testing.T) {
+	RegisterTestingT(t)
+
+	signup := time.Now().Add(-8 * 24 * time.Hour)
+
+	// Day 3: still dormant, so the remaining emails are cancelled.
+	m := newOnboardingMock()
+	testPoller(m).process(dueRow(onboardingemail.KeyFirstAgent, signup, nil))
+	Expect(m.abandoned).To(Equal("no activity since sign-up"))
+
+	// Day 5: they come back. The rows are already skipped, so they never
+	// reappear in ListDueOnboardingEmails and process is never reached again.
+	// Asserted at the storage layer in the persistence tests; here the point
+	// is simply that nothing in the poller un-skips.
+	Expect(m.sent).To(BeEmpty())
+}
