@@ -26,7 +26,6 @@ type OnboardingEmailPersistence interface {
 	ClaimOnboardingEmail(userID, emailKey string, maxAttempts int) (bool, error)
 	MarkOnboardingEmailSent(userID, emailKey string) error
 	MarkOnboardingEmailSkipped(userID, emailKey, reason string) error
-	SkipRemainingOnboardingEmails(userID, reason string) error
 	RecordOnboardingEmailError(userID, emailKey, reason string) error
 	BackfillOnboardingEmails() (int, error)
 
@@ -146,16 +145,24 @@ func (op *OnboardingEmailPoller) process(row persistence.OnboardingEmailDue) {
 
 	// Somebody who signed up and never returned should not be followed by a
 	// week of instructions. last_activity_at is only stamped by real use, so
-	// its absence after the first email is due means the account was opened
-	// and abandoned.
+	// its absence when an email falls due means the account was opened and
+	// left.
 	//
 	// The first email is exempt: it falls due an hour in, which is easily
 	// within one sitting, and it is the one email a person who has not come
 	// back might actually act on.
+	//
+	// Only THIS email is skipped, not the rest of the sequence. The check is
+	// re-run when the next one falls due, so somebody the first email brings
+	// back still receives what is left — the alternative, cancelling
+	// everything at the first failed check, gave a returning reader nothing
+	// and made a single quiet week permanent. The cost is that a reader who
+	// returns late can receive a later email without the one before it; each
+	// stands on its own, so that reads as a gap rather than a non-sequitur.
 	if email.Key != onboardingemail.KeyFirstFlow && !returnedAfterSignup(row) {
-		l.Info("onboarding email poller: account never returned, abandoning sequence")
-		if err := op.persistence.SkipRemainingOnboardingEmails(row.UserID, "no activity since sign-up"); err != nil {
-			l.WithError(err).Warn("onboarding email poller: failed to abandon sequence")
+		l.Info("onboarding email poller: no activity since sign-up, skipping this email")
+		if err := op.persistence.MarkOnboardingEmailSkipped(row.UserID, row.EmailKey, "no activity since sign-up"); err != nil {
+			l.WithError(err).Warn("onboarding email poller: failed to skip")
 		}
 		return
 	}

@@ -19,10 +19,9 @@ type onboardingMock struct {
 	claimed   bool
 	claimCall int
 
-	sent      []string
-	skipped   map[string]string
-	abandoned string
-	errors    map[string]string
+	sent    []string
+	skipped map[string]string
+	errors  map[string]string
 
 	backfilled    int
 	backfillErr   error
@@ -53,11 +52,6 @@ func (m *onboardingMock) MarkOnboardingEmailSent(_, key string) error {
 
 func (m *onboardingMock) MarkOnboardingEmailSkipped(_, key, reason string) error {
 	m.skipped[key] = reason
-	return nil
-}
-
-func (m *onboardingMock) SkipRemainingOnboardingEmails(_, reason string) error {
-	m.abandoned = reason
 	return nil
 }
 
@@ -126,14 +120,19 @@ func TestGoalAlreadyMetIsSkippedNotSent(t *testing.T) {
 }
 
 // An account opened and never returned to should not be followed for a week.
-func TestSequenceIsAbandonedForAnAccountThatNeverCameBack(t *testing.T) {
+//
+// Only the email that is due is skipped. Cancelling the rest would make one
+// quiet week permanent, and the whole point of the first email is that it
+// might bring somebody back.
+func TestAnEmailIsSkippedForAnAccountThatNeverCameBack(t *testing.T) {
 	RegisterTestingT(t)
 
 	base := time.Now().Add(-8 * 24 * time.Hour)
 	m := newOnboardingMock()
 	testPoller(m).process(dueRow(onboardingemail.KeyFirstAgent, base, nil))
 
-	Expect(m.abandoned).To(Equal("no activity since sign-up"))
+	Expect(m.skipped).To(HaveKeyWithValue(onboardingemail.KeyFirstAgent, "no activity since sign-up"))
+	Expect(m.skipped).To(HaveLen(1), "the rest of the sequence must be left alone")
 	Expect(m.claimCall).To(BeZero())
 }
 
@@ -147,11 +146,11 @@ func TestActivityDuringSignupDoesNotCountAsReturning(t *testing.T) {
 
 	m := newOnboardingMock()
 	testPoller(m).process(dueRow(onboardingemail.KeyFirstAgent, base, &duringSignup))
-	Expect(m.abandoned).To(Equal("no activity since sign-up"))
+	Expect(m.skipped).To(HaveKeyWithValue(onboardingemail.KeyFirstAgent, "no activity since sign-up"))
 
 	m2 := newOnboardingMock()
 	testPoller(m2).process(dueRow(onboardingemail.KeyFirstAgent, base, active(base)))
-	Expect(m2.abandoned).To(BeEmpty())
+	Expect(m2.skipped).To(BeEmpty())
 }
 
 // The first email falls due an hour in, well within one sitting, and is the
@@ -163,7 +162,7 @@ func TestFirstEmailIsExemptFromTheActivityCheck(t *testing.T) {
 	m := newOnboardingMock()
 	testPoller(m).process(dueRow(onboardingemail.KeyFirstFlow, base, nil))
 
-	Expect(m.abandoned).To(BeEmpty())
+	Expect(m.skipped).To(BeEmpty())
 	Expect(m.claimCall).To(Equal(1), "it should have been claimed and attempted")
 }
 
@@ -274,4 +273,70 @@ func TestPollerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 		To(BeNil(), "no API URL")
 	Expect(StartOnboardingEmailPoller(m, configured, "", "https://api")).
 		To(BeNil(), "no app URL")
+}
+
+// Someone who signed up, never came back, and is then brought back BY the
+// first email gets the rest of the sequence.
+//
+// This works because the abandonment check is lazy: it runs when each row
+// falls due, against last_activity_at as it stands at that moment, not
+// against a verdict reached earlier. The JWT middleware stamps activity on
+// any authenticated request, so opening the editor from the first email's
+// button is enough.
+func TestComingBackAfterTheFirstEmailResumesTheSequence(t *testing.T) {
+	RegisterTestingT(t)
+
+	signup := time.Now().Add(-3 * 24 * time.Hour)
+
+	// Day 0: dormant. Only the first email is due, and it is exempt.
+	dormant := newOnboardingMock()
+	testPoller(dormant).process(dueRow(onboardingemail.KeyFirstFlow, signup, nil))
+	Expect(dormant.skipped).To(BeEmpty())
+
+	// They click the button and sign in. Day 3 arrives.
+	returned := signup.Add(90 * time.Minute)
+	resumed := newOnboardingMock()
+	testPoller(resumed).process(dueRow(onboardingemail.KeyFirstAgent, signup, &returned))
+
+	Expect(resumed.skipped).To(BeEmpty(), "coming back must not be read as absence")
+	Expect(resumed.claimCall).To(Equal(1), "the second email should go out")
+}
+
+// A reader who returns late still gets what is left.
+//
+// Under the old behaviour the first failed check cancelled everything, so a
+// single quiet week was permanent and returning on day four earned nothing.
+// Now each email is judged when it falls due, so the sequence picks back up.
+func TestReturningLateStillReceivesTheRemainingEmails(t *testing.T) {
+	RegisterTestingT(t)
+
+	signup := time.Now().Add(-8 * 24 * time.Hour)
+
+	// Day 3: still dormant. Only that email is skipped.
+	day3 := newOnboardingMock()
+	testPoller(day3).process(dueRow(onboardingemail.KeyFirstAgent, signup, nil))
+	Expect(day3.skipped).To(HaveLen(1))
+
+	// Day 5 they come back. Day 7 arrives and the last email is judged afresh.
+	returned := signup.Add(5 * 24 * time.Hour)
+	day7 := newOnboardingMock()
+	testPoller(day7).process(dueRow(onboardingemail.KeyInviteTeam, signup, &returned))
+
+	Expect(day7.skipped).To(BeEmpty())
+	Expect(day7.claimCall).To(Equal(1), "the last email should go out")
+}
+
+// Still dormant at every check means every email after the first is skipped,
+// and nothing is ever sent to somebody who never came back.
+func TestAPermanentlyDormantAccountIsNeverSentTheLaterEmails(t *testing.T) {
+	RegisterTestingT(t)
+
+	signup := time.Now().Add(-8 * 24 * time.Hour)
+
+	for _, key := range []string{onboardingemail.KeyFirstAgent, onboardingemail.KeyInviteTeam} {
+		m := newOnboardingMock()
+		testPoller(m).process(dueRow(key, signup, nil))
+		Expect(m.skipped).To(HaveKeyWithValue(key, "no activity since sign-up"))
+		Expect(m.claimCall).To(BeZero(), "%s must not be sent", key)
+	}
 }
