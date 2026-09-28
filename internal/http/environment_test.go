@@ -50,6 +50,13 @@ type mockPersistence struct {
 	latestRevision   *api.Revision
 	triggerExecCalls int
 	triggersByID     map[string]*api.Trigger
+
+	// Onboarding email unsubscribe. optOutTokens holds the tokens the mock
+	// recognises; optOutErr forces the failure branch; optOutCalls records
+	// what the handler passed through.
+	optOutTokens map[string]bool
+	optOutErr    error
+	optOutCalls  []string
 }
 
 type mockBlob struct {
@@ -608,6 +615,15 @@ func (m *mockPersistence) SetUserMarketingOptIn(string, bool) error             
 func (m *mockPersistence) MarkUserMarketingSynced(string) error                   { return nil }
 func (m *mockPersistence) MarkUserMarketingSyncFailed(string, string) error       { return nil }
 func (m *mockPersistence) ListUsersNeedingMarketingSync(int) ([]*api.User, error) { return nil, nil }
+
+func (m *mockPersistence) EnrolOnboardingEmails(string, time.Time) error { return nil }
+func (m *mockPersistence) OptOutOfOnboardingEmails(token string) (bool, error) {
+	m.optOutCalls = append(m.optOutCalls, token)
+	if m.optOutErr != nil {
+		return false, m.optOutErr
+	}
+	return m.optOutTokens[token], nil
+}
 
 // Favourites stubs
 func (m *mockPersistence) GetFloFavourites(string) ([]string, error) { return nil, nil }
