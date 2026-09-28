@@ -113,3 +113,63 @@ func TestEachEmailHasItsOwnGoal(t *testing.T) {
 		goals[e.Goal] = true
 	}
 }
+
+// Every Path must be a real route in the editor.
+//
+// "/editor" shipped in the first version and is not a route at all — the flow
+// canvas is "/flo" and the list is "/flow" — so the button in the first email
+// went nowhere. Nothing could catch it: the email renders, sends and looks
+// right, and only the reader finds out.
+//
+// This pins each path against the editor's route table rather than trusting
+// that whoever edits the copy also checks. The list below is transcribed from
+// automate/editor/app/routes.ts; if a path is added here it has to be read off
+// that file first, which is the whole point.
+func TestPathsAreRealEditorRoutes(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Top-level routes and prefix() indexes from editor app/routes.ts,
+	// checked 2026-09-28.
+	editorRoutes := map[string]bool{
+		"/":             true,
+		"/profile":      true,
+		"/billing":      true,
+		"/flow":         true, // the flows list
+		"/flo":          true, // the canvas: index of prefix("flo")
+		"/trigger":      true,
+		"/integration":  true,
+		"/runner":       true,
+		"/queue":        true,
+		"/embed":        true,
+		"/gateway":      true,
+		"/organisation": true,
+		"/team":         true,
+		"/sso":          true,
+		"/usage":        true,
+		"/status":       true,
+		"/environment":  true,
+		"/board":        true,
+		"/agent":        true,
+		"/execution":    true,
+	}
+
+	for _, e := range Sequence {
+		Expect(editorRoutes[e.Path]).To(BeTrue(),
+			"%s links to %q, which is not a route in the editor — check "+
+				"automate/editor/app/routes.ts", e.Key, e.Path)
+	}
+}
+
+// The button text and the first step should agree with where the link lands.
+// The first email said "Open the editor" while pointing at a path that did not
+// exist; the copy and the destination drifted apart unnoticed.
+func TestFirstEmailSendsPeopleToFlows(t *testing.T) {
+	RegisterTestingT(t)
+
+	e, ok := Find(KeyFirstFlow)
+	Expect(ok).To(BeTrue())
+	Expect(e.Path).To(Equal("/flow"))
+	Expect(e.ButtonText).To(ContainSubstring("Flows"))
+	Expect(e.Steps[0]).To(ContainSubstring("Flows"),
+		"the first step must describe the page the button opens")
+}
